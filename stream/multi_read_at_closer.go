@@ -137,15 +137,19 @@ func (r *multiReadAtSeekCloser) Read(p []byte) (int, error) {
 		r.off += int64(n)
 	}
 
+	wrapErr := func(err error, cause string) error {
+		return &MultiReadError{i, readerOff, off, err, cause}
+	}
+
 	if err != nil && err != io.EOF {
-		return n, &MultiReadError{i, readerOff, off, err, "read error"}
+		return n, wrapErr(err, "read error")
 	}
 
 	switch rem := rr.Size - readerOff; {
 	case int64(n) > rem:
-		return n, &MultiReadError{i, readerOff, off, ErrInvalidSize, "read more"}
+		return n, wrapErr(ErrInvalidSize, "read more")
 	case err == io.EOF && n == 0 && rem > 0:
-		return n, &MultiReadError{i, readerOff, off, io.ErrUnexpectedEOF, "read less"}
+		return n, wrapErr(io.ErrUnexpectedEOF, "read less")
 	case err == io.EOF && len(r.r)-1 > r.idx:
 		err = nil
 	}
@@ -218,15 +222,19 @@ func (r *multiReadAtSeekCloser) readAt(p []byte, off int64) (n int, err error) {
 	readerOff := off - rr.accum
 	n, err = rr.R.ReadAt(p, readerOff)
 
+	wrapErr := func(err error, cause string) error {
+		return &MultiReadError{i, readerOff, off, err, cause}
+	}
+
 	if err != nil && err != io.EOF {
-		return n, &MultiReadError{i, readerOff, off, err, "read error"}
+		return n, wrapErr(err, "read error")
 	}
 
 	switch rem := rr.Size - readerOff; {
 	case int64(n) > rem:
-		return n, &MultiReadError{i, readerOff, off, ErrInvalidSize, "read more"}
+		return n, wrapErr(ErrInvalidSize, "read more")
 	case err == io.EOF && n == 0 && rem > 0:
-		return n, &MultiReadError{i, readerOff, off, io.ErrUnexpectedEOF, "read less"}
+		return n, wrapErr(io.ErrUnexpectedEOF, "read less")
 	case err == io.EOF && len(r.r)-1 > i:
 		err = nil
 	}
