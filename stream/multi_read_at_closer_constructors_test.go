@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -34,11 +34,20 @@ func openPregenerated() (org *os.File, splitted []*os.File) {
 			splitted = append(splitted, f)
 		}
 	}
-	sort.Slice(splitted, func(i, j int) bool {
-		return splitted[i].Name() < splitted[j].Name()
+	slices.SortFunc(splitted, func(i, j *os.File) int {
+		return strings.Compare(i.Name(), j.Name())
 	})
 
 	return org, splitted
+}
+
+func seekBack[T io.Seeker](files ...T) {
+	for _, f := range files {
+		_, err := f.Seek(0, io.SeekStart)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func TestSizedReadersFromFileLike(t *testing.T) {
