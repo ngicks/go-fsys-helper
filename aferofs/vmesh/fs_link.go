@@ -97,5 +97,10 @@ func (fsys *Fs) Reallocate(path string, allocator FileDataAllocator) error {
 
 	dirent.copyMeta(oldDirent)
 
-	return oldDirent.close()
+	err = oldDirent.close()
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrClosedWithError, err)
+	}
+
+	return nil
 }
