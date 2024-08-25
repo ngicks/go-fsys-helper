@@ -144,5 +144,5 @@ func (me *multiError) Unwrap() []error {
 // (%+v) stream.multiError{(*errors.errorString)(0xc00002c300), (*mymodule.exampleErr)(0xc000102630)}
 // (%#v) [824633901824 824634779184]
 func (me *multiError) Format(state fmt.State, verb rune) {
-	state.Write([]byte(me.str(fmt.FormatString(state, verb))))
+	_, _ = state.Write([]byte(me.str(fmt.FormatString(state, verb))))
 }
