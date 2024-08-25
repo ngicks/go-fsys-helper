@@ -167,7 +167,6 @@ func lookupParent(parent *dirent, name string) (*dirent, error) {
 	return dirent, nil
 }
 
-// Chmod implements afero.Fs.
 func (fsys *Fs) Chmod(name string, mode fs.FileMode) error {
 	ent, err := fsys.find(name)
 	if err != nil {
@@ -178,7 +177,6 @@ func (fsys *Fs) Chmod(name string, mode fs.FileMode) error {
 	return nil
 }
 
-// Chown implements afero.Fs.
 func (fsys *Fs) Chown(name string, uid int, gid int) error {
 	// uid and gid are currently not used.
 	// May eventually be exposed to implement https://pkg.go.dev/archive/tar#FileInfoNames
@@ -190,7 +188,6 @@ func (fsys *Fs) Chown(name string, uid int, gid int) error {
 	return nil
 }
 
-// Chtimes implements afero.Fs.
 func (fsys *Fs) Chtimes(name string, atime time.Time, mtime time.Time) error {
 	ent, err := fsys.find(name)
 	if err != nil {
@@ -200,12 +197,10 @@ func (fsys *Fs) Chtimes(name string, atime time.Time, mtime time.Time) error {
 	return nil
 }
 
-// Create implements afero.Fs.
 func (fsys *Fs) Create(name string) (afero.File, error) {
 	return fsys.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 }
 
-// Mkdir implements afero.Fs.
 func (fsys *Fs) Mkdir(name string, perm fs.FileMode) error {
 	err := fsys.mkdir(name, perm)
 	return wrapErr("mkdir", name, err)
@@ -240,13 +235,12 @@ func (fys *Fs) mkdir(name string, perm fs.FileMode) error {
 	return nil
 }
 
-func (m *Fs) MkdirAll(path string, perm fs.FileMode) error {
-	err := m.mkdirAll(path, perm)
+func (fsys *Fs) MkdirAll(path string, perm fs.FileMode) error {
+	err := fsys.mkdirAll(path, perm)
 	return wrapErr("mkdir", path, err)
 }
 
-// MkdirAll implements afero.Fs.
-func (m *Fs) mkdirAll(path string, perm fs.FileMode) error {
+func (fsys *Fs) mkdirAll(path string, perm fs.FileMode) error {
 	if err := validatePath(path); err != nil {
 		return err
 	}
@@ -256,7 +250,7 @@ func (m *Fs) mkdirAll(path string, perm fs.FileMode) error {
 		return nil
 	}
 
-	if err := m.root.IsSearchableDir(); err != nil {
+	if err := fsys.root.IsSearchableDir(); err != nil {
 		return err
 	}
 
@@ -266,7 +260,7 @@ func (m *Fs) mkdirAll(path string, perm fs.FileMode) error {
 	var (
 		top            string
 		currentPathIdx int
-		parent         *dirent = m.root
+		parent         *dirent = fsys.root
 		child          *dirent
 		ok             bool
 	)
@@ -281,7 +275,7 @@ func (m *Fs) mkdirAll(path string, perm fs.FileMode) error {
 
 		child, ok = parent.lookup(top)
 		if !ok {
-			child = newDirDirent(top, m.maskPerm(perm), m.clock.Now())
+			child = newDirDirent(top, fsys.maskPerm(perm), fsys.clock.Now())
 			parent.addDirent(child)
 		}
 
@@ -294,12 +288,12 @@ func (m *Fs) mkdirAll(path string, perm fs.FileMode) error {
 	return nil
 }
 
-func (m *Fs) Name() string {
-	return "github.com/ngicks/go-fsys-helper/aferofs/memfs.MemFs"
+func (fsys *Fs) Name() string {
+	return "github.com/ngicks/go-fsys-helper/aferofs/vmesh.Fs"
 }
 
-func (m *Fs) Open(name string) (afero.File, error) {
-	return m.OpenFile(name, os.O_RDONLY, 0)
+func (fsys *Fs) Open(name string) (afero.File, error) {
+	return fsys.OpenFile(name, os.O_RDONLY, 0)
 }
 
 func (fsys *Fs) OpenFile(path string, flag int, perm fs.FileMode) (afero.File, error) {
@@ -369,8 +363,8 @@ func (fsys *Fs) openFile(name string, flag int, perm fs.FileMode) (afero.File, e
 	return opened, nil
 }
 
-func (m *Fs) Remove(name string) error {
-	parent, err := m.findParent(name)
+func (fsys *Fs) Remove(name string) error {
+	parent, err := fsys.findParent(name)
 	if err != nil {
 		return wrapErr("remove", name, err)
 	}
@@ -404,13 +398,12 @@ func removeFromParent(parent *dirent, name string) error {
 	return nil
 }
 
-// RemoveAll implements afero.Fs.
-func (m *Fs) RemoveAll(name string) error {
-	err := m.removeAll(name)
+func (fsys *Fs) RemoveAll(name string) error {
+	err := fsys.removeAll(name)
 	return wrapErr("remove", name, err)
 }
 
-func (m *Fs) removeAll(name string) error {
+func (fsys *Fs) removeAll(name string) error {
 	if err := validatePath(name); err != nil {
 		return err
 	}
@@ -420,12 +413,12 @@ func (m *Fs) removeAll(name string) error {
 		return syscall.EACCES
 	}
 
-	err := m.Remove(name)
+	err := fsys.Remove(name)
 	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 
-	parent, err := m.findParent(name)
+	parent, err := fsys.findParent(name)
 	if err != nil {
 		return err
 	}
@@ -455,13 +448,12 @@ func removeAllFrom(parent *dirent, name string) (path string, err error) {
 	return "", nil
 }
 
-// Rename implements afero.Fs.
-func (m *Fs) Rename(oldname string, newname string) error {
-	err := m.rename(oldname, newname)
+func (fsys *Fs) Rename(oldname string, newname string) error {
+	err := fsys.rename(oldname, newname)
 	return wrapErr("rename", oldname, err)
 }
 
-func (m *Fs) rename(oldname string, newname string) error {
+func (fsys *Fs) rename(oldname string, newname string) error {
 	if err := validatePath(oldname); err != nil {
 		return &fs.PathError{Path: oldname, Err: err}
 	}
@@ -497,7 +489,7 @@ func (m *Fs) rename(oldname string, newname string) error {
 	}
 
 	findDirent := func(name string) (parent *dirent, target *dirent, err error) {
-		parent, err = m.findParent(name)
+		parent, err = fsys.findParent(name)
 		if err != nil {
 			return
 		}
@@ -552,9 +544,8 @@ func (m *Fs) rename(oldname string, newname string) error {
 
 }
 
-// Stat implements afero.Fs.
-func (m *Fs) Stat(name string) (fs.FileInfo, error) {
-	ent, err := m.find(name)
+func (fsys *Fs) Stat(name string) (fs.FileInfo, error) {
+	ent, err := fsys.find(name)
 	if err != nil {
 		return nil, wrapErr("stat", name, err)
 	}
