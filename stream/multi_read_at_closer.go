@@ -6,18 +6,15 @@ import (
 	"io"
 	"io/fs"
 	"sort"
+	"syscall"
 
 	"github.com/ngicks/go-fsys-helper/stream/internal/serr"
 )
 
 var (
-	// ErrOffset reports an invalid offset passed to Seek.
-	ErrOffset = errors.New("invalid offset")
 	// ErrInvalidSize reports an incorrectly reported size in []SizedReaderAt caused malformed read from readers.
 	// It is very likely wrapped in *MultiReadError.
 	ErrInvalidSize = errors.New("invalid size")
-	// ErrUnknownWhence reports invalid whence.
-	ErrUnknownWhence = errors.New("unknown whence")
 )
 
 // MultiReadError is returned by calling Read method of the reader returned from NewMultiReadAtSeekCloser.
@@ -160,7 +157,7 @@ func (r *multiReadAtSeekCloser) Read(p []byte) (int, error) {
 func (r *multiReadAtSeekCloser) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	default:
-		return 0, fmt.Errorf("Seek: %w = %d", ErrUnknownWhence, whence)
+		return 0, fmt.Errorf("Seek: %w: %d", syscall.EINVAL, whence)
 	case io.SeekStart:
 	case io.SeekCurrent:
 		offset += r.off
@@ -168,7 +165,7 @@ func (r *multiReadAtSeekCloser) Seek(offset int64, whence int) (int64, error) {
 		offset += r.upperLimit
 	}
 	if offset < 0 {
-		return 0, fmt.Errorf("Seek: %w: negative", ErrOffset)
+		return 0, fmt.Errorf("Seek: %w: negative", syscall.EINVAL)
 	}
 
 	r.off = offset
