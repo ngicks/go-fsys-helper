@@ -1,13 +1,21 @@
 package vmesh
 
 import (
+	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"path"
 	"syscall"
 
 	"github.com/ngicks/go-fsys-helper/aferofs"
+	"github.com/ngicks/go-fsys-helper/aferofs/internal/errdef"
 	"github.com/spf13/afero"
 )
+
+func readonlyFsysErr(op, name string) error {
+	return &fs.PathError{Op: op, Path: name, Err: syscall.EROFS}
+}
 
 var _ FileData = (*fsLinkFileData)(nil)
 
@@ -22,6 +30,10 @@ func (b *fsLinkFileData) Close() error {
 
 // NewFsLinkFileData builds FileData that points a file stored in fsys referred as path.
 func NewFsLinkFileData(fsys fs.FS, path string) (FileData, error) {
+	return newFsLinkFileData(fsys, path)
+}
+
+func newFsLinkFileData(fsys fs.FS, path string) (*fsLinkFileData, error) {
 	s, err := fs.Stat(fsys, path)
 	if err != nil {
 		return nil, err
@@ -52,4 +64,153 @@ func (b *fsLinkFileData) Stat() (fs.FileInfo, error) {
 
 func (b *fsLinkFileData) Truncate(size int64) error {
 	return syscall.EROFS
+}
+
+func NewFsLinkFileRangedView(fsys fs.FS, path string, off, n int64) (FileData, error) {
+	fd, err := newFsLinkFileData(fsys, path)
+	if err != nil {
+		return nil, err
+	}
+	return NewFileDataRangedView(fd, off, n)
+}
+
+func NewFileDataRangedView(fd FileData, off, n int64) (FileData, error) {
+	if off < 0 {
+		return nil, fmt.Errorf("off must not be negative = %d", off)
+	}
+	if n <= 0 {
+		return nil, fmt.Errorf("n must be greater than 0")
+	}
+
+	f, err := fd.Open(os.O_RDONLY)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	r, ok := f.(io.ReaderAt)
+	if !ok {
+		return nil, fmt.Errorf("fsys must open io.ReaderAt implementor")
+	}
+
+	// check implementation
+	var b [1]byte
+	_, err = r.ReadAt(b[:], 0)
+	if err != nil {
+		return nil, fmt.Errorf("fsys must open io.ReaderAt implementor: %w", err)
+	}
+
+	return &fsFileDataRangedView{off, n, fd}, nil
+}
+
+type fsFileDataRangedView struct {
+	off, n int64
+	FileData
+}
+
+func (b *fsFileDataRangedView) Close() error {
+	return b.FileData.Close()
+}
+
+func (b *fsFileDataRangedView) Open(flag int) (afero.File, error) {
+	f, err := b.FileData.Open(flag)
+	if err != nil {
+		return nil, err
+	}
+	s, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	sr := io.NewSectionReader(f.(io.ReaderAt), b.off, b.n)
+	return &sectionFile{s.Name(), f, sr}, nil
+}
+
+func (b *fsFileDataRangedView) Stat() (fs.FileInfo, error) {
+	s, err := b.FileData.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return stat{
+		mode:    s.Mode(),
+		modTime: s.ModTime(),
+		name:    s.Name(),
+		size:    int64(b.n) - int64(b.off),
+	}, nil
+}
+
+func (b *fsFileDataRangedView) Truncate(size int64) error {
+	var path string
+	s, err := b.FileData.Stat()
+	if err == nil {
+		path = s.Name()
+	}
+	return readonlyFsysErr("truncate", path)
+}
+
+var _ afero.File = (*sectionFile)(nil)
+
+type sectionFile struct {
+	path string
+	f    fs.File
+	*io.SectionReader
+}
+
+// Close implements afero.File.
+func (s *sectionFile) Close() error {
+	return nil
+}
+
+// Name implements afero.File.
+func (s *sectionFile) Name() string {
+	return s.path
+}
+
+// Readdir implements afero.File.
+func (s *sectionFile) Readdir(count int) ([]fs.FileInfo, error) {
+	return []fs.FileInfo{}, errdef.ReaddirNotADir(s.path)
+}
+
+// Readdirnames implements afero.File.
+func (s *sectionFile) Readdirnames(n int) ([]string, error) {
+	return []string{}, errdef.ReaddirNotADir(s.path)
+}
+
+// Stat implements afero.File.
+func (s *sectionFile) Stat() (fs.FileInfo, error) {
+	st, err := s.f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return stat{
+		mode:    st.Mode(),
+		modTime: st.ModTime(),
+		name:    path.Base(s.path),
+		size:    s.SectionReader.Size(),
+	}, nil
+}
+
+// Sync implements afero.File.
+func (s *sectionFile) Sync() error {
+	// file is readonly
+	return nil
+}
+
+// Truncate implements afero.File.
+func (s *sectionFile) Truncate(size int64) error {
+	return readonlyFsysErr("truncate", s.path)
+}
+
+// Write implements afero.File.
+func (s *sectionFile) Write(p []byte) (n int, err error) {
+	return 0, readonlyFsysErr("write", s.path)
+}
+
+// WriteAt implements afero.File.
+func (s *sectionFile) WriteAt(p []byte, off int64) (n int, err error) {
+	return 0, readonlyFsysErr("writeat", s.path)
+}
+
+// WriteString implements afero.File.
+func (s *sectionFile) WriteString(_ string) (ret int, err error) {
+	return 0, readonlyFsysErr("write", s.path)
 }
