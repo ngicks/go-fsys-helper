@@ -57,7 +57,7 @@ func (f *Fs) addFile(path string, fileData FileData) (*dirent, error) {
 }
 
 // Reallocate allocates a new file using allocator,
-// copies content of path into the new FileData,
+// copies the content of path into the new FileData,
 // then store it in the fsys.
 func (fsys *Fs) Reallocate(path string, allocator FileDataAllocator) error {
 	oldDirent, err := fsys.find(path)

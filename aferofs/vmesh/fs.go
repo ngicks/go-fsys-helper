@@ -20,6 +20,11 @@ var _ afero.Fs = (*Fs)(nil)
 
 // Fs constructs a virtual mesh that links other filesystem's content or in-memory content,
 // exposing them as afero.Fs.
+//
+// To make up virtual structure of filesystem, call [Fs.AddFile] or
+// pass non-nil [FileDataAllocator] to [New] and call [Fs.Create] or [Fs.OpenFile] with os.O_CREATE flag.
+//
+// Fs behaves as an in-memory filesystem if created with [MemFileDataAllocator].
 type Fs struct {
 	umask     fs.FileMode
 	clock     clock.WallClock
@@ -44,7 +49,7 @@ func New(umask fs.FileMode, allocator FileDataAllocator, opt ...FsOption) *Fs {
 	return newFsys(umask, allocator, opt...)
 }
 
-func NewReadonly(umask fs.FileMode, opt ...FsOption) *Fs {
+func NewNoAlloc(umask fs.FileMode, opt ...FsOption) *Fs {
 	return newFsys(umask, nil, opt...)
 }
 

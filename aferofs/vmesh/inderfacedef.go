@@ -6,11 +6,14 @@ import (
 	"github.com/spf13/afero"
 )
 
+// FileDataAllocator allocates new FileData at path.
 type FileDataAllocator interface {
 	Allocate(path string, perm fs.FileMode) FileData
 }
 
 // FileData is a pointer to a file stored in the underlying system.
+//
+// FileData is currently only assumed to be a regular file.
 type FileData interface {
 	// Open opens this FileData.
 	// Implementations may or may not ignore flag.
