@@ -34,10 +34,10 @@ var (
 
 func main() {
 	clock := clock.RealWallClock()
-	vmeshFs := vmesh.New(0, vmesh.NewMemFileDataAllocator(clock), vmesh.WithWallClock(clock))
+	vmeshFs := vmesh.New(0, vmesh.NewMemFileAllocator(clock), vmesh.WithWallClock(clock))
 
 	for i := range 3 {
-		view, err := vmesh.NewFsLinkFileRangedView(dataFsys, "data/archive", int64(i*1024), 1024)
+		view, err := vmesh.NewRangedFsFileView(dataFsys, "data/archive", int64(i*1024), 1024)
 		if err != nil {
 			panic(err)
 		}

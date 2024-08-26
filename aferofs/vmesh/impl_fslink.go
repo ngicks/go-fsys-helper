@@ -17,23 +17,23 @@ func readonlyFsysErr(op, name string) error {
 	return &fs.PathError{Op: op, Path: name, Err: syscall.EROFS}
 }
 
-var _ FileData = (*fsLinkFileData)(nil)
+var _ FileView = (*fsFileView)(nil)
 
-type fsLinkFileData struct {
+type fsFileView struct {
 	fsys fs.FS
 	path string
 }
 
-func (b *fsLinkFileData) Close() error {
+func (b *fsFileView) Close() error {
 	return nil
 }
 
-// NewFsLinkFileData builds FileData that points a file stored in fsys referred as path.
-func NewFsLinkFileData(fsys fs.FS, path string) (FileData, error) {
-	return newFsLinkFileData(fsys, path)
+// NewFsFileView builds FileData that points a file stored in fsys referred as path.
+func NewFsFileView(fsys fs.FS, path string) (FileView, error) {
+	return newFsFileView(fsys, path)
 }
 
-func newFsLinkFileData(fsys fs.FS, path string) (*fsLinkFileData, error) {
+func newFsFileView(fsys fs.FS, path string) (*fsFileView, error) {
 	s, err := fs.Stat(fsys, path)
 	if err != nil {
 		return nil, err
@@ -44,10 +44,10 @@ func newFsLinkFileData(fsys fs.FS, path string) (*fsLinkFileData, error) {
 	if !s.Mode().IsRegular() {
 		return nil, &fs.PathError{Op: "NewFsLinkFileData", Path: path, Err: syscall.EBADF}
 	}
-	return &fsLinkFileData{fsys, path}, nil
+	return &fsFileView{fsys, path}, nil
 }
 
-func (b *fsLinkFileData) Open(flag int) (afero.File, error) {
+func (b *fsFileView) Open(flag int) (afero.File, error) {
 	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
 		return nil, syscall.EROFS
 	}
@@ -58,23 +58,27 @@ func (b *fsLinkFileData) Open(flag int) (afero.File, error) {
 	return aferofs.NewFsFile(f, b.path, true), nil
 }
 
-func (b *fsLinkFileData) Stat() (fs.FileInfo, error) {
+func (b *fsFileView) Stat() (fs.FileInfo, error) {
 	return fs.Stat(b.fsys, b.path)
 }
 
-func (b *fsLinkFileData) Truncate(size int64) error {
+func (b *fsFileView) Truncate(size int64) error {
 	return syscall.EROFS
 }
 
-func NewFsLinkFileRangedView(fsys fs.FS, path string, off, n int64) (FileData, error) {
-	fd, err := newFsLinkFileData(fsys, path)
+func (b *fsFileView) Rename(newname string) {
+	//
+}
+
+func NewRangedFsFileView(fsys fs.FS, path string, off, n int64) (FileView, error) {
+	fd, err := newFsFileView(fsys, path)
 	if err != nil {
 		return nil, err
 	}
-	return NewFileDataRangedView(fd, off, n)
+	return NewRangedFileView(fd, off, n)
 }
 
-func NewFileDataRangedView(fd FileData, off, n int64) (FileData, error) {
+func NewRangedFileView(fd FileView, off, n int64) (FileView, error) {
 	if off < 0 {
 		return nil, fmt.Errorf("off must not be negative = %d", off)
 	}
@@ -100,20 +104,20 @@ func NewFileDataRangedView(fd FileData, off, n int64) (FileData, error) {
 		return nil, fmt.Errorf("fsys must open io.ReaderAt implementor: %w", err)
 	}
 
-	return &fsFileDataRangedView{off, n, fd}, nil
+	return &rangedFileView{off, n, fd}, nil
 }
 
-type fsFileDataRangedView struct {
+type rangedFileView struct {
 	off, n int64
-	FileData
+	FileView
 }
 
-func (b *fsFileDataRangedView) Close() error {
-	return b.FileData.Close()
+func (b *rangedFileView) Close() error {
+	return b.FileView.Close()
 }
 
-func (b *fsFileDataRangedView) Open(flag int) (afero.File, error) {
-	f, err := b.FileData.Open(flag)
+func (b *rangedFileView) Open(flag int) (afero.File, error) {
+	f, err := b.FileView.Open(flag)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +129,8 @@ func (b *fsFileDataRangedView) Open(flag int) (afero.File, error) {
 	return &sectionFile{s.Name(), f, sr}, nil
 }
 
-func (b *fsFileDataRangedView) Stat() (fs.FileInfo, error) {
-	s, err := b.FileData.Stat()
+func (b *rangedFileView) Stat() (fs.FileInfo, error) {
+	s, err := b.FileView.Stat()
 	if err != nil {
 		return nil, err
 	}
@@ -138,9 +142,9 @@ func (b *fsFileDataRangedView) Stat() (fs.FileInfo, error) {
 	}, nil
 }
 
-func (b *fsFileDataRangedView) Truncate(size int64) error {
+func (b *rangedFileView) Truncate(size int64) error {
 	var path string
-	s, err := b.FileData.Stat()
+	s, err := b.FileView.Stat()
 	if err == nil {
 		path = s.Name()
 	}

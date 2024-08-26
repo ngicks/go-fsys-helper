@@ -9,14 +9,14 @@ import (
 	"github.com/spf13/afero"
 )
 
-var _ FileDataAllocator = (*tmpDirAllocator)(nil)
+var _ FileViewAllocator = (*tmpDirAllocator)(nil)
 
 type tmpDirAllocator struct {
 	fsys    afero.Fs
 	pattern string
 }
 
-func NewTempDirAllocator(fsys afero.Fs, pattern string) FileDataAllocator {
+func NewTempDirAllocator(fsys afero.Fs, pattern string) FileViewAllocator {
 	return &tmpDirAllocator{
 		fsys:    fsys,
 		pattern: pattern,
@@ -24,27 +24,27 @@ func NewTempDirAllocator(fsys afero.Fs, pattern string) FileDataAllocator {
 }
 
 // Allocate implements FileDataAllocator.
-func (t *tmpDirAllocator) Allocate(path string, perm fs.FileMode) FileData {
-	return newTmpDirFileData(t.fsys, t.pattern)
+func (t *tmpDirAllocator) Allocate(path string, perm fs.FileMode) FileView {
+	return newTmpDirFileView(t.fsys, t.pattern)
 }
 
-var _ FileData = (*tmpDirFileData)(nil)
+var _ FileView = (*tmpDirFileView)(nil)
 
-type tmpDirFileData struct {
+type tmpDirFileView struct {
 	mu      sync.Mutex
 	fsys    afero.Fs
 	pattern string
 	path    string
 }
 
-func newTmpDirFileData(fsys afero.Fs, pattern string) FileData {
-	return &tmpDirFileData{
+func newTmpDirFileView(fsys afero.Fs, pattern string) FileView {
+	return &tmpDirFileView{
 		fsys:    fsys,
 		pattern: pattern,
 	}
 }
 
-func (b *tmpDirFileData) Close() error {
+func (b *tmpDirFileView) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.path != "" {
@@ -54,7 +54,7 @@ func (b *tmpDirFileData) Close() error {
 	return nil
 }
 
-func (b *tmpDirFileData) create() error {
+func (b *tmpDirFileView) create() error {
 	if b.path != "" {
 		return nil
 	}
@@ -71,7 +71,7 @@ func (b *tmpDirFileData) create() error {
 	return nil
 }
 
-func (b *tmpDirFileData) Open(flag int) (afero.File, error) {
+func (b *tmpDirFileView) Open(flag int) (afero.File, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -86,7 +86,7 @@ func (b *tmpDirFileData) Open(flag int) (afero.File, error) {
 	return f, nil
 }
 
-func (b *tmpDirFileData) Stat() (fs.FileInfo, error) {
+func (b *tmpDirFileView) Stat() (fs.FileInfo, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -103,7 +103,7 @@ func (b *tmpDirFileData) Stat() (fs.FileInfo, error) {
 	return f.Stat()
 }
 
-func (b *tmpDirFileData) Truncate(size int64) error {
+func (b *tmpDirFileView) Truncate(size int64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -118,4 +118,8 @@ func (b *tmpDirFileData) Truncate(size int64) error {
 	defer f.Close()
 
 	return f.Truncate(size)
+}
+
+func (b *tmpDirFileView) Rename(newname string) {
+	//
 }

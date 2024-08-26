@@ -44,11 +44,11 @@ func (d *dir) lookup(name string) (ent *dirent, ok bool) {
 	return ent, ok
 }
 
-func (d *dir) Close() {
+func (d *dir) notifyClose() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for ele := d.dirents.Front(); ele != nil; ele = ele.Next() {
-		_ = ele.Value.(*dirent).close()
+		_ = ele.Value.(*dirent).notifyClose()
 	}
 }
 

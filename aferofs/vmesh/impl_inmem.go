@@ -8,26 +8,26 @@ import (
 	"github.com/spf13/afero"
 )
 
-var _ FileDataAllocator = (*MemFileDataAllocator)(nil)
+var _ FileViewAllocator = (*MemFileAllocator)(nil)
 
-type MemFileDataAllocator struct {
+type MemFileAllocator struct {
 	clock clock.WallClock
 }
 
-func NewMemFileDataAllocator(clock clock.WallClock) *MemFileDataAllocator {
-	return &MemFileDataAllocator{
+func NewMemFileAllocator(clock clock.WallClock) *MemFileAllocator {
+	return &MemFileAllocator{
 		clock: clock,
 	}
 }
 
-func (m *MemFileDataAllocator) Allocate(path string, perm fs.FileMode) FileData {
+func (m *MemFileAllocator) Allocate(path string, perm fs.FileMode) FileView {
 	return &memFileData{
 		path: path,
 		file: newMemFile(perm.Perm(), m.clock),
 	}
 }
 
-var _ FileData = (*memFileData)(nil)
+var _ FileView = (*memFileData)(nil)
 
 type memFileData struct {
 	path string
@@ -49,4 +49,8 @@ func (m *memFileData) Stat() (fs.FileInfo, error) {
 
 func (m *memFileData) Truncate(size int64) error {
 	return m.file.Truncate(size)
+}
+
+func (m *memFileData) Rename(newname string) {
+	//
 }

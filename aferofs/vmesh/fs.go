@@ -22,17 +22,17 @@ var _ afero.Fs = (*Fs)(nil)
 // exposing them as afero.Fs.
 //
 // To make up virtual structure of filesystem, call [Fs.AddFile] or
-// pass non-nil [FileDataAllocator] to [New] and call [Fs.Create] or [Fs.OpenFile] with os.O_CREATE flag.
+// pass non-nil [FileViewAllocator] to [New] and call [Fs.Create] or [Fs.OpenFile] with os.O_CREATE flag.
 //
-// Fs behaves as an in-memory filesystem if created with [MemFileDataAllocator].
+// Fs behaves as an in-memory filesystem if created with [MemFileAllocator].
 type Fs struct {
 	umask     fs.FileMode
 	clock     clock.WallClock
 	root      *dirent
-	allocator FileDataAllocator
+	allocator FileViewAllocator
 }
 
-func newFsys(umask fs.FileMode, allocator FileDataAllocator, opt ...FsOption) *Fs {
+func newFsys(umask fs.FileMode, allocator FileViewAllocator, opt ...FsOption) *Fs {
 	fsys := &Fs{
 		umask:     umask.Perm(),
 		clock:     clock.RealWallClock(),
@@ -45,7 +45,7 @@ func newFsys(umask fs.FileMode, allocator FileDataAllocator, opt ...FsOption) *F
 	return fsys
 }
 
-func New(umask fs.FileMode, allocator FileDataAllocator, opt ...FsOption) *Fs {
+func New(umask fs.FileMode, allocator FileViewAllocator, opt ...FsOption) *Fs {
 	return newFsys(umask, allocator, opt...)
 }
 
@@ -395,7 +395,7 @@ func removeFromParent(parent *dirent, name string) error {
 	if ent.IsDir() && ent.len() > 0 {
 		return syscall.ENOTEMPTY
 	}
-	err := ent.close()
+	err := ent.notifyClose()
 	parent.removeName(basename)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrClosedWithError, err)
@@ -542,8 +542,9 @@ func (fsys *Fs) rename(oldname string, newname string) error {
 	oldParent.removeDirent(oldTarget)
 	replaced := newParent.addDirent(oldTarget)
 	if replaced != nil {
-		replaced.close()
+		replaced.notifyClose()
 	}
+	oldTarget.notifyRename(newname)
 
 	return nil
 

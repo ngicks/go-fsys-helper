@@ -26,7 +26,7 @@ func (v *virtualFile) Stat() (fs.FileInfo, error) {
 }
 
 type virtualFileData struct {
-	file FileData
+	file FileView
 
 	mu          sync.RWMutex
 	initialized bool
@@ -36,7 +36,7 @@ type virtualFileData struct {
 	modTime     time.Time
 }
 
-func newVirtualFileData(f FileData, name string) (*virtualFileData, error) {
+func newVirtualFileData(f FileView, name string) (*virtualFileData, error) {
 	s, err := f.Stat()
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -93,7 +93,7 @@ func (v *virtualFileData) init(s fs.FileInfo, f afero.File) error {
 	return nil
 }
 
-func (v *virtualFileData) Close() error {
+func (v *virtualFileData) notifyClose() error {
 	return v.file.Close()
 }
 
@@ -127,6 +127,10 @@ func (v *virtualFileData) StatFile(f afero.File) (fs.FileInfo, error) {
 		return nil, err
 	}
 	return stat{v.mode, v.modTime, v.name, s.Size()}, nil
+}
+
+func (v *virtualFileData) notifyRename(newname string) {
+	v.file.Rename(newname)
 }
 
 func (v *virtualFileData) Truncate(size int64) error {

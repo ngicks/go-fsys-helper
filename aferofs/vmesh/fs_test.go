@@ -25,7 +25,7 @@ var randomBytes embed.FS
 
 func TestFstest(t *testing.T) {
 	clock := clock.RealWallClock()
-	fsys := New(0, NewMemFileDataAllocator(clock))
+	fsys := New(0, NewMemFileAllocator(clock))
 
 	var err error
 	err = fsys.MkdirAll("foo", fs.ModePerm)
@@ -51,7 +51,7 @@ func TestFstest(t *testing.T) {
 		{"random1", "foo/foo_random1"},
 		{"random2", "foo/bar/foo_random2"},
 	} {
-		d, err := NewFsLinkFileData(randomBytes, "testdata/"+s[0])
+		d, err := NewFsFileView(randomBytes, "testdata/"+s[0])
 		assert.NilError(t, err)
 		err = fsys.AddFile(s[1], d)
 		assert.NilError(t, err)
@@ -78,7 +78,7 @@ func TestMkdir(t *testing.T) {
 		err  error
 	)
 
-	fsys = New(0, NewMemFileDataAllocator(clock))
+	fsys = New(0, NewMemFileAllocator(clock))
 
 	err = fsys.Mkdir("foo/bar", 0)
 	assert.ErrorIs(t, err, fs.ErrNotExist)
@@ -93,14 +93,14 @@ func TestMkdir(t *testing.T) {
 	assert.NilError(t, err)
 	assertMkdirAll(t, fsys, "foo/bar/baz", fs.ModePerm, current, true)
 
-	fsys = New(0o022, NewMemFileDataAllocator(clock))
+	fsys = New(0o022, NewMemFileAllocator(clock))
 	assert.NilError(t, fsys.MkdirAll("foo/bar/baz", fs.ModePerm))
 	assertMkdirAll(t, fsys, "foo/bar/baz", 0o755, current, true)
 	err = fsys.Mkdir("foo/barbar", fs.ModePerm)
 	assert.NilError(t, err)
 	assertMkdir(t, fsys, "foo/barbar", 0o755, current, true)
 
-	fsys = New(0o022, NewMemFileDataAllocator(clock))
+	fsys = New(0o022, NewMemFileAllocator(clock))
 	assert.NilError(t, fsys.MkdirAll("foo/bar/baz", 0o711))
 	assertMkdirAll(t, fsys, "foo/bar/baz", 0o711, current, true)
 	err = fsys.Mkdir("foo/barbar", 0o733)

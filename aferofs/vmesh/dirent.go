@@ -24,7 +24,7 @@ func newDirDirent(name string, mode fs.FileMode, modTime time.Time, dirents ...*
 	}
 }
 
-func newFileDirent(data FileData, path string) (*dirent, error) {
+func newFileDirent(data FileView, path string) (*dirent, error) {
 	vf, err := newVirtualFileData(data, pathPkg.Base(path))
 	if err != nil {
 		return nil, err
@@ -168,6 +168,12 @@ func (d *dirent) removeName(name string) {
 	d.dir.RemoveName(name)
 }
 
+func (d *dirent) notifyRename(newname string) {
+	if d.IsFile() {
+		d.file.notifyRename(newname)
+	}
+}
+
 func (d *dirent) len() int {
 	if d.IsDir() {
 		return d.dir.Len()
@@ -175,11 +181,11 @@ func (d *dirent) len() int {
 	return 0
 }
 
-func (d *dirent) close() error {
+func (d *dirent) notifyClose() error {
 	if d.IsFile() {
-		return d.file.Close()
+		return d.file.notifyClose()
 	} else {
-		d.dir.Close()
+		d.dir.notifyClose()
 		return nil
 	}
 }
