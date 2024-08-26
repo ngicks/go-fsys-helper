@@ -15,7 +15,7 @@ import (
 
 	"github.com/ngicks/go-fsys-helper/aferofs"
 	"github.com/ngicks/go-fsys-helper/aferofs/clock"
-	"github.com/ngicks/go-fsys-helper/aferofs/vmesh"
+	"github.com/ngicks/go-fsys-helper/aferofs/synth"
 )
 
 //go:embed data
@@ -34,22 +34,22 @@ var (
 
 func main() {
 	clock := clock.RealWallClock()
-	vmeshFs := vmesh.New(0, vmesh.NewMemFileAllocator(clock), vmesh.WithWallClock(clock))
+	synthFs := synth.New(0, synth.NewMemFileAllocator(clock), synth.WithWallClock(clock))
 
 	for i := range 3 {
-		view, err := vmesh.NewRangedFsFileView(dataFsys, "data/archive", int64(i*1024), 1024)
+		view, err := synth.NewRangedFsFileView(dataFsys, "data/archive", int64(i*1024), 1024)
 		if err != nil {
 			panic(err)
 		}
-		err = vmeshFs.AddFile("foo/arch_"+strconv.FormatInt(int64(i), 10), view)
+		err = synthFs.AddFile("foo/arch_"+strconv.FormatInt(int64(i), 10), view)
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	hashesTaken := hashFsys(&aferofs.IoFs{Fs: vmeshFs}, []string{"foo/arch_0", "foo/arch_1", "foo/arch_2"})
+	hashesTaken := hashFsys(&aferofs.IoFs{Fs: synthFs}, []string{"foo/arch_0", "foo/arch_1", "foo/arch_2"})
 
-	f, err := vmeshFs.Create("foo/hashes.json")
+	f, err := synthFs.Create("foo/hashes.json")
 	if err != nil {
 		panic(err)
 	}
@@ -68,7 +68,7 @@ func main() {
 	fmt.Printf("tmp dir: %s\n", tmpDir)
 	defer os.RemoveAll(tmpDir)
 
-	err = os.CopyFS(tmpDir, &aferofs.IoFs{Fs: vmeshFs})
+	err = os.CopyFS(tmpDir, &aferofs.IoFs{Fs: synthFs})
 	if err != nil {
 		panic(err)
 	}

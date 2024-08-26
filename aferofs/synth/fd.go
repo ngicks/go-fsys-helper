@@ -1,4 +1,4 @@
-package vmesh
+package synth
 
 import (
 	"github.com/ngicks/go-fsys-helper/aferofs/internal/closable"

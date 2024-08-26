@@ -1,4 +1,4 @@
-package vmesh
+package synth
 
 import (
 	"io/fs"

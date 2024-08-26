@@ -1,4 +1,4 @@
-package vmesh
+package synth
 
 import (
 	"errors"
@@ -18,13 +18,18 @@ import (
 
 var _ afero.Fs = (*Fs)(nil)
 
-// Fs constructs a virtual mesh that links other filesystem's content or in-memory content,
-// exposing them as afero.Fs.
+// Fs constructs a synthetic filesystem that combines file-like views from different data sources,
+// to synthesize them into an imitation filesystem.
 //
-// To make up virtual structure of filesystem, call [Fs.AddFile] or
-// pass non-nil [FileViewAllocator] to [New] and call [Fs.Create] or [Fs.OpenFile] with os.O_CREATE flag.
+// Fs accepts different data sources or backing storage as a virtual file.
+// [Fs.AddFile] adds file-like view backed by arbitrary implementations into Fs.
+// Or passing [FileViewAllocator] to [New] will allocate a new file-like view using it when [Fs.Create] or
+// [Fs.OpenFile] with os.O_CREATE flag is called.
 //
 // Fs behaves as an in-memory filesystem if created with [MemFileAllocator].
+//
+// Fs tries its best to mimic ext4 on the linux.
+// So it has difference when running on windows.
 type Fs struct {
 	umask     fs.FileMode
 	clock     clock.WallClock
@@ -294,7 +299,7 @@ func (fsys *Fs) mkdirAll(path string, perm fs.FileMode) error {
 }
 
 func (fsys *Fs) Name() string {
-	return "github.com/ngicks/go-fsys-helper/aferofs/vmesh.Fs"
+	return "github.com/ngicks/go-fsys-helper/aferofs/synth.Fs"
 }
 
 func (fsys *Fs) Open(name string) (afero.File, error) {
