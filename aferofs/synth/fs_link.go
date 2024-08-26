@@ -11,9 +11,9 @@ import (
 	"github.com/ngicks/go-fsys-helper/aferofs/internal/bufpool"
 )
 
-// AddFile adds a FileData to given path.
+// AddFile adds a FileView to given path.
 // If nonexistent, the path prefix is made as directories with permission of 0o777 before umask.
-// If the path prefix contains a file, syscall.ENOTDIR.
+// If the path prefix contains a file, it returns syscall.ENOTDIR.
 // If basename of path exists before AddFile, it will be removed.
 func (f *Fs) AddFile(path string, fileData FileView) error {
 	err := validatePath(path)
