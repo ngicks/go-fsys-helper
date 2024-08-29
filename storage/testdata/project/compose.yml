@@ -1,0 +1,6 @@
+services:
+  sample_service:
+    image: ubuntu:jammy-20230624
+    env_file:
+      - foo.env
+      - ../runtime_env/bar.env
