@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"flag"
@@ -103,12 +104,18 @@ func main() {
 
 	pkg := pkgs[0]
 
+	empty := func(s string) bool { return s == "" }
+	fsysTypes := slices.DeleteFunc(strings.Split(*targetFsysTypes, ","), empty)
+	fileTypes := slices.DeleteFunc(strings.Split(*targetFileTypes, ","), empty)
+
+	typeMap := findName(append(fsysTypes, fileTypes...), pkg)
+
 	err = generate(
 		ctx,
-		pkg.Types,
 		pkg.Fset,
+		typeMap,
 		fileWrapper,
-		slices.All(strings.Split(*targetFsysTypes, ",")),
+		slices.All(fsysTypes),
 		isAferoFs,
 		fsysMethods,
 	)
@@ -118,10 +125,10 @@ func main() {
 
 	err = generate(
 		ctx,
-		pkg.Types,
 		pkg.Fset,
+		typeMap,
 		fileWrapper,
-		slices.All(strings.Split(*targetFileTypes, ",")),
+		slices.All(fileTypes),
 		isAferoFile,
 		fileMethods,
 	)
@@ -130,34 +137,71 @@ func main() {
 	}
 }
 
+func findName(
+	ty []string,
+	pkg *packages.Package,
+) (ret map[string]types.Object) {
+	fmt.Printf("ty=%#v\n", ty)
+	for _, obj := range pkg.TypesInfo.Defs {
+		if obj == nil {
+			continue
+		}
+		named, ok := obj.Type().(*types.Named)
+		if !ok {
+			continue
+		}
+		if !slices.Contains(ty, named.Obj().Name()) {
+			continue
+		}
+		if ret == nil {
+			ret = make(map[string]types.Object)
+		}
+		ret[named.Obj().Name()] = obj
+	}
+	return ret
+}
+
 func generate(
 	ctx context.Context,
-	pkgTypes *types.Package,
 	fset *token.FileSet,
+	typeMap map[string]types.Object,
 	tmpl *template.Template,
 	targetTypes iter.Seq2[int, string],
 	checker func(v *types.Var) bool,
 	methods Methods,
 ) error {
 	for _, ty := range targetTypes {
-		obj := pkgTypes.Scope().Lookup(ty)
+		obj := typeMap[ty]
 		if obj == nil {
-			return fmt.Errorf("type not found")
+			return fmt.Errorf("not found: %s", ty)
 		}
 		structTy, ok := obj.Type().Underlying().(*types.Struct)
 		if !ok {
 			return fmt.Errorf("not a struct type: %v", obj)
 		}
-		var name string
+		var innerName string
 		for i := 0; i < structTy.NumFields(); i++ {
 			field := structTy.Field(i)
 			if checker(field) {
-				name = field.Name()
+				innerName = field.Name()
 				break
 			}
 		}
-		if name == "" {
+		if innerName == "" {
 			return fmt.Errorf("does not have afero.Fs as field: %v", obj)
+		}
+
+		tp := obj.Type().(*types.Named).TypeParams()
+		if tp != nil {
+			var buf bytes.Buffer
+			for i := 0; i < tp.Len(); i++ {
+				if buf.Len() > 0 {
+					buf.WriteString(", ")
+				}
+				buf.WriteString(tp.At(i).String())
+			}
+			ty += "[" + buf.String() + "]"
+			fmt.Printf("ty=%s\n", ty)
 		}
 
 		p := types.NewPointer(obj.Type())
@@ -166,7 +210,7 @@ func generate(
 		target := Target{
 			PackageName: obj.Pkg().Name(),
 			TypeName:    ty,
-			InnerName:   name,
+			InnerName:   innerName,
 			ImplFlags:   implFlags(ms),
 		}
 
