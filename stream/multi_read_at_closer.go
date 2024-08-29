@@ -17,13 +17,21 @@ var (
 	ErrInvalidSize = errors.New("invalid size")
 )
 
-// MultiReadError is returned by calling Read method of the reader returned from NewMultiReadAtSeekCloser.
+// MultiReadError is a detailed error that describes an error state of Read or ReadAt.
 type MultiReadError struct {
-	Index     int   // Index of readers
-	ReaderOff int64 // Offset within a reader
-	TotalOff  int64 // The accumulated total offset from the head of readers.
-	Err       error
-	Cause     string // Additional context info for the error.
+	// Index of reader that returned the error.
+	Index int
+	// Offset within the reader at which the error is happened.
+	ReaderOff int64
+	// The virtual offset within multiReadAtSeekCloser at which the error is happened.
+	TotalOff int64
+	// An internal error.
+	// It may be one of an error the reader returned or ErrInvalidSize, or io.ErrUnexpectedEOF.
+	// It is ErrInvalidSize when the reader read more than reported in SizedReaderAt.
+	// Or is io.ErrUnexpectedEOF when the reader read less than that.
+	Err error
+	// Additional context info for the error.
+	Cause string
 }
 
 func (e *MultiReadError) Error() string {
@@ -84,7 +92,10 @@ func SizedReadersFromReadAtSizer[T ReadAtSizer](readers []T) []SizedReaderAt {
 
 type sizedReaderAt struct {
 	SizedReaderAt
-	accum int64 // starting offset of this reader from head of readers.
+	// starting offset of this reader from head of all readers.
+	// This will come handy when searching for reader from off,
+	// especially useful when Seek or ReadAt is called.
+	headOff int64
 }
 
 type ReadAtReadSeekCloser interface {
@@ -97,17 +108,19 @@ var _ ReadAtReadSeekCloser = (*multiReadAtSeekCloser)(nil)
 type multiReadAtSeekCloser struct {
 	idx        int   // idx of current sizedReaderAt which is pointed by off.
 	off        int64 // current offset
-	upperLimit int64 // precomputed upper limit
+	upperLimit int64 // precomputed upper limit of offset.
 	r          []sizedReaderAt
 }
 
+// NewMultiReadAtSeekCloser virtually concatenates readers into a single reader.
+// Unlike io.MultiReader it implements io.ReaderAt.
 func NewMultiReadAtSeekCloser(readers []SizedReaderAt) ReadAtReadSeekCloser {
 	translated := make([]sizedReaderAt, len(readers))
 	var accum = int64(0)
 	for i, rr := range readers {
 		translated[i] = sizedReaderAt{
 			SizedReaderAt: rr,
-			accum:         accum,
+			headOff:       accum,
 		}
 		accum += rr.Size
 	}
@@ -126,7 +139,7 @@ func (r *multiReadAtSeekCloser) Read(p []byte) (int, error) {
 	rr := r.r[r.idx:][i]
 
 	off := r.off
-	readerOff := r.off - rr.accum
+	readerOff := r.off - rr.headOff
 	n, err := rr.R.ReadAt(p, readerOff)
 
 	if n > 0 || err == io.EOF {
@@ -216,7 +229,7 @@ func (r *multiReadAtSeekCloser) readAt(p []byte, off int64) (n int, err error) {
 	}
 
 	rr := r.r[i]
-	readerOff := off - rr.accum
+	readerOff := off - rr.headOff
 	n, err = rr.R.ReadAt(p, readerOff)
 
 	wrapErr := func(err error, cause string) error {
@@ -258,7 +271,7 @@ func search(off int64, readers []sizedReaderAt) int {
 	// A simple benchmark has shown that slice look up is faster when readers are not big enough.
 	// The threshold exists between 32 and 64.
 	for i, rr := range readers {
-		if rr.accum <= off && off < rr.accum+rr.Size {
+		if rr.headOff <= off && off < rr.headOff+rr.Size {
 			return i
 		}
 	}
@@ -268,11 +281,11 @@ func search(off int64, readers []sizedReaderAt) int {
 func binarySearch(off int64, readers []sizedReaderAt) int {
 	i, found := sort.Find(len(readers), func(i int) int {
 		switch {
-		case off < readers[i].accum:
+		case off < readers[i].headOff:
 			return -1
-		case readers[i].accum <= off && off < readers[i].accum+readers[i].Size:
+		case readers[i].headOff <= off && off < readers[i].headOff+readers[i].Size:
 			return 0
-		default: // r.accum+r.Size <= off:
+		default: // r.headOff+r.Size <= off:
 			return 1
 		}
 	})

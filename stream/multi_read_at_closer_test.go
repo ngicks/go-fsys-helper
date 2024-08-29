@@ -124,7 +124,7 @@ func TestMultiReadAtSeekCloser_wrong_size(t *testing.T) {
 			t.Logf("err = %#v", e)
 			t.Logf("internal = %#v", e.Err)
 		})
-		t.Run("ReatAt_"+tc.name, func(t *testing.T) {
+		t.Run("ReadAt_"+tc.name, func(t *testing.T) {
 			reader := prepareSizedReader(randomBytes, []int{1024}, false)
 
 			sized := reader[3]
