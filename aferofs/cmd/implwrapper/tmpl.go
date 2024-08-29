@@ -117,8 +117,8 @@ func (c modifier) Match(f []Field) bool {
 	return false
 }
 
-func (c modifier) Param(f []Field) string {
-	if len(f) > 0 && c.f[0].Type == "fs.FileInfo" {
+func (c modifier) Param() string {
+	if len(c.f) > 0 && c.f[0].Type == "fs.FileInfo" {
 		return "[]fs.FileInfo{" + c.f[0].Name + "}"
 	}
 	return fieldName(c.f)
@@ -128,8 +128,8 @@ func (c modifier) Ret(f []Field) string {
 	return fieldRet(c.f)
 }
 
-func (c modifier) Unwrap(f []Field) string {
-	if len(f) > 0 && c.f[0].Type == "fs.FileInfo" {
+func (c modifier) Unwrap() string {
+	if len(c.f) > 0 && c.f[0].Type == "fs.FileInfo" {
 		return "[0]"
 	}
 	return ""

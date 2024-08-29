@@ -141,7 +141,6 @@ func findName(
 	ty []string,
 	pkg *packages.Package,
 ) (ret map[string]types.Object) {
-	fmt.Printf("ty=%#v\n", ty)
 	for _, obj := range pkg.TypesInfo.Defs {
 		if obj == nil {
 			continue

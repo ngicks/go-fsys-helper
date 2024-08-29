@@ -19,7 +19,7 @@ return
 
 {{- range .Modifiers}}
 {{- if not (and $.Arg (.Match $.Arg) (.Impls $.Target.ImplFlags))}} {{continue}} {{end -}}
-;{{.Ret $.Arg}} = recv.{{.Method}}({{quote $.Name}}, {{.Param $.Arg}}){{.Unwrap $.Arg}};
+;{{.Ret $.Arg}} = recv.{{.Method}}({{quote $.Name}}, {{.Param}}){{.Unwrap}};
 {{- end -}}
 
 ;{{fieldName .Ret}} = recv.{{.Target.InnerName}}.{{.Name}}({{fieldName .Arg}});
@@ -36,7 +36,7 @@ return
 
 {{- range .Modifiers}}
 {{- if not (and $.Ret (.Match $.Ret) (.Impls $.Target.ImplFlags))}} {{continue}} {{end -}}
-;{{.Ret $.Ret}} = recv.{{.Method}}({{quote $.Name}}, {{.Param $.Ret}}){{.Unwrap $.Ret}};
+;{{.Ret $.Ret}} = recv.{{.Method}}({{quote $.Name}}, {{.Param}}){{.Unwrap}};
 {{- end -}}
 ;return
 }
