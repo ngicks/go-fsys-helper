@@ -5,93 +5,165 @@ import (
 	"io/fs"
 )
 
-func (f *ObservableFile) Close() (err error) {
-	f.beforeEach("Close")
-	err = f.inner.Close()
-	f.afterEach("Close", err)
+func (recv *ObservableFile) Close() (err error) {
+	if checkErr := recv.beforeEach("Close"); checkErr != nil {
+		err = checkErr
+		return
+	}
+	err = recv.inner.Close()
+	if checkErr := recv.afterEach("Close", err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) Name() (s string) {
-	f.beforeEach("Name")
-	s = f.inner.Name()
-	f.afterEach("Name", s)
+func (recv *ObservableFile) Name() (s string) {
+	_ = recv.beforeEach("Name")
+	s = recv.inner.Name()
+	_ = recv.afterEach("Name", s)
 	return
 }
 
-func (f *ObservableFile) Read(p []byte) (n int, err error) {
-	f.beforeEach("Read", p)
-	n, err = f.inner.Read(p)
-	f.afterEach("Read", n, err)
+func (recv *ObservableFile) Read(p []byte) (n int, err error) {
+	if checkErr := recv.beforeEach("Read", p); checkErr != nil {
+		err = checkErr
+		return
+	}
+	n, err = recv.inner.Read(p)
+	if checkErr := recv.afterEach("Read", n, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) ReadAt(p []byte, off int64) (n int, err error) {
-	f.beforeEach("ReadAt", p, off)
-	n, err = f.inner.ReadAt(p, off)
-	f.afterEach("ReadAt", n, err)
+func (recv *ObservableFile) ReadAt(p []byte, off int64) (n int, err error) {
+	if checkErr := recv.beforeEach("ReadAt", p, off); checkErr != nil {
+		err = checkErr
+		return
+	}
+	n, err = recv.inner.ReadAt(p, off)
+	if checkErr := recv.afterEach("ReadAt", n, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) Readdir(count int) (fi []fs.FileInfo, err error) {
-	f.beforeEach("Readdir", count)
-	fi, err = f.inner.Readdir(count)
-	f.afterEach("Readdir", fi, err)
+func (recv *ObservableFile) Readdir(count int) (fi []fs.FileInfo, err error) {
+	if checkErr := recv.beforeEach("Readdir", count); checkErr != nil {
+		err = checkErr
+		return
+	}
+	fi, err = recv.inner.Readdir(count)
+	if checkErr := recv.afterEach("Readdir", fi, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) Readdirnames(n int) (s []string, err error) {
-	f.beforeEach("Readdirnames", n)
-	s, err = f.inner.Readdirnames(n)
-	f.afterEach("Readdirnames", s, err)
+func (recv *ObservableFile) Readdirnames(n int) (s []string, err error) {
+	if checkErr := recv.beforeEach("Readdirnames", n); checkErr != nil {
+		err = checkErr
+		return
+	}
+	s, err = recv.inner.Readdirnames(n)
+	if checkErr := recv.afterEach("Readdirnames", s, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) Seek(offset int64, whence int) (n int64, err error) {
-	f.beforeEach("Seek", offset, whence)
-	n, err = f.inner.Seek(offset, whence)
-	f.afterEach("Seek", n, err)
+func (recv *ObservableFile) Seek(offset int64, whence int) (n int64, err error) {
+	if checkErr := recv.beforeEach("Seek", offset, whence); checkErr != nil {
+		err = checkErr
+		return
+	}
+	n, err = recv.inner.Seek(offset, whence)
+	if checkErr := recv.afterEach("Seek", n, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) Stat() (fi fs.FileInfo, err error) {
-	f.beforeEach("Stat")
-	fi, err = f.inner.Stat()
-	f.afterEach("Stat", fi, err)
+func (recv *ObservableFile) Stat() (fi fs.FileInfo, err error) {
+	if checkErr := recv.beforeEach("Stat"); checkErr != nil {
+		err = checkErr
+		return
+	}
+	fi, err = recv.inner.Stat()
+	if checkErr := recv.afterEach("Stat", fi, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) Sync() (err error) {
-	f.beforeEach("Sync")
-	err = f.inner.Sync()
-	f.afterEach("Sync", err)
+func (recv *ObservableFile) Sync() (err error) {
+	if checkErr := recv.beforeEach("Sync"); checkErr != nil {
+		err = checkErr
+		return
+	}
+	err = recv.inner.Sync()
+	if checkErr := recv.afterEach("Sync", err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) Truncate(size int64) (err error) {
-	f.beforeEach("Truncate", size)
-	err = f.inner.Truncate(size)
-	f.afterEach("Truncate", err)
+func (recv *ObservableFile) Truncate(size int64) (err error) {
+	if checkErr := recv.beforeEach("Truncate", size); checkErr != nil {
+		err = checkErr
+		return
+	}
+	err = recv.inner.Truncate(size)
+	if checkErr := recv.afterEach("Truncate", err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) Write(p []byte) (n int, err error) {
-	f.beforeEach("Write", p)
-	n, err = f.inner.Write(p)
-	f.afterEach("Write", err)
+func (recv *ObservableFile) Write(p []byte) (n int, err error) {
+	if checkErr := recv.beforeEach("Write", p); checkErr != nil {
+		err = checkErr
+		return
+	}
+	n, err = recv.inner.Write(p)
+	if checkErr := recv.afterEach("Write", n, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) WriteAt(p []byte, off int64) (n int, err error) {
-	f.beforeEach("WriteAt", p, off)
-	n, err = f.inner.WriteAt(p, off)
-	f.afterEach("WriteAt", err)
+func (recv *ObservableFile) WriteAt(p []byte, off int64) (n int, err error) {
+	if checkErr := recv.beforeEach("WriteAt", p, off); checkErr != nil {
+		err = checkErr
+		return
+	}
+	n, err = recv.inner.WriteAt(p, off)
+	if checkErr := recv.afterEach("WriteAt", n, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }
 
-func (f *ObservableFile) WriteString(s string) (n int, err error) {
-	f.beforeEach("WriteString", s)
-	n, err = f.inner.WriteString(s)
-	f.afterEach("WriteString", n, err)
+func (recv *ObservableFile) WriteString(s string) (n int, err error) {
+	if checkErr := recv.beforeEach("WriteString", s); checkErr != nil {
+		err = checkErr
+		return
+	}
+	n, err = recv.inner.WriteString(s)
+	if checkErr := recv.afterEach("WriteString", n, err); checkErr != nil {
+		err = checkErr
+		return
+	}
 	return
 }

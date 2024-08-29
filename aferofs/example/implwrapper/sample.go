@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/afero"
 )
 
-//go:generate go run ../../cmd/implwrapper -pkg ./ -fsys a -file b
+//go:generate go run ../../cmd/implwrapper -pkg ./ -fsys A1,A2 -file B1,B2
 
 // no methods
 type A1 struct {
@@ -38,11 +38,11 @@ func (fsys *A2) modifyFi(_ string, fi []fs.FileInfo) []fs.FileInfo {
 	return fi
 }
 
-func (fsys *A2) beforeEach(method string, args ...any) error {
+func (fsys *A2) beforeEach(_ string, _ ...any) error {
 	return nil
 }
 
-func (fsys *A2) afterEach(method string, args ...any) error {
+func (fsys *A2) afterEach(_ string, _ ...any) error {
 	return nil
 }
 
@@ -86,10 +86,10 @@ func (b *B2) modifyErr(_ string, err error) error {
 	return err
 }
 
-func (b *B2) beforeEach(method string, args ...any) error {
+func (b *B2) beforeEach(_ string, _ ...any) error {
 	return nil
 }
 
-func (b *B2) afterEach(method string, args ...any) error {
+func (b *B2) afterEach(_ string, _ ...any) error {
 	return nil
 }

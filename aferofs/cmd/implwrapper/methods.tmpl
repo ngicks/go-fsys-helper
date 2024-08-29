@@ -9,30 +9,36 @@ import (
 
 {{define "method"}}
 func (recv *{{.Target.TypeName}}) {{.Name}}({{fieldList .Arg}}) ({{fieldList .Ret}}) {
-{{if .Target.BeforeEach}}
-{{- if includesErr $.Ret}} if checkErr := {{else -}} _ = {{end -}}
+;{{- if .Target.BeforeEach}}
+{{- if includesErr $.Ret}}if checkErr := {{else -}} _ = {{end -}}
 recv.beforeEach({{quote $.Name}}, {{fieldName $.Arg}})
 {{- if includesErr $.Ret}}; checkErr != nil {
 err = checkErr
 return
-}
-{{end}}{{end}}
-{{range .Modifiers}}{{if not (and $.Arg (.Match $.Arg) (.Impls $.Target.ImplFlags))}} {{continue}} {{end}}{{.Ret $.Arg}} = recv.{{.Method}}({{quote $.Name}}, {{.Param $.Arg}}){{.Unwrap $.Arg}};
-{{end}}
-    {{fieldName .Ret}} = recv.{{.Target.InnerName}}.{{.Name}}({{fieldName .Arg}})
-{{if .Target.AfterEach}}
+};{{end}}{{end}}
+
+{{- range .Modifiers}}
+{{- if not (and $.Arg (.Match $.Arg) (.Impls $.Target.ImplFlags))}} {{continue}} {{end -}}
+;{{.Ret $.Arg}} = recv.{{.Method}}({{quote $.Name}}, {{.Param $.Arg}}){{.Unwrap $.Arg}};
+{{- end -}}
+
+;{{fieldName .Ret}} = recv.{{.Target.InnerName}}.{{.Name}}({{fieldName .Arg}});
+
+{{- if .Target.AfterEach}}
 {{- if includesErr $.Ret}}
 if checkErr := {{else -}} _ = {{end -}}
 recv.afterEach({{quote $.Name}}, {{fieldName $.Ret}})
 {{- if includesErr $.Ret}}; checkErr != nil {
 err = checkErr
 return
-}
-{{end}}{{end}}
-{{range .Modifiers}}{{if not (and $.Ret (.Match $.Ret) (.Impls $.Target.ImplFlags))}} {{continue}} {{end}}{{.Ret $.Ret}} = recv.{{.Method}}({{quote $.Name}}, {{.Param $.Ret}}){{.Unwrap $.Ret}};
-{{end}}
+};
+{{end -}}{{end -}}
 
-    return
+{{- range .Modifiers}}
+{{- if not (and $.Ret (.Match $.Ret) (.Impls $.Target.ImplFlags))}} {{continue}} {{end -}}
+;{{.Ret $.Ret}} = recv.{{.Method}}({{quote $.Name}}, {{.Param $.Ret}}){{.Unwrap $.Ret}};
+{{- end -}}
+;return
 }
 {{end}}
 

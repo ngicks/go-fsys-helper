@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/afero"
 )
 
+//go:generate go run ./cmd/implwrapper -pkg ./ -fsys ObservableFs -file ObservableFile
+
 type ObservableFsHistory struct {
 	Timestamp time.Time
 	IsFsys    bool
@@ -26,7 +28,7 @@ func (fsys *ObservableFs) modifyFile(_ string, file afero.File) afero.File {
 	return &ObservableFile{inner: file, fsys: fsys}
 }
 
-func (fsys *ObservableFs) beforeEach(method string, args ...any) {
+func (fsys *ObservableFs) beforeEach(method string, args ...any) error {
 	fsys.mu.Lock()
 	defer fsys.mu.Unlock()
 	fsys.history = append(fsys.history, ObservableFsHistory{
@@ -36,9 +38,10 @@ func (fsys *ObservableFs) beforeEach(method string, args ...any) {
 		Method:    method,
 		Args:      slices.Clone(args),
 	})
+	return nil
 }
 
-func (fsys *ObservableFs) afterEach(method string, args ...any) {
+func (fsys *ObservableFs) afterEach(method string, args ...any) error {
 	fsys.mu.Lock()
 	defer fsys.mu.Unlock()
 	fsys.history = append(fsys.history, ObservableFsHistory{
@@ -48,6 +51,7 @@ func (fsys *ObservableFs) afterEach(method string, args ...any) {
 		Method:    method,
 		Args:      slices.Clone(args),
 	})
+	return nil
 }
 
 type ObservableFile struct {
@@ -55,7 +59,7 @@ type ObservableFile struct {
 	fsys  *ObservableFs
 }
 
-func (f *ObservableFile) beforeEach(method string, args ...any) {
+func (f *ObservableFile) beforeEach(method string, args ...any) error {
 	f.fsys.mu.Lock()
 	defer f.fsys.mu.Unlock()
 	f.fsys.history = append(f.fsys.history, ObservableFsHistory{
@@ -65,9 +69,10 @@ func (f *ObservableFile) beforeEach(method string, args ...any) {
 		Method:    method,
 		Args:      slices.Clone(args),
 	})
+	return nil
 }
 
-func (f *ObservableFile) afterEach(method string, args ...any) {
+func (f *ObservableFile) afterEach(method string, args ...any) error {
 	f.fsys.mu.Lock()
 	defer f.fsys.mu.Unlock()
 	f.fsys.history = append(f.fsys.history, ObservableFsHistory{
@@ -77,4 +82,5 @@ func (f *ObservableFile) afterEach(method string, args ...any) {
 		Method:    method,
 		Args:      slices.Clone(args),
 	})
+	return nil
 }
