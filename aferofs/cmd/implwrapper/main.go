@@ -201,7 +201,6 @@ func generate(
 				buf.WriteString(tp.At(i).String())
 			}
 			ty += "[" + buf.String() + "]"
-			fmt.Printf("ty=%s\n", ty)
 		}
 
 		p := types.NewPointer(obj.Type())

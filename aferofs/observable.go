@@ -24,33 +24,32 @@ type ObservableFs struct {
 	inner   afero.Fs
 }
 
+func (fsys *ObservableFs) recordOp(isFsys bool, IsBefore bool, method string, args []any) {
+	fsys.mu.Lock()
+	defer fsys.mu.Unlock()
+	fsys.history = append(fsys.history, ObservableFsHistory{
+		Timestamp: time.Now(),
+		IsFsys:    isFsys,
+		IsBefore:  IsBefore,
+		Method:    method,
+		Args:      slices.Clone(args),
+	})
+}
+
 func (fsys *ObservableFs) modifyFile(_ string, file afero.File) afero.File {
+	if file == nil {
+		return nil
+	}
 	return &ObservableFile{inner: file, fsys: fsys}
 }
 
 func (fsys *ObservableFs) beforeEach(method string, args ...any) error {
-	fsys.mu.Lock()
-	defer fsys.mu.Unlock()
-	fsys.history = append(fsys.history, ObservableFsHistory{
-		Timestamp: time.Now(),
-		IsFsys:    true,
-		IsBefore:  true,
-		Method:    method,
-		Args:      slices.Clone(args),
-	})
+	fsys.recordOp(true, true, method, args)
 	return nil
 }
 
 func (fsys *ObservableFs) afterEach(method string, args ...any) error {
-	fsys.mu.Lock()
-	defer fsys.mu.Unlock()
-	fsys.history = append(fsys.history, ObservableFsHistory{
-		Timestamp: time.Now(),
-		IsFsys:    true,
-		IsBefore:  false,
-		Method:    method,
-		Args:      slices.Clone(args),
-	})
+	fsys.recordOp(true, false, method, args)
 	return nil
 }
 
@@ -60,27 +59,11 @@ type ObservableFile struct {
 }
 
 func (f *ObservableFile) beforeEach(method string, args ...any) error {
-	f.fsys.mu.Lock()
-	defer f.fsys.mu.Unlock()
-	f.fsys.history = append(f.fsys.history, ObservableFsHistory{
-		Timestamp: time.Now(),
-		IsFsys:    false,
-		IsBefore:  true,
-		Method:    method,
-		Args:      slices.Clone(args),
-	})
+	f.fsys.recordOp(false, true, method, args)
 	return nil
 }
 
 func (f *ObservableFile) afterEach(method string, args ...any) error {
-	f.fsys.mu.Lock()
-	defer f.fsys.mu.Unlock()
-	f.fsys.history = append(f.fsys.history, ObservableFsHistory{
-		Timestamp: time.Now(),
-		IsFsys:    false,
-		IsBefore:  false,
-		Method:    method,
-		Args:      slices.Clone(args),
-	})
+	f.fsys.recordOp(false, false, method, args)
 	return nil
 }
