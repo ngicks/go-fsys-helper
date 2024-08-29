@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	fspkg "io/fs"
+	"iter"
 	"os"
 	pathpkg "path"
+	"strings"
 	"syscall"
 
 	"github.com/ngicks/go-fsys-helper/aferofs/internal/bufpool"
@@ -103,4 +106,53 @@ func (fsys *Fs) Reallocate(path string, allocator FileViewAllocator) error {
 	}
 
 	return nil
+}
+
+// MapFsIter adds src contents into fsys.
+// mapper generates src path as former of pair and destination path as latter of pair value.
+// Former values are used with [NewFsFileView] to refer file in src.
+// [Fs.AddFile] is used with former value of pairs to add file views into fsys.
+func (fsys *Fs) MapFsIter(src fs.FS, mapper iter.Seq2[string, string]) error {
+	for k, v := range mapper {
+		view, err := NewFsFileView(src, k)
+		if err != nil {
+			return fmt.Errorf("referring %q in source fs: %w", k, err)
+		}
+		err = fsys.AddFile(v, view)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Copy walks the file tree rooted under srcRoot of source fs,
+// adds file by [Fs.AddFile]
+func (fsys *Fs) Copy(fs fs.FS, srcRoot, dstRoot string) error {
+	if err := validatePath(srcRoot); err != nil {
+		return fmt.Errorf("srcRoot: %w", err)
+	}
+	if err := validatePath(dstRoot); err != nil {
+		return fmt.Errorf("dstRoot: %w", err)
+	}
+	return fspkg.WalkDir(fs, srcRoot, func(path string, d fspkg.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("WalkDir: %w", err)
+		}
+		if path == srcRoot || d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		view, err := NewFsFileView(fs, path)
+		if err != nil {
+			return fmt.Errorf("referring %q in source fs: %w", path, err)
+		}
+		relPath := path
+		if srcRoot != "." {
+			relPath, _ = strings.CutPrefix(relPath, srcRoot+"/")
+		}
+		return fsys.AddFile(pathpkg.Join(dstRoot, relPath), view)
+	})
 }
