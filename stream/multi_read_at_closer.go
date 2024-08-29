@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"sort"
+	"slices"
 	"syscall"
 
 	"github.com/ngicks/go-fsys-helper/stream/internal/serr"
@@ -279,14 +279,14 @@ func search(off int64, readers []sizedReaderAt) int {
 }
 
 func binarySearch(off int64, readers []sizedReaderAt) int {
-	i, found := sort.Find(len(readers), func(i int) int {
+	i, found := slices.BinarySearchFunc(readers, off, func(r sizedReaderAt, off int64) int {
 		switch {
-		case off < readers[i].headOff:
-			return -1
-		case readers[i].headOff <= off && off < readers[i].headOff+readers[i].Size:
+		case off < r.headOff:
+			return 1
+		case r.headOff <= off && off < r.headOff+r.Size:
 			return 0
 		default: // r.headOff+r.Size <= off:
-			return 1
+			return -1
 		}
 	})
 	if !found {
