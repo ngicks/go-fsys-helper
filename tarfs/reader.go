@@ -58,13 +58,7 @@ func New(r io.ReaderAt) (*Fs, error) {
 
 		headerEnd := countingR.Count
 
-		_, err = io.Copy(io.Discard, tr)
-		if err != nil && err != io.EOF {
-			return nil, fmt.Errorf("discarding tar reader: %w", err)
-		}
-		bodyEnd := countingR.Count
-
-		hh := &header{h: h, headerEnd: headerEnd, bodyStart: headerEnd, bodyEnd: bodyEnd}
+		hh := &header{h: h, headerEnd: headerEnd, bodyStart: headerEnd}
 		if prev != nil {
 			for i := 1; ; i++ {
 				if hh.bodyStart-(i*blockSize) < prev.bodyEnd {
@@ -73,7 +67,29 @@ func New(r io.ReaderAt) (*Fs, error) {
 				}
 			}
 		}
+
 		hh.holes, _ = reconstructSparse(r, hh, &blk)
+
+		switch hh.h.Typeflag {
+		case tar.TypeLink, tar.TypeSymlink, tar.TypeChar, tar.TypeBlock, tar.TypeDir, tar.TypeFifo,
+			tar.TypeCont, tar.TypeXHeader, tar.TypeXGlobalHeader,
+			tar.TypeGNULongName, tar.TypeGNULongLink:
+			// They have size for name.
+			hh.bodyEnd = hh.bodyStart
+		default:
+			// Not totally sure but in testdata tars there's typeflag value not defined in archive/tar
+			// nor there https://www.gnu.org/software/tar/manual/html_node/Standard.html
+			hh.bodyEnd = hh.bodyStart + int(hh.h.Size)
+			if hh.holes != nil {
+				// reverse-caluculating size
+				// I dunno how many tar files out wild has sparse in them.
+				var holeSize int
+				for _, hole := range hh.holes {
+					holeSize += int(hole.Length)
+				}
+				hh.bodyEnd = hh.bodyStart + int(hh.h.Size) - holeSize
+			}
+		}
 
 		fsys.headers[path.Clean(h.Name)] = hh
 		prev = hh
