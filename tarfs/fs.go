@@ -1,6 +1,7 @@
 package tarfs
 
 import (
+	"archive/tar"
 	"io"
 	"io/fs"
 	"maps"
@@ -31,6 +32,12 @@ func New(r io.ReaderAt) (*Fs, error) {
 	delete(headers, ".")
 
 	for _, key := range slices.Sorted(maps.Keys(headers)) {
+		switch headers[key].h.Typeflag {
+		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeDir:
+		default:
+			continue
+		}
 		fsys.root.addChild(key, headers[key])
 	}
 
