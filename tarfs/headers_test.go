@@ -15,13 +15,15 @@ import (
 	"testing"
 )
 
-func TestReader(t *testing.T) {
+func Test_collectHeaders(t *testing.T) {
 	names, err := testTars()
 	if err != nil {
 		panic(err)
 	}
 
 	for _, name := range names {
+		// Some of them takes too long time.
+		// skip them.
 		if !isTarOopenable(name) || slices.Contains([]string{"gnu-not-utf8.tar", "gnu-sparse-big.tar", "pax-sparse-big.tar"}, filepath.Base(name)) {
 			continue
 		}
@@ -37,12 +39,12 @@ func TestReader(t *testing.T) {
 				panic(err)
 			}
 			defer f.Close()
-			fsys, err := New(f)
+			headers, err := collectHeaders(f)
 			if err != nil {
 				panic(err)
 			}
-			for _, k := range slices.Sorted(maps.Keys(fsys.headers)) {
-				h := fsys.headers[k]
+			for _, k := range slices.Sorted(maps.Keys(headers)) {
+				h := headers[k]
 				r := makeReader(f, h)
 				bin, err := io.ReadAll(r)
 				if err != nil {

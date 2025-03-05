@@ -16,7 +16,7 @@ import (
 var (
 	curMod   GoMod
 	testTars = sync.OnceValues(func() ([]string, error) {
-		dir := filepath.Join("testdata", curMod.Go)
+		dir := filepath.Join("testdata", "go"+curMod.Go)
 		dirents, err := os.ReadDir(dir)
 		if err != nil {
 			return nil, err
@@ -105,7 +105,7 @@ func init() {
 		panic(err)
 	}
 
-	resourceDir := filepath.Join("testdata", curMod.Go)
+	resourceDir := filepath.Join("testdata", "go"+curMod.Go)
 
 	if _, err := os.Stat(resourceDir); err == nil {
 		dirents, err := os.ReadDir(resourceDir)
