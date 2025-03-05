@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/ngicks/go-fsys-helper/stream/internal/serr"
@@ -30,9 +31,9 @@ func (r *multiReadCloser[T]) Read(p []byte) (int, error) {
 }
 
 func (r *multiReadCloser[T]) Close() error {
-	var errs []error
-	for _, c := range r.closers {
-		errs = append(errs, c.Close())
+	var errs []serr.PrefixErr
+	for i, c := range r.closers {
+		errs = append(errs, serr.PrefixErr{P: fmt.Sprintf("index %d: ", i), E: c.Close()})
 	}
-	return serr.NewMultiErrorChecked(errs)
+	return serr.GatherPrefixed(errs)
 }

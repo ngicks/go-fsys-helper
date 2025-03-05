@@ -252,13 +252,13 @@ func (r *multiReadAtSeekCloser) readAt(p []byte, off int64) (n int, err error) {
 }
 
 func (r *multiReadAtSeekCloser) Close() error {
-	var errs []error
-	for _, rr := range r.r {
+	var errs []serr.PrefixErr
+	for i, rr := range r.r {
 		if c, ok := rr.R.(io.Closer); ok {
-			errs = append(errs, c.Close())
+			errs = append(errs, serr.PrefixErr{P: fmt.Sprintf("index %d: ", i), E: c.Close()})
 		}
 	}
-	return serr.NewMultiErrorChecked(errs)
+	return serr.GatherPrefixed(errs)
 }
 
 var searchThreshold int = 32
