@@ -19,17 +19,11 @@ func makeReader(ra io.ReaderAt, h *header) seekReadReaderAt {
 
 	var readers []stream.SizedReaderAt
 
-	holes := h.holes
-	appendZeroRepater := func(readers []stream.SizedReaderAt, hole sparseEntry) []stream.SizedReaderAt {
-		sr := io.NewSectionReader(stream.NewByteRepeater(0), 0, hole.Length)
-		return append(readers, stream.SizedReaderAt{R: sr, Size: sr.Size()})
-	}
-
 	var cur, size int
-	for i, current := range holes {
+	for i, current := range h.holes {
 		var prev sparseEntry
 		if i > 0 {
-			prev = holes[i-1]
+			prev = h.holes[i-1]
 		}
 
 		space := current.Offset - (prev.Offset + prev.Length)
@@ -39,7 +33,8 @@ func makeReader(ra io.ReaderAt, h *header) seekReadReaderAt {
 			readers = append(readers, stream.SizedReaderAt{R: sr, Size: sr.Size()})
 			size += int(sr.Size())
 		}
-		readers = appendZeroRepater(readers, current)
+		sr := io.NewSectionReader(stream.NewByteRepeater(0), 0, current.Length)
+		readers = append(readers, stream.SizedReaderAt{R: sr, Size: sr.Size()})
 		size += int(current.Length)
 	}
 
