@@ -63,7 +63,7 @@ func collectHeaders(r io.ReaderAt) (map[string]*header, error) {
 			hh.bodyEnd = hh.bodyStart + int(hh.h.Size)
 			if hh.holes != nil {
 				// reverse-caluculating size
-				// I dunno how many tar files out wild has sparse in them.
+				// I dunno how many tar files out wilds have sparse in them.
 				var holeSize int
 				for _, hole := range hh.holes {
 					holeSize += int(hole.Length)
