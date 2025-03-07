@@ -6,12 +6,15 @@ import (
 	"io/fs"
 )
 
+// direntry is static, stateless entry in the [*Fs].
 type direntry interface {
 	header() *header
-	open(r io.ReaderAt, path string) opnenDirentry
+	open(r io.ReaderAt, path string) openDirentry
 }
 
-type opnenDirentry interface {
+// openDirentry is the stateful file opened through [direntry].
+// It has states, i.e. offset for file reading or ReadDir.
+type openDirentry interface {
 	Name() string
 	fs.File
 }

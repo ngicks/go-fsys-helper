@@ -14,7 +14,7 @@ func (f *file) header() *header {
 	return f.h
 }
 
-func (f *file) open(r io.ReaderAt, path string) opnenDirentry {
+func (f *file) open(r io.ReaderAt, path string) openDirentry {
 	return &openFile{
 		r:    makeReader(r, f.h),
 		path: path,

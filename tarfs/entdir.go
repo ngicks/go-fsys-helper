@@ -19,7 +19,7 @@ func (d *dir) header() *header {
 	return d.h
 }
 
-func (d *dir) open(_ io.ReaderAt, path string) opnenDirentry {
+func (d *dir) open(_ io.ReaderAt, path string) openDirentry {
 	return &openDir{path: path, dir: d}
 }
 
