@@ -12,6 +12,22 @@ import (
 	"strings"
 )
 
+// start -- common.go
+
+const (
+	// Keywords for GNU sparse files in a PAX extended header.
+	paxGNUSparse          = "GNU.sparse."
+	paxGNUSparseNumBlocks = "GNU.sparse.numblocks"
+	paxGNUSparseOffset    = "GNU.sparse.offset"
+	paxGNUSparseNumBytes  = "GNU.sparse.numbytes"
+	paxGNUSparseMap       = "GNU.sparse.map"
+	paxGNUSparseName      = "GNU.sparse.name"
+	paxGNUSparseMajor     = "GNU.sparse.major"
+	paxGNUSparseMinor     = "GNU.sparse.minor"
+	paxGNUSparseSize      = "GNU.sparse.size"
+	paxGNUSparseRealSize  = "GNU.sparse.realsize"
+)
+
 type sparseEntry struct{ Offset, Length int64 }
 
 func (s sparseEntry) endOffset() int64 { return s.Offset + s.Length }
@@ -51,22 +67,6 @@ func (s sparseEntry) endOffset() int64 { return s.Offset + s.Length }
 type (
 	sparseDatas []sparseEntry
 	sparseHoles []sparseEntry
-)
-
-// start -- common.go
-
-const (
-	// Keywords for GNU sparse files in a PAX extended header.
-	paxGNUSparse          = "GNU.sparse."
-	paxGNUSparseNumBlocks = "GNU.sparse.numblocks"
-	paxGNUSparseOffset    = "GNU.sparse.offset"
-	paxGNUSparseNumBytes  = "GNU.sparse.numbytes"
-	paxGNUSparseMap       = "GNU.sparse.map"
-	paxGNUSparseName      = "GNU.sparse.name"
-	paxGNUSparseMajor     = "GNU.sparse.major"
-	paxGNUSparseMinor     = "GNU.sparse.minor"
-	paxGNUSparseSize      = "GNU.sparse.size"
-	paxGNUSparseRealSize  = "GNU.sparse.realsize"
 )
 
 func invertSparseEntries(src []sparseEntry, size int64) []sparseEntry {
