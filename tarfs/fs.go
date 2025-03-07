@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -44,6 +45,11 @@ func New(r io.ReaderAt) (*Fs, error) {
 	delete(headers, ".")
 
 	for _, key := range slices.Sorted(maps.Keys(headers)) {
+		if strings.HasPrefix(key, "..") {
+			// reject paths traversing upward even when tarinsecurepath = 1.
+			// Anyway fs.ValidPath check will reject this.
+			continue
+		}
 		switch headers[key].h.Typeflag {
 		case tar.TypeReg, tar.TypeRegA:
 		case tar.TypeDir:
