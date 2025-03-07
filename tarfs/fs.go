@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"maps"
 	"slices"
+	"time"
 )
 
 var _ fs.FS = (*Fs)(nil)
@@ -22,12 +23,23 @@ func New(r io.ReaderAt) (*Fs, error) {
 	}
 
 	fsys := &Fs{
-		r:    r,
-		root: &dir{},
+		r: r,
 	}
 
-	if header, ok := headers["."]; ok {
-		fsys.root = &dir{h: header}
+	if rootHeader, ok := headers["."]; ok {
+		fsys.root = &dir{h: rootHeader}
+	} else {
+		// Is it even possible?
+		fsys.root = &dir{
+			h: &header{
+				h: &tar.Header{
+					Typeflag: tar.TypeDir,
+					Name:     "./",
+					Mode:     0o755,
+					ModTime:  time.Now(),
+				},
+			},
+		}
 	}
 	delete(headers, ".")
 
