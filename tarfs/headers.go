@@ -107,6 +107,7 @@ func reconstructSparse(r io.ReaderAt, hdr *header, blk *block) (sparseHoles, err
 
 	sr := io.NewSectionReader(r, int64(hdr.headerStart), int64(hdr.headerEnd)-int64(hdr.headerStart))
 
+	var p parser
 	for {
 		n, err := io.ReadFull(sr, blk[:])
 		if (err != nil && err != io.EOF) || n == 0 {
@@ -114,10 +115,14 @@ func reconstructSparse(r io.ReaderAt, hdr *header, blk *block) (sparseHoles, err
 		}
 		switch flag := blk.toV7().typeFlag()[0]; flag {
 		case tar.TypeXHeader, tar.TypeXGlobalHeader:
-			_, _ = sr.Seek(blockSize, io.SeekCurrent) // read ahead, align to block size
+			size := p.parseNumeric(blk.toV7().size())
+			size += (-size) & (blockSize - 1)
+			_, _ = sr.Seek(size, io.SeekCurrent) // read ahead, align to block size
 			continue
 		case tar.TypeGNULongName, tar.TypeGNULongLink:
-			_, _ = sr.Seek(blockSize, io.SeekCurrent)
+			size := p.parseNumeric(blk.toV7().size())
+			size += (-size) & (blockSize - 1)
+			_, _ = sr.Seek(size, io.SeekCurrent)
 			continue
 		default:
 			return handleSparseFile(sr, hdr, blk)

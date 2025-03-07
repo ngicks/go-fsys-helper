@@ -113,7 +113,7 @@ func (b *block) toSparse() sparseArray { return sparseArray(b[:]) }
 // func (h *headerV7) mode() []byte     { return h[100:][:8] }
 // func (h *headerV7) uid() []byte      { return h[108:][:8] }
 // func (h *headerV7) gid() []byte      { return h[116:][:8] }
-// func (h *headerV7) size() []byte { return h[124:][:12] }
+func (h *headerV7) size() []byte { return h[124:][:12] }
 
 // func (h *headerV7) modTime() []byte  { return h[136:][:12] }
 // func (h *headerV7) chksum() []byte   { return h[148:][:8] }
