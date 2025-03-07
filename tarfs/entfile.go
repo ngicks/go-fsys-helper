@@ -33,8 +33,6 @@ type openFile struct {
 }
 
 func (f *openFile) checkClosed(op string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.closed {
 		return pathErr(op, f.path, fs.ErrClosed)
 	}
@@ -46,6 +44,8 @@ func (f *openFile) Name() string {
 }
 
 func (f *openFile) Stat() (fs.FileInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err := f.checkClosed("stat"); err != nil {
 		return nil, err
 	}
@@ -53,6 +53,8 @@ func (f *openFile) Stat() (fs.FileInfo, error) {
 }
 
 func (f *openFile) Read(p []byte) (n int, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err := f.checkClosed("read"); err != nil {
 		return 0, err
 	}
@@ -64,6 +66,8 @@ func (f *openFile) Read(p []byte) (n int, err error) {
 }
 
 func (f *openFile) ReadAt(p []byte, off int64) (n int, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err := f.checkClosed("readat"); err != nil {
 		return 0, err
 	}
@@ -75,6 +79,8 @@ func (f *openFile) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (f *openFile) Seek(offset int64, whence int) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err := f.checkClosed("seek"); err != nil {
 		return 0, err
 	}
