@@ -27,7 +27,7 @@ func collectHeaders(r io.ReaderAt) (map[string]*header, error) {
 		prev *header
 		blk  block
 	)
-	for i := 0; ; i++ {
+	for {
 		h, err := tr.Next()
 		if err != nil {
 			if err == io.EOF {
@@ -41,12 +41,8 @@ func collectHeaders(r io.ReaderAt) (map[string]*header, error) {
 
 		hh := &header{h: h, headerEnd: headerEnd, bodyStart: headerEnd}
 		if prev != nil {
-			for i := 1; ; i++ {
-				if hh.bodyStart-(i*blockSize) < prev.bodyEnd {
-					hh.headerStart = hh.bodyStart - ((i - 1) * blockSize)
-					break
-				}
-			}
+			// bodyEnd padded to 512 bytes block boundary
+			hh.headerStart = prev.bodyEnd + (-prev.bodyEnd)&(blockSize-1)
 		}
 
 		hh.holes, _ = reconstructSparse(r, hh, &blk)
