@@ -64,7 +64,7 @@ func New(r io.ReaderAt) (*Fs, error) {
 
 func (fsys *Fs) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
+		return nil, pathErr("open", name, fs.ErrInvalid)
 	}
 	f, err := fsys.root.openChild(name)
 	if err != nil {
