@@ -26,7 +26,7 @@ func Test_collectHeaders_makeReader(t *testing.T) {
 	for _, name := range names {
 		// Some of them takes too long time.
 		// skip them.
-		if !isTarOopenable(name) || slices.Contains([]string{"gnu-not-utf8.tar", "gnu-sparse-big.tar", "pax-sparse-big.tar"}, filepath.Base(name)) {
+		if !isTarOopenable(name) || slices.Contains([]string{"gnu-sparse-big.tar", "pax-sparse-big.tar"}, filepath.Base(name)) {
 			continue
 		}
 
