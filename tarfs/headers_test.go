@@ -15,6 +15,27 @@ import (
 	"testing"
 )
 
+var knownTypeflags = []byte{
+	tar.TypeReg,
+	tar.TypeRegA,
+	tar.TypeLink,
+	tar.TypeSymlink,
+	tar.TypeChar,
+	tar.TypeBlock,
+	tar.TypeDir,
+	tar.TypeFifo,
+	tar.TypeCont,
+	tar.TypeXHeader,
+	tar.TypeXGlobalHeader,
+	tar.TypeGNUSparse,
+	tar.TypeGNULongName,
+	tar.TypeGNULongLink,
+}
+
+func isKnownTypeflag(b byte) bool {
+	return slices.Contains(knownTypeflags, b)
+}
+
 // collects files under $(go${VERSION_DESCRIBED_IN_go.mod} env GOROOT)/src/archive/tar/testdata
 // reads all files' content through [tar.Reader.Read], then compares what readers made by collectHeaders and makeReader read.
 func Test_iterHeaders_makeReader(t *testing.T) {
@@ -47,6 +68,9 @@ func Test_iterHeaders_makeReader(t *testing.T) {
 			}
 			for _, k := range slices.Sorted(maps.Keys(headers)) {
 				h := headers[k]
+				if !isKnownTypeflag(h.h.Typeflag) {
+					t.Logf("typeflag field value not defined in archive/tar: %q", h.h.Typeflag)
+				}
 				r := makeReader(f, h)
 				bin, err := io.ReadAll(r)
 				if err != nil {
@@ -67,6 +91,10 @@ header = %#v
 						ellipsis(bin), len(bin),
 						h.h,
 					)
+				} else {
+					if !isKnownTypeflag(h.h.Typeflag) {
+						t.Logf("read: %q(%d)", ellipsis(read[k]), len(read[k]))
+					}
 				}
 			}
 		})
