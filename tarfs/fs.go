@@ -18,7 +18,9 @@ type Fs struct {
 }
 
 func New(r io.ReaderAt) (*Fs, error) {
-	headers, err := collectHeaders(r)
+	// first collect entries in the map
+	// Tar archives may have duplicate entry for same name for incremental update, etc.
+	headers, err := tryCollectHeaderOffsets(iterHeaders(r))
 	if err != nil {
 		return nil, err
 	}

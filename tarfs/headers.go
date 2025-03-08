@@ -4,9 +4,25 @@ import (
 	"archive/tar"
 	"fmt"
 	"io"
+	"iter"
 	"math"
 	"path"
 )
+
+func tryMapsCollect[K comparable, V any](keyMapper func(V) K, seq iter.Seq2[V, error]) (map[K]V, error) {
+	collected := make(map[K]V)
+	for v, err := range seq {
+		if err != nil {
+			return collected, err
+		}
+		collected[keyMapper(v)] = v
+	}
+	return collected, nil
+}
+
+func tryCollectHeaderOffsets(seq iter.Seq2[*header, error]) (map[string]*header, error) {
+	return tryMapsCollect(func(ho *header) string { return path.Clean(ho.h.Name) }, seq)
+}
 
 type header struct {
 	h                      *tar.Header
@@ -15,64 +31,63 @@ type header struct {
 	holes                  sparseHoles
 }
 
-func collectHeaders(r io.ReaderAt) (map[string]*header, error) {
-	// first collect entries in the map
-	// Tar archives may have duplicate entry for same name for incremental update, etc.
-	headers := make(map[string]*header)
+func iterHeaders(r io.ReaderAt) iter.Seq2[*header, error] {
+	return func(yield func(*header, error) bool) {
+		countingR := &countingReader{R: io.NewSectionReader(r, 0, math.MaxInt64-1)}
+		tr := tar.NewReader(countingR)
 
-	countingR := &countingReader{R: io.NewSectionReader(r, 0, math.MaxInt64-1)}
-	tr := tar.NewReader(countingR)
-
-	var (
-		prev *header
-		blk  block
-	)
-	for {
-		h, err := tr.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				return nil, fmt.Errorf("read tar archive: %w", err)
-			}
-		}
-
-		headerEnd := countingR.Count
-
-		hh := &header{h: h, headerEnd: headerEnd, bodyStart: headerEnd}
-		if prev != nil {
-			// bodyEnd padded to 512 bytes block boundary
-			hh.headerStart = prev.bodyEnd + (-prev.bodyEnd)&(blockSize-1)
-		}
-
-		hh.holes, _ = reconstructSparse(r, hh, &blk)
-
-		switch hh.h.Typeflag {
-		case tar.TypeLink, tar.TypeSymlink, tar.TypeChar, tar.TypeBlock, tar.TypeDir, tar.TypeFifo,
-			tar.TypeCont, tar.TypeXHeader, tar.TypeXGlobalHeader,
-			tar.TypeGNULongName, tar.TypeGNULongLink:
-			// They have size for name.
-			hh.bodyEnd = hh.bodyStart
-		default:
-			// Not totally sure but in testdata tars there's typeflag value not defined in archive/tar
-			// nor there https://www.gnu.org/software/tar/manual/html_node/Standard.html
-			hh.bodyEnd = hh.bodyStart + int(hh.h.Size)
-			if hh.holes != nil {
-				// reverse-caluculating size
-				// I dunno how many tar files out wilds have sparse in them.
-				var holeSize int
-				for _, hole := range hh.holes {
-					holeSize += int(hole.Length)
+		var (
+			prev *header
+			blk  block
+		)
+		for {
+			h, err := tr.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				} else {
+					yield(nil, fmt.Errorf("read tar archive: %w", err))
+					return
 				}
-				hh.bodyEnd = hh.bodyStart + int(hh.h.Size) - holeSize
 			}
+
+			headerEnd := countingR.Count
+
+			hh := &header{h: h, headerEnd: headerEnd, bodyStart: headerEnd}
+			if prev != nil {
+				// bodyEnd padded to 512 bytes block boundary
+				hh.headerStart = prev.bodyEnd + (-prev.bodyEnd)&(blockSize-1)
+			}
+
+			hh.holes, _ = reconstructSparse(r, hh, &blk)
+
+			switch hh.h.Typeflag {
+			case tar.TypeLink, tar.TypeSymlink, tar.TypeChar, tar.TypeBlock, tar.TypeDir, tar.TypeFifo,
+				tar.TypeCont, tar.TypeXHeader, tar.TypeXGlobalHeader,
+				tar.TypeGNULongName, tar.TypeGNULongLink:
+				// They have size for name.
+				hh.bodyEnd = hh.bodyStart
+			default:
+				// Not totally sure but in testdata tars there's typeflag value not defined in archive/tar
+				// nor there https://www.gnu.org/software/tar/manual/html_node/Standard.html
+				hh.bodyEnd = hh.bodyStart + int(hh.h.Size)
+				if hh.holes != nil {
+					// reverse-caluculating size
+					// I dunno how many tar files out wilds have sparse in them.
+					var holeSize int
+					for _, hole := range hh.holes {
+						holeSize += int(hole.Length)
+					}
+					hh.bodyEnd = hh.bodyStart + int(hh.h.Size) - holeSize
+				}
+			}
+
+			if !yield(hh, nil) {
+				return
+			}
+			prev = hh
 		}
-
-		headers[path.Clean(h.Name)] = hh
-		prev = hh
 	}
-
-	return headers, nil
 }
 
 type countingReader struct {
