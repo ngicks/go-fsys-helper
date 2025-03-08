@@ -10,12 +10,12 @@ import (
 )
 
 type dir struct {
-	h       *header
+	h       *headerOffset
 	files   map[string]direntry
 	ordered []direntry
 }
 
-func (d *dir) header() *header {
+func (d *dir) header() *headerOffset {
 	return d.h
 }
 
@@ -23,7 +23,7 @@ func (d *dir) open(_ io.ReaderAt, path string) openDirentry {
 	return &openDir{path: path, dir: d}
 }
 
-func (d *dir) addChild(name string, hdr *header) {
+func (d *dir) addChild(name string, hdr *headerOffset) {
 	if d.files == nil {
 		d.files = make(map[string]direntry)
 	}

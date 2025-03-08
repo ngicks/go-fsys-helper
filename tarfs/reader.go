@@ -12,7 +12,7 @@ type seekReadReaderAt interface {
 	io.Seeker
 }
 
-func makeReader(ra io.ReaderAt, h *header) seekReadReaderAt {
+func makeReader(ra io.ReaderAt, h *headerOffset) seekReadReaderAt {
 	if h.holes == nil {
 		return io.NewSectionReader(ra, int64(h.bodyStart), int64(h.bodyEnd)-int64(h.bodyStart))
 	}

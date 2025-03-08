@@ -34,7 +34,7 @@ func New(r io.ReaderAt) (*Fs, error) {
 	} else {
 		// Is it even possible?
 		fsys.root = &dir{
-			h: &header{
+			h: &headerOffset{
 				h: &tar.Header{
 					Typeflag: tar.TypeDir,
 					Name:     "./",

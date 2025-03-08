@@ -8,7 +8,7 @@ import (
 
 // direntry is static, stateless entry in the [*Fs].
 type direntry interface {
-	header() *header
+	header() *headerOffset
 	open(r io.ReaderAt, path string) openDirentry
 }
 
