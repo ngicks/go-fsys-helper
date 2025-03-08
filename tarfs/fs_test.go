@@ -16,7 +16,7 @@ var (
 )
 
 func TestFs(t *testing.T) {
-	fsys, err := New(bytes.NewReader(treeBin))
+	fsys, err := New(bytes.NewReader(treeBin), nil)
 	if err != nil {
 		panic(err)
 	}
@@ -78,6 +78,7 @@ actual = %q(%d)
 		return nil
 	})
 
+	// skip '.' since TestFS fails stating it did not find '.' in the fsys.
 	if err := fstest.TestFS(fsys, seen[1:]...); err != nil {
 		t.Errorf("fstest.TestFS fail: %v", err)
 	}

@@ -17,7 +17,16 @@ type Fs struct {
 	root *dir
 }
 
-func New(r io.ReaderAt) (*Fs, error) {
+type FsOption struct {
+	// If true, tar.TypeChar, tar.TypeBlock, tar.TypeFifo are added as a file.
+	AllowDev      bool
+	handleSymlink bool // export this field when symlink support is added.
+}
+
+func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
+	if opt == nil {
+		opt = new(FsOption)
+	}
 	// first collect entries in the map
 	// Tar archives may have duplicate entry for same name for incremental update, etc.
 	headers, err := tryCollectHeaderOffsets(iterHeaders(r))
@@ -53,8 +62,16 @@ func New(r io.ReaderAt) (*Fs, error) {
 			continue
 		}
 		switch headers[key].h.Typeflag {
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg, tar.TypeRegA, tar.TypeGNUSparse:
 		case tar.TypeDir:
+		case tar.TypeSymlink:
+			if !opt.handleSymlink {
+				continue
+			}
+		case tar.TypeChar, tar.TypeBlock, tar.TypeFifo:
+			if !opt.AllowDev {
+				continue
+			}
 		default:
 			continue
 		}
@@ -75,3 +92,5 @@ func (fsys *Fs) Open(name string) (fs.File, error) {
 	}
 	return f.open(fsys.r, name), err
 }
+
+// TODO: add sub
