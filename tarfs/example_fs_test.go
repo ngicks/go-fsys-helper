@@ -2,7 +2,9 @@ package tarfs_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	_ "embed"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,12 +12,27 @@ import (
 	"github.com/ngicks/go-fsys-helper/tarfs"
 )
 
-var (
-	//go:embed testdata/muh/tree.tar
-	treeBin []byte
-)
+var treeTarGzBase64 = `H4sIAAAAAAAAA+2YTW7DIBBGWecUPoENZAbOg622yyg/VquevkNRlLRSf1gMScT3Nkg2EkjPD1mM` +
+	`k1HHCpE5jy6yvR7PGEcxeLcN7OS5s+y9GVh/a8asx1M6DIN5Taf08vTzvL/ePyjjNM+z8jdQ5Z+9` +
+	`+HdepsN/A4r/ZVkUv4Eq/zH3762F/yZc/O/X9U1njSw4EP3in7/7j178W53tfKVz/9n65tabADfj` +
+	`un+l/P/RP136D5z7Z9qi/xbskX/XlP7ndFBco6p/Cvn/P5JD/y0Q8+i/Y879vyuuUdN/DO6zf3mN` +
+	`/hsg5tF/x4xTSume7v+Iy/0f4f6nBcX/826nuEbd/x+X859w/rdAzOP8BwAAAAAAAIAO+ABC8URH` +
+	`ACgAAA==`
 
 func Example_simple_usage() {
+	treeTarGz, err := base64.StdEncoding.DecodeString(treeTarGzBase64)
+	if err != nil {
+		panic(err)
+	}
+	gr, err := gzip.NewReader(bytes.NewReader(treeTarGz))
+	if err != nil {
+		panic(err)
+	}
+	treeBin, err := io.ReadAll(gr)
+	if err != nil {
+		panic(err)
+	}
+
 	fsys, err := tarfs.New(bytes.NewReader(treeBin), nil)
 	if err != nil {
 		panic(err)
