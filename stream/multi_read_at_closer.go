@@ -25,6 +25,8 @@ type MultiReadError struct {
 	ReaderOff int64
 	// The virtual offset within multiReadAtSeekCloser at which the error is happened.
 	TotalOff int64
+	// Length of buffer with which Read is called.
+	BufLen int
 	// An internal error.
 	// It may be one of an error the reader returned or ErrInvalidSize, or io.ErrUnexpectedEOF.
 	// It is ErrInvalidSize when the reader read more than reported in SizedReaderAt.
@@ -148,7 +150,7 @@ func (r *multiReadAtSeekCloser) Read(p []byte) (int, error) {
 	}
 
 	wrapErr := func(err error, cause string) error {
-		return &MultiReadError{r.idx, readerOff, off, err, cause}
+		return &MultiReadError{r.idx, readerOff, off, len(p), err, cause}
 	}
 
 	if err != nil && err != io.EOF {
@@ -233,7 +235,7 @@ func (r *multiReadAtSeekCloser) readAt(p []byte, off int64) (n int, err error) {
 	n, err = rr.R.ReadAt(p, readerOff)
 
 	wrapErr := func(err error, cause string) error {
-		return &MultiReadError{i, readerOff, off, err, cause}
+		return &MultiReadError{i, readerOff, off, len(p), err, cause}
 	}
 
 	if err != nil && err != io.EOF {
