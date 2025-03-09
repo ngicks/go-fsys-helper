@@ -148,7 +148,7 @@ func (r *multiReadAtSeekCloser) Read(p []byte) (int, error) {
 	}
 
 	wrapErr := func(err error, cause string) error {
-		return &MultiReadError{r.idx + i, readerOff, off, err, cause}
+		return &MultiReadError{r.idx, readerOff, off, err, cause}
 	}
 
 	if err != nil && err != io.EOF {
