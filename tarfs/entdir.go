@@ -2,6 +2,7 @@ package tarfs
 
 import (
 	"archive/tar"
+	"fmt"
 	"io"
 	"io/fs"
 	"strings"
@@ -117,6 +118,52 @@ func (d *openDir) Read([]byte) (int, error) {
 		return 0, err
 	}
 	return 0, pathErr("read", d.path, syscall.EISDIR)
+}
+
+func (d *openDir) ReadAt(p []byte, off int64) (n int, err error) {
+	if err := d.checkClosed("readat"); err != nil {
+		return 0, err
+	}
+	return 0, pathErr("read", d.path, syscall.EISDIR)
+}
+
+func (d *openDir) Seek(offset int64, whence int) (int64, error) {
+	if err := d.checkClosed("seek"); err != nil {
+		return 0, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// mimicking *os.File behavior, reset anyway unless io.SeekEnd and 0 is set.
+	d.cursor = 0
+
+	// lseek(3) on directory is not totally defined as far as I know.
+	//
+	// https://man7.org/linux/man-pages/man2/lseek.2.html
+	// https://stackoverflow.com/questions/65911066/what-does-lseek-mean-for-a-directory-file-descriptor
+	//
+	// on windows Seek calls SetFilePointerEx. Does it work on handle for folder? I'm zero sure.
+	//
+	// So here place a simple rule.
+
+	switch whence {
+	default:
+		return 0, pathErr("seek", d.path, fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid))
+	case io.SeekStart:
+		if offset < 0 {
+			return 0, pathErr("seek", d.path, fmt.Errorf("negative offset %d: %w", whence, fs.ErrInvalid))
+		}
+	case io.SeekCurrent:
+		if offset != 0 {
+			return 0, pathErr("seek", d.path, fs.ErrInvalid)
+		}
+	case io.SeekEnd:
+		if offset > 0 {
+			return 0, pathErr("seek", d.path, fmt.Errorf("positive offset %d: %w", whence, fs.ErrInvalid))
+		}
+		d.cursor = len(d.dir.ordered)
+	}
+	return 0, nil
 }
 
 func (d *openDir) Close() error {
