@@ -3,7 +3,6 @@ package tarfs
 import (
 	"bytes"
 	_ "embed"
-	"io"
 	"io/fs"
 	"os"
 	"testing"
@@ -27,53 +26,10 @@ func TestFs(t *testing.T) {
 		if err != nil {
 			return err
 		}
-
 		seen = append(seen, path)
-
-		f, err := fsys.Open(path)
-		if err != nil {
-			t.Errorf("open %q: %v", path, err)
-			return err
-		}
-		defer f.Close()
-		s, err := f.Stat()
-		if err != nil {
-			t.Errorf("stat %q: %v", path, err)
-			return err
-		}
-		if s.IsDir() != d.IsDir() {
-			t.Errorf("wrongly is dir: %q", path)
-			return err
-		}
-		if s.IsDir() {
-			return nil
-		}
-		binActual, err := io.ReadAll(f)
-		if err != nil {
-			t.Errorf("read %q: %v", path, err)
-			return err
-		}
-		fExpected, err := dirFs.Open(path)
-		if err != nil {
-			panic(err)
-		}
-		defer fExpected.Close()
-		binExpected, err := io.ReadAll(fExpected)
-		if err != nil {
-			panic(err)
-		}
-		if !bytes.Equal(binActual, binExpected) {
-			t.Errorf(
-				`read content not equal
-filename = %q
-expected = %q(%d)
-actual = %q(%d)
-
-`,
-				path,
-				ellipsis(binExpected), len(binExpected),
-				ellipsis(binActual), len(binActual),
-			)
+		compareStat(t, dirFs, fsys, path)
+		if !d.IsDir() {
+			compareContent(t, dirFs, fsys, path)
 		}
 		return nil
 	})
@@ -81,5 +37,72 @@ actual = %q(%d)
 	// skip '.' since TestFS fails stating it did not find '.' in the fsys.
 	if err := fstest.TestFS(fsys, seen[1:]...); err != nil {
 		t.Errorf("fstest.TestFS fail: %v", err)
+	}
+}
+
+func compareStat(t *testing.T, expected, actual fs.FS, path string) (expectedStat, actualStat fs.FileInfo) {
+	var err error
+	expectedStat, err = fs.Stat(expected, path)
+	if err != nil {
+		panic(err)
+	}
+	actualStat, err = fs.Stat(actual, path)
+	if err != nil {
+		panic(err)
+	}
+
+	{
+		es := fs.FormatFileInfo(expectedStat)
+		as := fs.FormatFileInfo(actualStat)
+		if es != as {
+			if expectedStat.IsDir() && actualStat.IsDir() {
+				// tar returns dir as size 0, while usual linux filesystem returns it as 4KiB.
+				expectedStat = &sizeMaskFileInfo{expectedStat}
+				actualStat = &sizeMaskFileInfo{actualStat}
+				es = fs.FormatFileInfo(expectedStat)
+				as = fs.FormatFileInfo(actualStat)
+				if es == as {
+					return
+				}
+			}
+			t.Errorf("stat not equal: expected(%q) != atcual(%q)", es, as)
+			return
+		}
+	}
+	return
+}
+
+var _ fs.FileInfo = (*sizeMaskFileInfo)(nil)
+
+type sizeMaskFileInfo struct {
+	fs.FileInfo
+}
+
+func (s *sizeMaskFileInfo) Size() int64 {
+	return 0
+}
+
+func compareContent(t *testing.T, expected, actual fs.FS, path string) {
+	binExpected, err := fs.ReadFile(expected, path)
+	if err != nil {
+		panic(err)
+	}
+	binActual, err := fs.ReadFile(actual, path)
+	if err != nil {
+		panic(err)
+	}
+
+	if !bytes.Equal(binExpected, binActual) {
+		t.Errorf(
+			`read content not equal
+filename = %q
+expected = %q(%d)
+actual = %q(%d)
+
+`,
+			path,
+			ellipsis(binExpected), len(binExpected),
+			ellipsis(binActual), len(binActual),
+		)
 	}
 }
