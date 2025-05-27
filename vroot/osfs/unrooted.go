@@ -1,4 +1,4 @@
-package vroot
+package osfs
 
 import (
 	"io/fs"
@@ -116,11 +116,11 @@ func (u *Unrooted) Lchown(name string, uid int, gid int) error {
 func (u *Unrooted) Link(oldname string, newname string) error {
 	oldPath, err := u.resolvePath(oldname)
 	if err != nil {
-		return wrapper.LinkErr(oldname, newname, err)
+		return wrapper.LinkErr("link", oldname, newname, err)
 	}
 	newPath, err := u.resolvePath(newname)
 	if err != nil {
-		return wrapper.LinkErr(oldname, newname, err)
+		return wrapper.LinkErr("link", oldname, newname, err)
 	}
 	return os.Link(oldPath, newPath)
 }
@@ -224,11 +224,11 @@ func (u *Unrooted) RemoveAll(name string) error {
 func (u *Unrooted) Rename(oldname string, newname string) error {
 	oldPath, err := u.resolvePath(oldname)
 	if err != nil {
-		return wrapper.LinkErr(oldname, newname, err)
+		return wrapper.LinkErr("rename", oldname, newname, err)
 	}
 	newPath, err := u.resolvePath(newname)
 	if err != nil {
-		return wrapper.LinkErr(oldname, newname, err)
+		return wrapper.LinkErr("rename", oldname, newname, err)
 	}
 	return os.Rename(oldPath, newPath)
 }
@@ -244,7 +244,7 @@ func (u *Unrooted) Stat(name string) (fs.FileInfo, error) {
 func (u *Unrooted) Symlink(oldname string, newname string) error {
 	newPath, err := u.resolvePath(newname)
 	if err != nil {
-		return wrapper.LinkErr(oldname, newname, err)
+		return wrapper.LinkErr("symlink", oldname, newname, err)
 	}
 	return os.Symlink(oldname, newPath)
 }

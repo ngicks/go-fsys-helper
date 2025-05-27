@@ -18,16 +18,16 @@ func PathErr(op, path string, err error) error {
 	return &fs.PathError{Op: op, Path: path, Err: err}
 }
 
-func LinkErr(old, new string, err error) error {
+func LinkErr(op, old, new string, err error) error {
 	if err == nil {
 		return nil
 	}
 	linkErr, ok := err.(*os.LinkError)
 	if ok {
-		linkErr.Op = "link"
+		linkErr.Op = op
 		linkErr.Old = old
 		linkErr.New = new
 		return err
 	}
-	return &os.LinkError{Op: "link", Old: old, New: new, Err: err}
+	return &os.LinkError{Op: op, Old: old, New: new, Err: err}
 }

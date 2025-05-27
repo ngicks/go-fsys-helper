@@ -2,7 +2,6 @@ package vroot
 
 import (
 	"errors"
-	"io"
 	"io/fs"
 	"time"
 )
@@ -25,6 +24,9 @@ type Fs interface {
 	Chmod(name string, mode fs.FileMode) error
 	Chown(name string, uid int, gid int) error
 	Chtimes(name string, atime time.Time, mtime time.Time) error
+	// Close closes Fs.
+	// Callers should not use Fs after return of this method but
+	// it is still possible that the method is just a no-op.
 	Close() error
 	Create(name string) (File, error)
 	Lchown(name string, uid int, gid int) error
@@ -75,7 +77,10 @@ type File interface {
 	Read(b []byte) (n int, err error)
 	ReadAt(b []byte, off int64) (n int, err error)
 	ReadDir(n int) ([]fs.DirEntry, error)
-	ReadFrom(r io.Reader) (n int64, err error)
+
+	// File might implement ReaderFrom but is not necessary.
+	// ReadFrom(r io.Reader) (n int64, err error)
+
 	Readdir(n int) ([]fs.FileInfo, error)
 	Readdirnames(n int) (names []string, err error)
 	Seek(offset int64, whence int) (ret int64, err error)
@@ -93,5 +98,7 @@ type File interface {
 	Write(b []byte) (n int, err error)
 	WriteAt(b []byte, off int64) (n int, err error)
 	WriteString(s string) (n int, err error)
-	WriteTo(w io.Writer) (n int64, err error)
+
+	// File might implement WriterTo but is not necessary.
+	// WriteTo(w io.Writer) (n int64, err error)
 }

@@ -1,4 +1,4 @@
-package vroot
+package osfs
 
 import (
 	"io/fs"
