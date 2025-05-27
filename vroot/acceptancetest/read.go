@@ -1,6 +1,7 @@
 package acceptancetest
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -9,103 +10,6 @@ import (
 
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
-
-// call every write methods, e.g. Chmod, Chtime, OpenFile with [os.O_RDWR], Create, etc.
-// Also call every write methods on vroot.File
-//
-// All write operations must succeeds if they should.
-func write(t *testing.T, fsys vroot.Fs) {
-	// Test filesystem-level write operations
-
-	// Create a new file
-	f, err := fsys.Create("test_write.txt")
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	defer f.Close()
-
-	// Write to the file
-	content := "test content"
-	n, err := f.Write([]byte(content))
-	if err != nil {
-		t.Fatalf("Write failed: %v", err)
-	}
-	if n != len(content) {
-		t.Fatalf("Write wrote %d bytes, expected %d", n, len(content))
-	}
-
-	// Test file-level write operations
-	err = f.Chmod(0o644)
-	if err != nil {
-		t.Fatalf("File.Chmod failed: %v", err)
-	}
-
-	// Close the file and reopen for more tests
-	f.Close()
-
-	// Test OpenFile with write flags
-	f2, err := fsys.OpenFile("test_write2.txt", os.O_RDWR|os.O_CREATE, 0o644)
-	if err != nil {
-		t.Fatalf("OpenFile with O_RDWR failed: %v", err)
-	}
-	defer f2.Close()
-
-	// Write using WriteString
-	n2, err := f2.WriteString("test string")
-	if err != nil {
-		t.Fatalf("WriteString failed: %v", err)
-	}
-	if n2 != len("test string") {
-		t.Fatalf("WriteString wrote %d bytes, expected %d", n2, len("test string"))
-	}
-
-	// Test Truncate
-	err = f2.Truncate(4)
-	if err != nil {
-		t.Fatalf("Truncate failed: %v", err)
-	}
-
-	// Test filesystem-level operations
-	err = fsys.Chmod("test_write.txt", 0o755)
-	if err != nil {
-		t.Fatalf("Chmod failed: %v", err)
-	}
-
-	err = fsys.Chtimes("test_write.txt", time.Now(), time.Now())
-	if err != nil {
-		t.Fatalf("Chtimes failed: %v", err)
-	}
-
-	// Test Mkdir
-	err = fsys.Mkdir("test_dir", 0o755)
-	if err != nil {
-		t.Fatalf("Mkdir failed: %v", err)
-	}
-
-	// Test MkdirAll
-	err = fsys.MkdirAll("test_deep/nested/dir", 0o755)
-	if err != nil {
-		t.Fatalf("MkdirAll failed: %v", err)
-	}
-
-	// Test Symlink (create a symlink that doesn't escape)
-	err = fsys.Symlink("test_write.txt", "test_symlink")
-	if err != nil {
-		t.Fatalf("Symlink failed: %v", err)
-	}
-
-	// Test Link (hard link)
-	err = fsys.Link("test_write.txt", "test_hardlink")
-	if err != nil {
-		t.Fatalf("Link failed: %v", err)
-	}
-
-	// Test Rename
-	err = fsys.Rename("test_write2.txt", "test_renamed.txt")
-	if err != nil {
-		t.Fatalf("Rename failed: %v", err)
-	}
-}
 
 // test implementation of vroot.File as regular file.
 // ReadDir* methods error for a regular file.
@@ -282,55 +186,55 @@ func writeFails(t *testing.T, fsys vroot.Fs) {
 
 	// Chmod should fail
 	err = fsys.Chmod("file1.txt", 0o755)
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("Chmod should have failed on read-only filesystem")
 	}
 
 	// Chtimes should fail
 	err = fsys.Chtimes("file1.txt", time.Now(), time.Now())
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("Chtimes should have failed on read-only filesystem")
 	}
 
 	// Mkdir should fail
 	err = fsys.Mkdir("new_dir", 0o755)
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("Mkdir should have failed on read-only filesystem")
 	}
 
 	// MkdirAll should fail
 	err = fsys.MkdirAll("new/deep/dir", 0o755)
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("MkdirAll should have failed on read-only filesystem")
 	}
 
 	// Symlink should fail
 	err = fsys.Symlink("file1.txt", "new_symlink")
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("Symlink should have failed on read-only filesystem")
 	}
 
 	// Link should fail
 	err = fsys.Link("file1.txt", "new_hardlink")
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("Link should have failed on read-only filesystem")
 	}
 
 	// Remove should fail
 	err = fsys.Remove("file1.txt")
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("Remove should have failed on read-only filesystem")
 	}
 
 	// RemoveAll should fail
 	err = fsys.RemoveAll("subdir")
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("RemoveAll should have failed on read-only filesystem")
 	}
 
 	// Rename should fail
 	err = fsys.Rename("file1.txt", "renamed.txt")
-	if err == nil {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Error("Rename should have failed on read-only filesystem")
 	}
 
