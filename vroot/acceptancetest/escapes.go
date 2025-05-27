@@ -2,21 +2,25 @@ package acceptancetest
 
 import (
 	"errors"
+	"io/fs"
+	"slices"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
+var escapingSymlinks = []string{ // pairs of link name and target.
+	"symlink_escapes", "../../outside/outside_file.txt",
+	"symlink_escapes_dir", "../../outside/dir",
+	"subdir/symlink_upward_escapes", "../symlink_escapes",
+}
+
 // test symlink resolusion fails if it escapes the root.
 // call Open or similar methods and check if it fails with [vroot.ErrPathEscapes]
 func followSymlinkFailsForEscapes(t *testing.T, rooted vroot.Rooted) {
-	escapingSymlinks := []string{
-		"symlink_escapes",               // -> ../../outside/outside_file.txt
-		"symlink_escapes_dir",           // -> ../../outside/dir
-		"subdir/symlink_upward_escapes", // -> ../symlink_escapes
-	}
-
-	for _, linkName := range escapingSymlinks {
+	for linkNameAndTarget := range slices.Chunk(escapingSymlinks, 2) {
+		linkName := linkNameAndTarget[0]
+		expectedTarget := linkNameAndTarget[1]
 		t.Run(linkName, func(t *testing.T) {
 			// Test Open should fail with ErrPathEscapes
 			_, err := rooted.Open(linkName)
@@ -53,7 +57,7 @@ func followSymlinkFailsForEscapes(t *testing.T, rooted vroot.Rooted) {
 			if err != nil {
 				t.Fatalf("Lstat %q should work: %v", linkName, err)
 			}
-			if info.Mode()&0o777777 == 0 { // fs.ModeSymlink
+			if info.Mode()&fs.ModeSymlink == 0 {
 				t.Errorf("Lstat %q should show symlink mode", linkName)
 			}
 
@@ -62,29 +66,25 @@ func followSymlinkFailsForEscapes(t *testing.T, rooted vroot.Rooted) {
 			if err != nil {
 				t.Fatalf("Readlink %q should work: %v", linkName, err)
 			}
-			if target == "" {
-				t.Errorf("Readlink %q returned empty target", linkName)
+			if target != expectedTarget {
+				t.Errorf("Readlink %q returned invalid value: want(%q) != got(%q)", linkName, expectedTarget, target)
 			}
 		})
 	}
 }
 
 // test symlink resolusion escapes are allowed for unrooted.
-func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted) {
-	escapingSymlinks := []string{
-		"symlink_escapes",               // -> ../../outside/outside_file.txt
-		"symlink_escapes_dir",           // -> ../../outside/dir
-		"subdir/symlink_upward_escapes", // -> ../symlink_escapes
-	}
-
-	for _, linkName := range escapingSymlinks {
+func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted, hasOutside bool) {
+	for linkNameAndTarget := range slices.Chunk(escapingSymlinks, 2) {
+		linkName := linkNameAndTarget[0]
+		expectedTarget := linkNameAndTarget[1]
 		t.Run(linkName, func(t *testing.T) {
 			// Test Lstat should work (doesn't follow symlink)
 			info, err := unrooted.Lstat(linkName)
 			if err != nil {
 				t.Fatalf("Lstat %q failed: %v", linkName, err)
 			}
-			if info.Mode()&0o777777 == 0 { // fs.ModeSymlink
+			if info.Mode()&fs.ModeSymlink == 0 {
 				t.Errorf("Lstat %q should show symlink mode", linkName)
 			}
 
@@ -93,29 +93,25 @@ func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted) {
 			if err != nil {
 				t.Fatalf("Readlink %q failed: %v", linkName, err)
 			}
-			if target == "" {
-				t.Errorf("Readlink %q returned empty target", linkName)
+			if target != expectedTarget {
+				t.Errorf("Readlink %q returned invalid value: want(%q) != got(%q)", linkName, expectedTarget, target)
 			}
 
 			// For unrooted, following symlinks that escape should be allowed
 			// Note: This might fail if the target doesn't actually exist
 			// In that case, we expect a "no such file" error, not ErrPathEscapes
 			_, err = unrooted.Open(linkName)
-			if err != nil {
-				// If it fails, it should NOT be ErrPathEscapes
-				if errors.Is(err, vroot.ErrPathEscapes) {
-					t.Errorf("Open %q failed with ErrPathEscapes, but unrooted should allow escapes", linkName)
-				}
-				// Other errors (like file not found) are acceptable
+			if hasOutside && err != nil {
+				t.Errorf("Open %q failed with %v", linkName, err)
+			} else if !hasOutside && err == nil {
+				t.Errorf("Open %q should have failed with error since the fsys does not have outside", linkName)
 			}
 
 			_, err = unrooted.Stat(linkName)
-			if err != nil {
-				// If it fails, it should NOT be ErrPathEscapes
-				if errors.Is(err, vroot.ErrPathEscapes) {
-					t.Errorf("Stat %q failed with ErrPathEscapes, but unrooted should allow escapes", linkName)
-				}
-				// Other errors (like file not found) are acceptable
+			if hasOutside && err != nil {
+				t.Errorf("Stat %q failed with %v", linkName, err)
+			} else if !hasOutside && err == nil {
+				t.Errorf("Stat %q should have failed with error since the fsys does not have outside", linkName)
 			}
 		})
 	}

@@ -175,7 +175,7 @@ func UnrootedReadOnly(t *testing.T, unrooted vroot.Unrooted, hasOutside bool) {
 		followSymlink(t, unrooted)
 	})
 	t.Run("follow symlink fails for escapes", func(t *testing.T) {
-		followSymlinkAllowedForEscapes(t, unrooted)
+		followSymlinkAllowedForEscapes(t, unrooted, hasOutside)
 	})
 	t.Run("path traversal fails", func(t *testing.T) {
 		pathTraversalFails(t, unrooted)
@@ -207,7 +207,7 @@ func UnrootedReadWrite(t *testing.T, unrooted vroot.Unrooted, hasOutside bool) {
 		followSymlink(t, unrooted)
 	})
 	t.Run("follow symlink allowed for escapes", func(t *testing.T) {
-		followSymlinkAllowedForEscapes(t, unrooted)
+		followSymlinkAllowedForEscapes(t, unrooted, hasOutside)
 	})
 	t.Run("path traversal fails", func(t *testing.T) {
 		pathTraversalFails(t, unrooted)

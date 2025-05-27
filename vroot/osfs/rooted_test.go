@@ -10,12 +10,12 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 )
 
-func makeFsys(tempDir string, isReadonly bool) {
+func makeFsys(tempDir string, readable, writable bool) {
 	for _, txt := range acceptancetest.RootFsys {
-		if !isReadonly && strings.HasPrefix(txt, "root/readable") {
+		if !readable && strings.HasPrefix(txt, "root/readable") {
 			continue
 		}
-		if isReadonly && strings.HasPrefix(txt, "root/writable") {
+		if !writable && strings.HasPrefix(txt, "root/writable") {
 			continue
 		}
 
@@ -48,7 +48,7 @@ func makeFsys(tempDir string, isReadonly bool) {
 func TestRooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	makeFsys(tempDir, false)
+	makeFsys(tempDir, false, true)
 	r, err := NewRooted(filepath.Join(tempDir, "root", "writable"))
 	if err != nil {
 		panic(err)
