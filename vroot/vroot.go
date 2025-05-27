@@ -7,8 +7,20 @@ import (
 	"time"
 )
 
-var ErrPathEscapes = errors.New("path escapes from parent")
+var (
+	// ErrPathEscapes is returned from [Fs] implementations
+	// if given path escapes from the root.
+	ErrPathEscapes = errors.New("path escapes from parent")
+	// ErrOpNotSupported is returned from [Fs] implementations
+	// if some method is not supported by the implementation.
+	// The implementation still functional even without
+	// specialized methods like ReadAt/WriteAt.
+	// Basic operations like Fs.Open, File.Read must still be supported to be a legit
+	// implementor.
+	ErrOpNotSupported = errors.New("op not supported")
+)
 
+// Fs represents capablities [*os.Root] has as an interface.
 type Fs interface {
 	Chmod(name string, mode fs.FileMode) error
 	Chown(name string, uid int, gid int) error
@@ -32,17 +44,24 @@ type Fs interface {
 	Symlink(oldname string, newname string) error
 }
 
+// Unrooted is like [Rooted] but allow escaping root by sysmlink.
+// Path traversals are still not allowed.
 type Unrooted interface {
 	Fs
 	Unrooted()
 	OpenUnrooted(name string) (Unrooted, error)
 }
 
+// Rooted indicates the implementation is rooted,
+// which means escaping root by path traversal or symlink
+// is not allowed.
 type Rooted interface {
 	Fs
 	Rooted()
 }
 
+// File is basically same as [*os.File]
+// but some system dependent methods are removed.
 type File interface {
 	// Chdir() error
 
@@ -50,7 +69,7 @@ type File interface {
 	Chown(uid int, gid int) error
 	Close() error
 
-	//	Fd() uintptr
+	// Fd() uintptr
 
 	Name() string
 	Read(b []byte) (n int, err error)
@@ -68,7 +87,7 @@ type File interface {
 	Stat() (fs.FileInfo, error)
 	Sync() error
 
-	//	SyscallConn() (syscall.RawConn, error)
+	// SyscallConn() (syscall.RawConn, error)
 
 	Truncate(size int64) error
 	Write(b []byte) (n int, err error)

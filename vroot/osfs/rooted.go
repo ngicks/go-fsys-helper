@@ -10,15 +10,21 @@ import (
 
 var _ vroot.Rooted = (*Rooted)(nil)
 
-// Rooted provides secure file system access using os.Rooted.
-// It prevents both path traversal and symlink escape attacks.
+// Rooted adapts [*os.Root] to [vroot.Rooted].
+//
+// Zero Rooted is invalid and must be initialied by [NewRooted].
 type Rooted struct {
 	root *os.Root
 }
 
-// NewRooted creates a new Rooted instance using os.Root for the given directory.
-// This provides the highest level of security by preventing both path traversal
-// and symlink escapes.
+// WrapRoot returns Rooted wrapping opened [*os.Root].
+func WrapRoot(root *os.Root) *Rooted {
+	return &Rooted{
+		root: root,
+	}
+}
+
+// NewRooted opens a new Rooted on path.
 func NewRooted(path string) (*Rooted, error) {
 	root, err := os.OpenRoot(path)
 	if err != nil {

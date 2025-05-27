@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
@@ -12,14 +13,31 @@ import (
 
 var _ vroot.Unrooted = (*Unrooted)(nil)
 
+// Unrooted exposes a file system under given path as [vroot.Unrooted].
+// Like [*os.Root] implementation on js/wasm,
+// Unrooted is vulnerable to TOCTOU(time of check, time of use) attacks.
+//
+// Zero value of Unrooted is invalid and must be initialized by [NewUnrooted].
 type Unrooted struct {
 	root string // absolute path to the root directory
 }
 
-func NewUnrooted(root string) (*Unrooted, error) {
-	absRoot, err := filepath.Abs(root)
+// NewUnrooted opens a new Unrooted on path.
+//
+// The path must exist before NewUnrooted is called.
+// It also must be a directory.
+func NewUnrooted(path string) (*Unrooted, error) {
+	absRoot, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
+	}
+
+	s, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !s.IsDir() {
+		return nil, wrapper.PathErr("stat", absRoot, syscall.ENOTDIR)
 	}
 
 	return &Unrooted{
