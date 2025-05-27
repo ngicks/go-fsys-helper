@@ -34,16 +34,16 @@ func (r *Rooted) Rooted() {
 }
 
 func swapPathEscapesErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	pathErr, ok := err.(*fs.PathError)
-	if ok && pathErr.Err != nil && pathErr.Err.Error() == vroot.ErrPathEscapes.Error() {
-		pathErr.Err = vroot.ErrPathEscapes
-	}
-	linkErr, ok := err.(*os.LinkError)
-	if ok && linkErr.Err != nil && linkErr.Err.Error() == vroot.ErrPathEscapes.Error() {
-		linkErr.Err = err
+	switch x := err.(type) {
+	case nil:
+	case *fs.PathError:
+		if x.Err != nil && x.Err.Error() == vroot.ErrPathEscapes.Error() {
+			x.Err = vroot.ErrPathEscapes
+		}
+	case *os.LinkError:
+		if x.Err != nil && x.Err.Error() == vroot.ErrPathEscapes.Error() {
+			x.Err = vroot.ErrPathEscapes
+		}
 	}
 	return err
 }
