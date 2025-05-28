@@ -16,5 +16,6 @@ func TestRooted(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	defer r.Close()
 	acceptancetest.RootedReadWrite(t, r)
 }
