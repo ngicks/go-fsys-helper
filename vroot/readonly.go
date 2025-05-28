@@ -51,7 +51,7 @@ func (r *ReadOnlyRooted) Link(oldname string, newname string) error {
 }
 
 func (r *ReadOnlyRooted) Lstat(name string) (fs.FileInfo, error) {
-	return nil, wrapper.PathErr("lstat", name, syscall.EROFS)
+	return r.rooted.Lstat(name)
 }
 
 func (r *ReadOnlyRooted) Mkdir(name string, perm fs.FileMode) error {
@@ -150,7 +150,7 @@ func (r *ReadOnlyUnrooted) Link(oldname string, newname string) error {
 }
 
 func (r *ReadOnlyUnrooted) Lstat(name string) (fs.FileInfo, error) {
-	return nil, wrapper.PathErr("lstat", name, syscall.EROFS)
+	return r.rooted.Lstat(name)
 }
 
 func (r *ReadOnlyUnrooted) Mkdir(name string, perm fs.FileMode) error {
