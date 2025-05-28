@@ -7,8 +7,6 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
-// subroot.go - Complete implementation
-
 // test OpenRoot behavior.
 // call OpenRoot against ./subdir and see now resolving symlink fails because it is now out of vroot.Rooted.
 // test it is still read-only
@@ -39,17 +37,13 @@ func subRootReadOnly(t *testing.T, fsys vroot.Fs) {
 	// Test that accessing parent directory fails (symlink_upward -> ../symlink_inner)
 	// This should now fail because ../symlink_inner is outside the sub-root
 	_, err = subRoot.Open("symlink_upward")
-	if err == nil {
-		t.Error("Open symlink_upward should have failed (escapes sub-root)")
-	} else if !errors.Is(err, vroot.ErrPathEscapes) {
+	if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open symlink_upward failed with %v, expected ErrPathEscapes", err)
 	}
 
 	// Test path traversal from sub-root
 	_, err = subRoot.Open("..")
-	if err == nil {
-		t.Error("Open .. should have failed from sub-root")
-	} else if !errors.Is(err, vroot.ErrPathEscapes) {
+	if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open .. failed with %v, expected ErrPathEscapes", err)
 	}
 }
@@ -85,17 +79,13 @@ func subRootReadWrite(t *testing.T, fsys vroot.Fs) {
 	// Test that accessing parent directory fails (symlink_upward -> ../symlink_inner)
 	// This should now fail because ../symlink_inner is outside the sub-root
 	_, err = subRoot.Open("symlink_upward")
-	if err == nil {
-		t.Error("Open symlink_upward should have failed (escapes sub-root)")
-	} else if !errors.Is(err, vroot.ErrPathEscapes) {
+	if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open symlink_upward failed with %v, expected ErrPathEscapes", err)
 	}
 
 	// Test path traversal from sub-root
 	_, err = subRoot.Open("..")
-	if err == nil {
-		t.Error("Open .. should have failed from sub-root")
-	} else if !errors.Is(err, vroot.ErrPathEscapes) {
+	if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open .. failed with %v, expected ErrPathEscapes", err)
 	}
 }
@@ -131,14 +121,14 @@ func subUnrootedReadOnly(t *testing.T, fsys vroot.Unrooted) {
 	// symlink_upward -> ../symlink_inner should be allowed
 	// Note: This might fail if the target doesn't exist, but should NOT fail with ErrPathEscapes
 	_, err = subUnrooted.Open("symlink_upward")
-	if err != nil && errors.Is(err, vroot.ErrPathEscapes) {
-		t.Error("Open symlink_upward should not fail with ErrPathEscapes in unrooted")
+	if err != nil {
+		t.Errorf("Open symlink_upward should not fail but got %v", err)
 	}
 
 	// Test path traversal from sub-unrooted - should be allowed but might fail if target doesn't exist
 	_, err = subUnrooted.Open("..")
-	if err != nil && errors.Is(err, vroot.ErrPathEscapes) {
-		t.Error("Open .. should not fail with ErrPathEscapes from sub-unrooted")
+	if !errors.Is(err, vroot.ErrPathEscapes) {
+		t.Errorf("Open .. should fail with ErrPathEscapes but got %v", err)
 	}
 }
 
@@ -179,7 +169,6 @@ func subUnrootedReadWrite(t *testing.T, fsys vroot.Fs) {
 
 	// Test that accessing parent directory works (because it's unrooted)
 	// symlink_upward -> ../symlink_inner should be allowed
-	// Note: This might fail if the target doesn't exist, but should NOT fail with ErrPathEscapes
 	_, err = subUnrooted.Open("symlink_upward")
 	if err != nil {
 		t.Errorf("Open symlink_upward should not fail in unrooted: %v", err)

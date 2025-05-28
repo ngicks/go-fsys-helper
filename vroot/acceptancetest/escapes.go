@@ -3,7 +3,9 @@ package acceptancetest
 import (
 	"errors"
 	"io/fs"
+	"path/filepath"
 	"slices"
+	"syscall"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
@@ -55,8 +57,9 @@ func followSymlinkFailsForEscapes(t *testing.T, rooted vroot.Rooted) {
 			// Lstat should work (it doesn't follow the symlink)
 			info, err := rooted.Lstat(linkName)
 			if err != nil {
-				t.Fatalf("Lstat %q should work: %v", linkName, err)
+				t.Errorf("Lstat %q should work: %v", linkName, err)
 			}
+
 			if info.Mode()&fs.ModeSymlink == 0 {
 				t.Errorf("Lstat %q should show symlink mode", linkName)
 			}
@@ -64,8 +67,9 @@ func followSymlinkFailsForEscapes(t *testing.T, rooted vroot.Rooted) {
 			// Readlink should work (it just reads the link target)
 			target, err := rooted.Readlink(linkName)
 			if err != nil {
-				t.Fatalf("Readlink %q should work: %v", linkName, err)
+				t.Errorf("Readlink %q should work: %v", linkName, err)
 			}
+
 			if target != expectedTarget {
 				t.Errorf("Readlink %q returned invalid value: want(%q) != got(%q)", linkName, expectedTarget, target)
 			}
@@ -79,16 +83,14 @@ func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted, hasOu
 		linkName := linkNameAndTarget[0]
 		expectedTarget := linkNameAndTarget[1]
 		t.Run(linkName, func(t *testing.T) {
-			// Test Lstat should work (doesn't follow symlink)
 			info, err := unrooted.Lstat(linkName)
 			if err != nil {
-				t.Fatalf("Lstat %q failed: %v", linkName, err)
+				t.Errorf("Lstat %q failed: %v", linkName, err)
 			}
 			if info.Mode()&fs.ModeSymlink == 0 {
 				t.Errorf("Lstat %q should show symlink mode", linkName)
 			}
 
-			// Test Readlink should work
 			target, err := unrooted.Readlink(linkName)
 			if err != nil {
 				t.Fatalf("Readlink %q failed: %v", linkName, err)
@@ -118,8 +120,8 @@ func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted, hasOu
 }
 
 // test path traversal.
-// It fails with vroot.ErrPathEscapes
-func pathTraversalFails(t *testing.T, fsys vroot.Fs) {
+// It fails with vroot.ErrPathEscapes or for read-only implementations with EROFS/EPERM
+func pathTraversalFails(t *testing.T, fsys vroot.Fs, isReadOnly bool) {
 	traversalPaths := []string{
 		"..",
 		"../..",
@@ -154,27 +156,31 @@ func pathTraversalFails(t *testing.T, fsys vroot.Fs) {
 
 			// Test Lstat
 			_, err = fsys.Lstat(path)
-			if err == nil {
-				t.Errorf("Lstat %q should have failed with path traversal error", path)
-				return
-			}
 			if !errors.Is(err, vroot.ErrPathEscapes) {
 				t.Errorf("Lstat %q failed with %v, expected ErrPathEscapes", path, err)
 			}
 
 			// Test other operations that should also fail
-			err = fsys.Mkdir(path+"/newdir", 0o755)
+			err = fsys.Mkdir(filepath.Join(path, "newdir"), 0o755)
 			if err == nil {
 				t.Errorf("Mkdir %q should have failed with path traversal error", path)
 			} else if !errors.Is(err, vroot.ErrPathEscapes) {
-				t.Errorf("Mkdir %q failed with %v, expected ErrPathEscapes", path, err)
+				if isReadOnly && (errors.Is(err, syscall.EROFS) || errors.Is(err, syscall.EPERM)) {
+					// Accept EROFS/EPERM for read-only implementations
+				} else {
+					t.Errorf("Mkdir %q failed with %v, expected ErrPathEscapes", path, err)
+				}
 			}
 
-			err = fsys.Remove(path + "/somefile")
+			err = fsys.Remove(filepath.Join(path, "somefile"))
 			if err == nil {
 				t.Errorf("Remove %q should have failed with path traversal error", path)
 			} else if !errors.Is(err, vroot.ErrPathEscapes) {
-				t.Errorf("Remove %q failed with %v, expected ErrPathEscapes", path, err)
+				if isReadOnly && (errors.Is(err, syscall.EROFS) || errors.Is(err, syscall.EPERM)) {
+					// Accept EROFS/EPERM for read-only implementations
+				} else {
+					t.Errorf("Remove %q failed with %v, expected ErrPathEscapes", path, err)
+				}
 			}
 		})
 	}

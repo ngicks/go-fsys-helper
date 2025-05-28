@@ -94,7 +94,7 @@ func RootedReadOnly(t *testing.T, rooted vroot.Rooted) {
 		followSymlinkFailsForEscapes(t, rooted)
 	})
 	t.Run("path traversal fails", func(t *testing.T) {
-		pathTraversalFails(t, rooted)
+		pathTraversalFails(t, rooted, true)
 	})
 	t.Run("sub root", func(t *testing.T) {
 		subRootReadOnly(t, rooted)
@@ -151,7 +151,7 @@ func RootedReadWrite(t *testing.T, rooted vroot.Rooted) {
 		followSymlinkFailsForEscapes(t, rooted)
 	})
 	t.Run("path traversal fails", func(t *testing.T) {
-		pathTraversalFails(t, rooted)
+		pathTraversalFails(t, rooted, false)
 	})
 	t.Run("sub root", func(t *testing.T) {
 		subRootReadWrite(t, rooted)
@@ -178,7 +178,7 @@ func UnrootedReadOnly(t *testing.T, unrooted vroot.Unrooted, hasOutside bool) {
 		followSymlinkAllowedForEscapes(t, unrooted, hasOutside)
 	})
 	t.Run("path traversal fails", func(t *testing.T) {
-		pathTraversalFails(t, unrooted)
+		pathTraversalFails(t, unrooted, true)
 	})
 	t.Run("sub root", func(t *testing.T) {
 		subRootReadOnly(t, unrooted)
@@ -210,7 +210,7 @@ func UnrootedReadWrite(t *testing.T, unrooted vroot.Unrooted, hasOutside bool) {
 		followSymlinkAllowedForEscapes(t, unrooted, hasOutside)
 	})
 	t.Run("path traversal fails", func(t *testing.T) {
-		pathTraversalFails(t, unrooted)
+		pathTraversalFails(t, unrooted, false)
 	})
 	t.Run("sub root", func(t *testing.T) {
 		subRootReadWrite(t, unrooted)
