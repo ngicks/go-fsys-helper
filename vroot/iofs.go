@@ -1,7 +1,6 @@
 package vroot
 
 import (
-	"io"
 	"io/fs"
 	"path/filepath"
 )
@@ -32,21 +31,11 @@ func (fsys *IoFsRooted) Open(name string) (fs.File, error) {
 }
 
 func (fsys *IoFsRooted) ReadDir(name string) ([]fs.DirEntry, error) {
-	f, err := fsys.root.Open(filepath.FromSlash(name))
-	if err != nil {
-		return []fs.DirEntry{}, err
-	}
-	defer f.Close()
-	return f.ReadDir(-1)
+	return ReadDir(fsys.root, name)
 }
 
 func (fsys *IoFsRooted) ReadFile(name string) ([]byte, error) {
-	f, err := fsys.root.Open(filepath.FromSlash(name))
-	if err != nil {
-		return []byte{}, err
-	}
-	defer f.Close()
-	return io.ReadAll(f)
+	return ReadFile(fsys.root, name)
 }
 
 func (fsys *IoFsRooted) ReadLink(name string) (string, error) {
@@ -86,21 +75,11 @@ func (fsys *IoFsUnrooted) Open(name string) (fs.File, error) {
 }
 
 func (fsys *IoFsUnrooted) ReadDir(name string) ([]fs.DirEntry, error) {
-	f, err := fsys.root.Open(filepath.FromSlash(name))
-	if err != nil {
-		return []fs.DirEntry{}, err
-	}
-	defer f.Close()
-	return f.ReadDir(-1)
+	return ReadDir(fsys.root, name)
 }
 
 func (fsys *IoFsUnrooted) ReadFile(name string) ([]byte, error) {
-	f, err := fsys.root.Open(filepath.FromSlash(name))
-	if err != nil {
-		return []byte{}, err
-	}
-	defer f.Close()
-	return io.ReadAll(f)
+	return ReadFile(fsys.root, name)
 }
 
 func (fsys *IoFsUnrooted) ReadLink(name string) (string, error) {
