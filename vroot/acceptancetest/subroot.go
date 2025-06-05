@@ -119,7 +119,6 @@ func subUnrootedReadOnly(t *testing.T, fsys vroot.Unrooted) {
 
 	// Test that accessing parent directory works (because it's unrooted)
 	// symlink_upward -> ../symlink_inner should be allowed
-	// Note: This might fail if the target doesn't exist, but should NOT fail with ErrPathEscapes
 	_, err = subUnrooted.Open("symlink_upward")
 	if err != nil {
 		t.Errorf("Open symlink_upward should not fail but got %v", err)

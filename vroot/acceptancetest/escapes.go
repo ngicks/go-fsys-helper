@@ -105,14 +105,14 @@ func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted, hasOu
 			_, err = unrooted.Open(linkName)
 			if hasOutside && err != nil {
 				t.Errorf("Open %q failed with %v", linkName, err)
-			} else if !hasOutside && err == nil {
+			} else if !hasOutside && !errors.Is(err, fs.ErrNotExist) {
 				t.Errorf("Open %q should have failed with error since the fsys does not have outside", linkName)
 			}
 
 			_, err = unrooted.Stat(linkName)
 			if hasOutside && err != nil {
 				t.Errorf("Stat %q failed with %v", linkName, err)
-			} else if !hasOutside && err == nil {
+			} else if !hasOutside && !errors.Is(err, fs.ErrNotExist) {
 				t.Errorf("Stat %q should have failed with error since the fsys does not have outside", linkName)
 			}
 		})

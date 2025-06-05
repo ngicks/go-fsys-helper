@@ -73,9 +73,8 @@ var RootFsys = []string{
 // You can prepare up fsys by using [RootFsys].
 //
 // Permissions are not strictly considered since some system widens or narrows them.
-// rooted must be rooted at root/
 //
-// [vroot.Rooted] must prohibit path traversal to upward or symlin escape from root.
+// [vroot.Rooted] must prohibit path traversal to upward or symlink escape from root.
 // When escapes fail methods must return [vroot.ErrPathEscapes].
 func RootedReadOnly(t *testing.T, rooted vroot.Rooted) {
 	t.Run("read file", func(t *testing.T) {
@@ -124,10 +123,9 @@ func RootedReadOnly(t *testing.T, rooted vroot.Rooted) {
 //   - :  are file. Its content follows after a white space.
 //
 // The test will try to write to both under outside/ root/writable/.
-// The test will writes content and eventually under root/writable/ populated like under root/readable described [RootedReadOnly].
+// The test will writes content and eventually it will populats under root/writable/ like under root/readable described [RootedReadOnly].
 //
 // Permissions are not strictly considered since some system widens or narrows them.
-// rooted must be rooted at root/
 //
 // Some tests try to create symlinks to ./outside under ./root/.
 // [vroot.Rooted] must prohibit path traversal to upward or symlin escape from root.
