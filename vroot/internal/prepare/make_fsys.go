@@ -1,6 +1,7 @@
 package prepare
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,28 +19,29 @@ func MakeFsys(tempDir string, readable, writable bool) {
 			continue
 		}
 
-		switch {
-		case strings.HasSuffix(txt, "/"):
-			err := os.Mkdir(filepath.Join(tempDir, filepath.FromSlash(txt)), fs.ModePerm)
-			if err != nil {
-				panic(err)
-			}
-		case strings.Contains(txt, ": "):
-			idx := strings.Index(txt, ": ")
-			path := txt[:idx]
-			content := txt[idx+len(": "):]
-			err := os.WriteFile(filepath.Join(tempDir, path), []byte(content), fs.ModePerm)
-			if err != nil {
-				panic(err)
-			}
-		case strings.Contains(txt, " -> "):
-			idx := strings.Index(txt, " -> ")
-			path := txt[:idx]
-			target := txt[idx+len(" -> "):]
-			err := os.Symlink(target, filepath.Join(tempDir, path))
-			if err != nil {
-				panic(err)
-			}
+		if err := ExecuteLine(tempDir, txt); err != nil {
+			panic(err)
 		}
 	}
+}
+
+func ExecuteLine(baseDir, txt string) error {
+	switch {
+	case strings.HasSuffix(txt, "/"):
+		err := os.Mkdir(filepath.Join(baseDir, filepath.FromSlash(txt)), fs.ModePerm)
+		return err
+	case strings.Contains(txt, ": "):
+		idx := strings.Index(txt, ": ")
+		path := txt[:idx]
+		content := txt[idx+len(": "):]
+		err := os.WriteFile(filepath.Join(baseDir, path), []byte(content), fs.ModePerm)
+		return err
+	case strings.Contains(txt, " -> "):
+		idx := strings.Index(txt, " -> ")
+		path := txt[:idx]
+		target := txt[idx+len(" -> "):]
+		err := os.Symlink(target, filepath.Join(baseDir, path))
+		return err
+	}
+	return fmt.Errorf("unknown line %q", txt)
 }
