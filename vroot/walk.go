@@ -1,6 +1,7 @@
 package vroot
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -33,11 +34,15 @@ type walkState struct {
 
 // resolveSymlinkPath resolves a symlink target to a real path relative to root
 func resolveSymlinkPath(fsys Fs, linkPath string) (string, error) {
+	linkPath = filepath.Clean(linkPath)
+	prev := ""
 	for {
 		target, err := fsys.Readlink(linkPath)
 		if err != nil {
 			return "", err
 		}
+
+		target = filepath.Clean(target)
 
 		linkResolved := target
 		if !filepath.IsAbs(target) {
@@ -52,7 +57,10 @@ func resolveSymlinkPath(fsys Fs, linkPath string) (string, error) {
 			return linkResolved, nil
 		}
 
-		// TODO: detect loop and break
+		if prev == linkResolved {
+			return "", fmt.Errorf("loop detected: symlinks targetting each other")
+		}
+		prev = linkPath
 		linkPath = linkResolved
 	}
 }
@@ -73,7 +81,7 @@ func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
 	if err == SkipDir || err == SkipAll {
 		return nil
 	}
-	return nil
+	return err
 }
 
 func walkDir(

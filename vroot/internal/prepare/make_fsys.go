@@ -25,6 +25,16 @@ func MakeFsys(tempDir string, readable, writable bool) {
 	}
 }
 
+func ExecuteLines(baseDir string, lines ...string) error {
+	for _, line := range lines {
+		err := ExecuteLine(baseDir, line)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ExecuteLine(baseDir, txt string) error {
 	switch {
 	case strings.HasSuffix(txt, "/"):

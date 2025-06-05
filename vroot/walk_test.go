@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
@@ -102,4 +103,32 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			t.Fatalf("not equal:\nexpected: %#v\nactual  :%#v", expected, seen)
 		}
 	})
+}
+
+func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
+	tempDir := t.TempDir()
+	err := prepare.ExecuteLines(
+		tempDir,
+		"root/",
+		"root/a -> b",
+		"root/b -> a",
+	)
+	if err != nil {
+		panic(err)
+	}
+	r, err := osfs.NewRooted(filepath.Join(tempDir, "root"))
+	if err != nil {
+		panic(err)
+	}
+	err = vroot.WalkDir(
+		r,
+		".",
+		&vroot.WalkOption{ResolveSymlink: true},
+		func(path, realPath string, d fs.FileInfo, err error) error {
+			return err
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "loop detected") {
+		t.Fatalf("shoud be \"loop detected\" error but is %v", err)
+	}
 }
