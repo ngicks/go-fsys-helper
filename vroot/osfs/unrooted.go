@@ -110,6 +110,9 @@ func (u *Unrooted) Lchown(name string, uid int, gid int) error {
 	if err != nil {
 		return wrapper.PathErr("", name, err)
 	}
+	if u.root == path { // *os.Root resolves the given root, mimicking.
+		return os.Chown(path, uid, gid)
+	}
 	return os.Lchown(path, uid, gid)
 }
 
@@ -129,6 +132,9 @@ func (u *Unrooted) Lstat(name string) (fs.FileInfo, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
 		return nil, wrapper.PathErr("lstat", name, err)
+	}
+	if u.root == path {
+		return os.Stat(path)
 	}
 	return os.Lstat(path)
 }
@@ -201,6 +207,9 @@ func (u *Unrooted) Readlink(name string) (string, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
 		return "", wrapper.PathErr("link", name, err)
+	}
+	if u.root == path {
+		return "", wrapper.PathErr("readlink", path, syscall.EINVAL)
 	}
 	return os.Readlink(path)
 }
