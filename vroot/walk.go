@@ -94,7 +94,14 @@ func walkDir(
 ) error {
 	realPath := path
 	if opt.ResolveSymlink && info.Mode()&os.ModeSymlink != 0 {
-		realPath_, err := resolveSymlinkPath(fsys, path)
+		var (
+			err       error
+			realPath_ string
+		)
+		info, err = fsys.Stat(path)
+		if err == nil {
+			realPath_, err = resolveSymlinkPath(fsys, path)
+		}
 		if err != nil {
 			return fn(path, realPath, info, err)
 		}
@@ -108,7 +115,7 @@ func walkDir(
 		return err
 	}
 
-	dirs, err := ReadDir(fsys, realPath)
+	dirs, err := ReadDir(fsys, path)
 	if err != nil {
 		err = fn(path, realPath, nil, err)
 		if err != nil {
@@ -128,7 +135,7 @@ func walkDir(
 			}
 			return err
 		}
-		err = walkDir(fsys, filepath.Join(realPath, dir.Name()), info, state, opt, fn)
+		err = walkDir(fsys, filepath.Join(path, dir.Name()), info, state, opt, fn)
 		if err != nil {
 			if err == SkipDir {
 				break
