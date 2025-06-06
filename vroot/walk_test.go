@@ -18,6 +18,12 @@ type pathSeen struct {
 	realPath string
 }
 
+func assertPathSeen(t *testing.T, expected, actual []pathSeen) {
+	if !slices.Equal(expected, actual) {
+		t.Fatalf("not equal:\nexpected: %#v\nactual  :%#v", expected, actual)
+	}
+}
+
 func TestWalk_Rooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
@@ -36,9 +42,6 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			nil,
 			func(path, realPath string, d fs.FileInfo, err error) error {
 				if err != nil {
-					if errors.Is(err, vroot.ErrPathEscapes) {
-						return nil
-					}
 					return err
 				}
 				seen = append(seen, pathSeen{path, realPath})
@@ -63,9 +66,7 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			{path: "file2.txt", realPath: "file2.txt"},
 			{path: "symlink_escapes", realPath: "symlink_escapes"},
 		}
-		if !slices.Equal(expected, seen) {
-			t.Fatalf("not equal:\nexpected: %#v\nactual  :%#v", expected, seen)
-		}
+		assertPathSeen(t, expected, seen)
 	})
 	t.Run("symlink follow", func(t *testing.T) {
 		var seen []pathSeen
@@ -76,6 +77,14 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			func(path, realPath string, d fs.FileInfo, err error) error {
 				if err != nil {
 					if errors.Is(err, vroot.ErrPathEscapes) {
+						if !slices.Contains([]string{
+							"subdir/symlink_upward_escapes",
+							"symlink_inner_dir/symlink_upward_escapes",
+							"symlink_escapes",
+							"symlink_escapes_dir",
+						}, path) {
+							t.Errorf("error for path %q is %v but path is not escaping", path, err)
+						}
 						return nil
 					}
 					return err
@@ -91,6 +100,10 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			{path: ".", realPath: "."},
 			{path: "file1.txt", realPath: "file1.txt"},
 			{path: "symlink_inner_dir", realPath: "subdir"},
+			{path: "symlink_inner_dir/nested_file.txt", realPath: "subdir/nested_file.txt"},
+			{path: "symlink_inner_dir/double_nested", realPath: "subdir/double_nested"},
+			{path: "symlink_inner_dir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{path: "symlink_inner_dir/symlink_upward", realPath: "file1.txt"},
 			{path: "symlink_inner", realPath: "file1.txt"},
 			{path: "subdir", realPath: "subdir"},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
@@ -99,9 +112,7 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			{path: "subdir/symlink_upward", realPath: "file1.txt"},
 			{path: "file2.txt", realPath: "file2.txt"},
 		}
-		if !slices.Equal(expected, seen) {
-			t.Fatalf("not equal:\nexpected: %#v\nactual  :%#v", expected, seen)
-		}
+		assertPathSeen(t, expected, seen)
 	})
 }
 
@@ -128,7 +139,139 @@ func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
 			return err
 		},
 	)
-	if err == nil || !strings.Contains(err.Error(), "loop detected") {
+	if err == nil || !strings.Contains(err.Error(), "too many levels of symbolic links") {
 		t.Fatalf("shoud be \"loop detected\" error but is %v", err)
+	}
+}
+
+func TestWalk_Rooted_loop(t *testing.T) {
+	type testCase struct {
+		name             func() string
+		fsysStructure    []string
+		expectedPathSeen []pathSeen
+	}
+	testCases := []testCase{
+		{
+			func() string {
+				return "back to parent"
+			},
+			[]string{
+				"root/",
+				"root/a/",
+				"root/a/b/",
+				"root/a/b/c -> ../../a",
+				"root/a/b/d/",
+				"root/a/b/f/",
+			},
+			[]pathSeen{
+				{path: ".", realPath: "."},
+				{path: "a", realPath: "a"},
+				{path: "a/b", realPath: "a/b"},
+				{path: "a/b/d", realPath: "a/b/d"},
+				{path: "a/b/f", realPath: "a/b/f"},
+				{path: "a/b/c", realPath: "a"},
+			},
+		},
+		{
+			func() string {
+				return "indirect loop"
+			},
+			[]string{
+				"root/",
+				"root/a/",
+				"root/a/b/", "root/a/b/b1/", "root/a/b/b2/",
+				"root/a/c/", "root/a/c/c1/", "root/a/c/c2/",
+				"root/a/b/b1/l -> ../../c", "root/a/c/c2/l -> ../../b",
+			},
+			[]pathSeen{
+				{path: ".", realPath: "."},
+				{path: "a", realPath: "a"},
+				{path: "a/b", realPath: "a/b"},
+				{path: "a/b/b1", realPath: "a/b/b1"},
+				{path: "a/b/b1/l", realPath: "a/c"},
+				{path: "a/b/b1/l/c2", realPath: "a/c/c2"},
+				{path: "a/b/b1/l/c2/l", realPath: "a/b"},
+				{path: "a/b/b1/l/c1", realPath: "a/c/c1"},
+				{path: "a/b/b2", realPath: "a/b/b2"},
+				{path: "a/c", realPath: "a/c"},
+				{path: "a/c/c2", realPath: "a/c/c2"},
+				{path: "a/c/c2/l", realPath: "a/b"},
+				{path: "a/c/c2/l/b1", realPath: "a/b/b1"},
+				{path: "a/c/c2/l/b1/l", realPath: "a/c"},
+				{path: "a/c/c2/l/b2", realPath: "a/b/b2"},
+				{path: "a/c/c1", realPath: "a/c/c1"},
+			},
+		},
+		{
+			func() string {
+				return "visited multiple times but no loop"
+			},
+			[]string{
+				"root/",
+				"root/a/",
+				"root/a/b/",
+				"root/a/b/b1/",
+				"root/a/b/b2/",
+				"root/a/c/",
+				"root/a/c/c1 -> ../b",
+				"root/a/c/c2 -> ../b",
+				"root/a/d/",
+				"root/a/d/d1 -> ../c/c2",
+			},
+			[]pathSeen{
+				{path: ".", realPath: "."},
+				{path: "a", realPath: "a"},
+				{path: "a/b", realPath: "a/b"},
+				{path: "a/b/b1", realPath: "a/b/b1"},
+				{path: "a/b/b2", realPath: "a/b/b2"},
+				{path: "a/d", realPath: "a/d"},
+				{path: "a/d/d1", realPath: "a/b"},
+				{path: "a/d/d1/b1", realPath: "a/b/b1"},
+				{path: "a/d/d1/b2", realPath: "a/b/b2"},
+				{path: "a/c", realPath: "a/c"},
+				{path: "a/c/c2", realPath: "a/b"},
+				{path: "a/c/c2/b1", realPath: "a/b/b1"},
+				{path: "a/c/c2/b2", realPath: "a/b/b2"},
+				{path: "a/c/c1", realPath: "a/b"},
+				{path: "a/c/c1/b1", realPath: "a/b/b1"},
+				{path: "a/c/c1/b2", realPath: "a/b/b2"},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name(), func(t *testing.T) {
+			{
+				tempDir := t.TempDir()
+				err := prepare.ExecuteLines(
+					tempDir,
+					tc.fsysStructure...,
+				)
+				if err != nil {
+					panic(err)
+				}
+				r, err := osfs.NewRooted(filepath.Join(tempDir, "root"))
+				if err != nil {
+					panic(err)
+				}
+				var seen []pathSeen
+				err = vroot.WalkDir(
+					r,
+					".",
+					&vroot.WalkOption{ResolveSymlink: true},
+					func(path, realPath string, d fs.FileInfo, err error) error {
+						if err != nil {
+							return err
+						}
+						seen = append(seen, pathSeen{path, realPath})
+						return err
+					},
+				)
+				if err != nil {
+					t.Errorf("WalkDir failed with %v", err)
+				}
+				assertPathSeen(t, tc.expectedPathSeen, seen)
+			}
+		})
 	}
 }

@@ -1,10 +1,12 @@
 package vroot
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
+
+	"github.com/ngicks/go-fsys-helper/vroot/internal/wrapper"
 )
 
 var (
@@ -32,8 +34,8 @@ type walkState struct {
 	visitedInodes map[inode]struct{}
 }
 
-// resolveSymlinkPath resolves a symlink target to a real path relative to root
-func resolveSymlinkPath(fsys Fs, linkPath string) (string, error) {
+// resolveSymlink resolves a symlink using the provided base path for relative targets
+func resolveSymlink(fsys Fs, linkPath, realParentPath string) (string, error) {
 	linkPath = filepath.Clean(linkPath)
 	prev := ""
 	for {
@@ -46,7 +48,16 @@ func resolveSymlinkPath(fsys Fs, linkPath string) (string, error) {
 
 		linkResolved := target
 		if !filepath.IsAbs(target) {
-			linkResolved = filepath.Join(filepath.Dir(linkPath), target)
+			// Resolve relative to the real parent directory where this symlink exists
+			realLinkDir := realParentPath
+			if realParentPath != filepath.Dir(linkPath) {
+				// parentRealPath is the real path of the parent directory
+				realLinkDir = realParentPath
+			} else {
+				realLinkDir = filepath.Dir(linkPath)
+			}
+			linkResolved = filepath.Join(realLinkDir, target)
+			linkResolved = filepath.Clean(linkResolved)
 		}
 
 		info, err := fsys.Lstat(linkResolved)
@@ -58,15 +69,19 @@ func resolveSymlinkPath(fsys Fs, linkPath string) (string, error) {
 		}
 
 		if prev == linkResolved {
-			return "", fmt.Errorf("loop detected: symlinks targetting each other")
+			return "", wrapper.PathErr("statat", linkPath, syscall.ELOOP)
 		}
+
 		prev = linkPath
 		linkPath = linkResolved
+		realParentPath = filepath.Dir(linkResolved)
 	}
 }
 
 func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
-	state := &walkState{}
+	state := &walkState{
+		visitedPaths: make(map[string]struct{}),
+	}
 	if opt == nil {
 		opt = &WalkOption{}
 	}
@@ -76,7 +91,7 @@ func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
 	if err != nil {
 		err = fn(root, root, nil, err)
 	} else {
-		err = walkDir(fsys, root, info, state, opt, fn)
+		err = walkDir(fsys, root, root, info, state, opt, fn)
 	}
 	if err == SkipDir || err == SkipAll {
 		return nil
@@ -87,12 +102,12 @@ func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
 func walkDir(
 	fsys Fs,
 	path string,
+	realPath string,
 	info fs.FileInfo,
 	state *walkState,
 	opt *WalkOption,
 	fn WalkDirFunc,
 ) error {
-	realPath := path
 	if opt.ResolveSymlink && info.Mode()&os.ModeSymlink != 0 {
 		var (
 			err       error
@@ -100,19 +115,30 @@ func walkDir(
 		)
 		info, err = fsys.Stat(path)
 		if err == nil {
-			realPath_, err = resolveSymlinkPath(fsys, path)
+			realPath_, err = resolveSymlink(fsys, path, filepath.Dir(realPath))
 		}
 		if err != nil {
 			return fn(path, realPath, info, err)
 		}
 		realPath = realPath_
 	}
+
 	err := fn(path, realPath, info, nil)
 	if err != nil || !info.IsDir() {
 		if err == SkipDir && info.IsDir() {
 			err = nil
 		}
 		return err
+	}
+
+	// Check for filesystem loops by tracking visited real paths
+	if info.IsDir() {
+		if _, visited := state.visitedPaths[realPath]; visited {
+			// Skip this directory to avoid infinite loops
+			return nil
+		}
+		state.visitedPaths[realPath] = struct{}{}
+		defer delete(state.visitedPaths, realPath)
 	}
 
 	dirs, err := ReadDir(fsys, path)
@@ -127,15 +153,18 @@ func walkDir(
 	}
 
 	for _, dir := range dirs {
-		info, err := dir.Info()
+		childPath := filepath.Join(path, dir.Name())
+		childRealPath := filepath.Join(realPath, dir.Name())
+
+		info, err := fsys.Lstat(childRealPath)
 		if err != nil {
-			err = fn(path, realPath, nil, err)
-			if err == SkipDir && info.IsDir() {
+			err = fn(childPath, childRealPath, nil, err)
+			if err == SkipDir && info != nil && info.IsDir() {
 				err = nil
 			}
 			return err
 		}
-		err = walkDir(fsys, filepath.Join(path, dir.Name()), info, state, opt, fn)
+		err = walkDir(fsys, childPath, childRealPath, info, state, opt, fn)
 		if err != nil {
 			if err == SkipDir {
 				break
