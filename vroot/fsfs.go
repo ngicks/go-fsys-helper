@@ -49,7 +49,7 @@ func (f *FsRooted) resolvePath(name string, skipLastElement bool) (string, error
 		return ".", nil
 	}
 
-	if strings.HasPrefix(name, "..") {
+	if !filepath.IsLocal(name) {
 		return "", ErrPathEscapes
 	}
 
@@ -358,7 +358,6 @@ func (f *FsUnrooted) Unrooted() {}
 func (f *FsUnrooted) resolvePath(name string) (string, error) {
 	name = filepath.Clean(name)
 
-	// For Unrooted, we still block direct path traversal but allow symlinks to escape
 	if !filepath.IsLocal(name) {
 		return "", ErrPathEscapes
 	}
