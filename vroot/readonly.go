@@ -85,8 +85,8 @@ func (r *ReadOnlyRooted) OpenRoot(name string) (Rooted, error) {
 	return NewReadOnlyRooted(rooted), nil
 }
 
-func (r *ReadOnlyRooted) Readlink(name string) (string, error) {
-	return r.rooted.Readlink(name)
+func (r *ReadOnlyRooted) ReadLink(name string) (string, error) {
+	return r.rooted.ReadLink(name)
 }
 
 func (r *ReadOnlyRooted) Remove(name string) error {
@@ -192,8 +192,8 @@ func (r *ReadOnlyUnrooted) OpenUnrooted(name string) (Unrooted, error) {
 	return NewReadOnlyUnrooted(rooted), nil
 }
 
-func (r *ReadOnlyUnrooted) Readlink(name string) (string, error) {
-	return r.rooted.Readlink(name)
+func (r *ReadOnlyUnrooted) ReadLink(name string) (string, error) {
+	return r.rooted.ReadLink(name)
 }
 
 func (r *ReadOnlyUnrooted) Remove(name string) error {

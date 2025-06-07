@@ -313,13 +313,13 @@ func followSymlink(t *testing.T, fsys vroot.Fs) {
 				t.Errorf("Lstat %q should show symlink mode", linkName)
 			}
 
-			// Test Readlink returns correct target
-			readTarget, err := fsys.Readlink(linkName)
+			// Test ReadLink returns correct target
+			readTarget, err := fsys.ReadLink(linkName)
 			if err != nil {
-				t.Fatalf("Readlink %q failed: %v", linkName, err)
+				t.Fatalf("ReadLink %q failed: %v", linkName, err)
 			}
 			if readTarget != target {
-				t.Errorf("Readlink %q got %q, expected %q", linkName, readTarget, target)
+				t.Errorf("ReadLink %q got %q, expected %q", linkName, readTarget, target)
 			}
 
 			// Test that we can follow the symlink (Open should work)

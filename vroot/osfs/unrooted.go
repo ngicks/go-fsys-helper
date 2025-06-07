@@ -203,7 +203,7 @@ func (u *Unrooted) OpenUnrooted(name string) (vroot.Unrooted, error) {
 	return NewUnrooted(path)
 }
 
-func (u *Unrooted) Readlink(name string) (string, error) {
+func (u *Unrooted) ReadLink(name string) (string, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
 		return "", wrapper.PathErr("link", name, err)

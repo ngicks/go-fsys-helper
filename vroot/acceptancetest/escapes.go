@@ -60,18 +60,18 @@ func followSymlinkFailsForEscapes(t *testing.T, rooted vroot.Rooted) {
 				t.Errorf("Lstat %q should work: %v", linkName, err)
 			}
 
-			if info.Mode()&fs.ModeSymlink == 0 {
+			if info != nil && info.Mode()&fs.ModeSymlink == 0 {
 				t.Errorf("Lstat %q should show symlink mode", linkName)
 			}
 
-			// Readlink should work (it just reads the link target)
-			target, err := rooted.Readlink(linkName)
+			// ReadLink should work (it just reads the link target)
+			target, err := rooted.ReadLink(linkName)
 			if err != nil {
-				t.Errorf("Readlink %q should work: %v", linkName, err)
+				t.Errorf("ReadLink %q should work: %v", linkName, err)
 			}
 
 			if target != expectedTarget {
-				t.Errorf("Readlink %q returned invalid value: want(%q) != got(%q)", linkName, expectedTarget, target)
+				t.Errorf("ReadLink %q returned invalid value: want(%q) != got(%q)", linkName, expectedTarget, target)
 			}
 		})
 	}
@@ -91,12 +91,12 @@ func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted, hasOu
 				t.Errorf("Lstat %q should show symlink mode", linkName)
 			}
 
-			target, err := unrooted.Readlink(linkName)
+			target, err := unrooted.ReadLink(linkName)
 			if err != nil {
-				t.Fatalf("Readlink %q failed: %v", linkName, err)
+				t.Fatalf("ReadLink %q failed: %v", linkName, err)
 			}
 			if target != expectedTarget {
-				t.Errorf("Readlink %q returned invalid value: want(%q) != got(%q)", linkName, expectedTarget, target)
+				t.Errorf("ReadLink %q returned invalid value: want(%q) != got(%q)", linkName, expectedTarget, target)
 			}
 
 			// For unrooted, following symlinks that escape should be allowed

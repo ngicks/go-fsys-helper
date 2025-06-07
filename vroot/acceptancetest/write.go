@@ -284,9 +284,9 @@ func testSymlink(t *testing.T, fsys vroot.Fs) {
 	if info.Mode()&fs.ModeSymlink == 0 {
 		t.Errorf("Symlink effect not observed: created item is not a symlink")
 	}
-	target, err := fsys.Readlink("test_symlink")
+	target, err := fsys.ReadLink("test_symlink")
 	if err != nil {
-		t.Fatalf("Readlink after Symlink failed: %v", err)
+		t.Fatalf("ReadLink after Symlink failed: %v", err)
 	}
 	if target != "symlink_target.txt" {
 		t.Errorf("Symlink target not correct: got %q, expected %q", target, "symlink_target.txt")
@@ -431,4 +431,3 @@ func testPathNormalization(t *testing.T, fsys vroot.Fs) {
 		t.Errorf("Stat ./without_dot.txt (with ./) failed: %v", err)
 	}
 }
-

@@ -35,7 +35,7 @@ type Fs interface {
 	Open(name string) (File, error)
 	OpenFile(name string, flag int, perm fs.FileMode) (File, error)
 	OpenRoot(name string) (Rooted, error)
-	Readlink(name string) (string, error)
+	ReadLink(name string) (string, error)
 	Remove(name string) error
 	RemoveAll(name string) error
 	Rename(oldname string, newname string) error

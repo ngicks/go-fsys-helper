@@ -70,12 +70,17 @@ func (s *walkState) removeVisited(realPath string, info fs.FileInfo) {
 	}
 }
 
+type readLink interface {
+	ReadLink(name string) (string, error)
+	Lstat(name string) (fs.FileInfo, error)
+}
+
 // resolveSymlink resolves a symlink using the provided base path for relative targets
-func resolveSymlink(fsys Fs, linkPath, realParentPath string) (string, error) {
+func resolveSymlink(fsys readLink, linkPath, realParentPath string) (string, error) {
 	linkPath = filepath.Clean(linkPath)
 	prev := ""
 	for {
-		target, err := fsys.Readlink(linkPath)
+		target, err := fsys.ReadLink(linkPath)
 		if err != nil {
 			return "", err
 		}

@@ -130,7 +130,7 @@ func (r *Rooted) OpenRoot(name string) (vroot.Rooted, error) {
 	return &Rooted{root}, nil
 }
 
-func (r *Rooted) Readlink(name string) (string, error) {
+func (r *Rooted) ReadLink(name string) (string, error) {
 	s, err := r.root.Readlink(name)
 	if err != nil {
 		return "", swapPathEscapesErr(err)
