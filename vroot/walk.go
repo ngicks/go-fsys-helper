@@ -21,8 +21,8 @@ type WalkOption struct {
 }
 
 type inode struct {
-	dev   int
-	inode int
+	dev   uint64
+	inode uint64
 }
 
 type walkState struct {
@@ -32,6 +32,42 @@ type walkState struct {
 	// visitedInodes tracks visited inodes to avoid revisiting bind mounts
 	// key is "device:inode"
 	visitedInodes map[inode]struct{}
+}
+
+func (s *walkState) recordVisited(realPath string, info fs.FileInfo) (visited bool) {
+	ino, ok := inodeFromSys(info)
+	if ok {
+		// Here it is trying to find loop by dev:inode.
+		// This is suppose to break file system loop by bind mounts.
+		if s.visitedInodes == nil {
+			s.visitedInodes = map[inode]struct{}{}
+		}
+		if _, visited := s.visitedInodes[ino]; visited {
+			// Skip this directory to avoid infinite loops
+			return true
+		}
+		s.visitedInodes[ino] = struct{}{}
+		return false
+	} else {
+		if s.visitedPaths == nil {
+			s.visitedPaths = map[string]struct{}{}
+		}
+		if _, visited := s.visitedPaths[realPath]; visited {
+			// Skip this directory to avoid infinite loops
+			return true
+		}
+		s.visitedPaths[realPath] = struct{}{}
+		return false
+	}
+}
+
+func (s *walkState) removeVisited(realPath string, info fs.FileInfo) {
+	ino, ok := inodeFromSys(info)
+	if ok {
+		delete(s.visitedInodes, ino)
+	} else {
+		delete(s.visitedPaths, realPath)
+	}
 }
 
 // resolveSymlink resolves a symlink using the provided base path for relative targets
@@ -50,14 +86,10 @@ func resolveSymlink(fsys Fs, linkPath, realParentPath string) (string, error) {
 		if !filepath.IsAbs(target) {
 			// Resolve relative to the real parent directory where this symlink exists
 			realLinkDir := realParentPath
-			if realParentPath != filepath.Dir(linkPath) {
-				// parentRealPath is the real path of the parent directory
-				realLinkDir = realParentPath
-			} else {
+			if realParentPath == filepath.Dir(linkPath) {
 				realLinkDir = filepath.Dir(linkPath)
 			}
 			linkResolved = filepath.Join(realLinkDir, target)
-			linkResolved = filepath.Clean(linkResolved)
 		}
 
 		info, err := fsys.Lstat(linkResolved)
@@ -79,9 +111,7 @@ func resolveSymlink(fsys Fs, linkPath, realParentPath string) (string, error) {
 }
 
 func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
-	state := &walkState{
-		visitedPaths: make(map[string]struct{}),
-	}
+	state := &walkState{}
 	if opt == nil {
 		opt = &WalkOption{}
 	}
@@ -131,14 +161,12 @@ func walkDir(
 		return err
 	}
 
-	// Check for filesystem loops by tracking visited real paths
 	if info.IsDir() {
-		if _, visited := state.visitedPaths[realPath]; visited {
-			// Skip this directory to avoid infinite loops
+		if visited := state.recordVisited(realPath, info); visited {
+			// already visited; loop detected.
 			return nil
 		}
-		state.visitedPaths[realPath] = struct{}{}
-		defer delete(state.visitedPaths, realPath)
+		defer state.removeVisited(realPath, info)
 	}
 
 	dirs, err := ReadDir(fsys, path)
