@@ -69,9 +69,12 @@ func readFile(t *testing.T, fsys vroot.Fs) {
 			// Test Seek
 			offset, err := f.Seek(0, io.SeekStart)
 			if err != nil {
-				t.Fatalf("Seek %q failed: %v", filename, err)
-			}
-			if offset != 0 {
+				if errors.Is(err, vroot.ErrOpNotSupported) {
+					t.Logf("Seek %q not supported (ErrOpNotSupported)", filename)
+				} else {
+					t.Fatalf("Seek %q failed: %v", filename, err)
+				}
+			} else if offset != 0 {
 				t.Errorf("Seek %q returned %d, expected 0", filename, offset)
 			}
 
@@ -79,9 +82,12 @@ func readFile(t *testing.T, fsys vroot.Fs) {
 			buf2 := make([]byte, 3)
 			n2, err := f.ReadAt(buf2, 0)
 			if err != nil && err != io.EOF {
-				t.Fatalf("ReadAt %q failed: %v", filename, err)
-			}
-			if n2 > 0 && string(buf2[:n2]) != expectedContents[i][:n2] {
+				if errors.Is(err, vroot.ErrOpNotSupported) {
+					t.Logf("ReadAt %q not supported (ErrOpNotSupported)", filename)
+				} else {
+					t.Fatalf("ReadAt %q failed: %v", filename, err)
+				}
+			} else if n2 > 0 && string(buf2[:n2]) != expectedContents[i][:n2] {
 				t.Errorf("ReadAt %q got %q, expected %q", filename, string(buf2[:n2]), expectedContents[i][:n2])
 			}
 		})
@@ -129,9 +135,13 @@ func readDirectory(t *testing.T, fsys vroot.Fs) {
 				}
 			}
 
-			// Test Readdir
-			f.Seek(0, io.SeekStart) // Reset position
-			infos, err := f.Readdir(-1)
+			// Test Readdir - reopen file to reset position
+			f2, err := fsys.Open(dirname)
+			if err != nil {
+				t.Fatalf("Reopen directory %q for Readdir failed: %v", dirname, err)
+			}
+			infos, err := f2.Readdir(-1)
+			f2.Close()
 			if err != nil {
 				t.Fatalf("Readdir %q failed: %v", dirname, err)
 			}
@@ -139,9 +149,13 @@ func readDirectory(t *testing.T, fsys vroot.Fs) {
 				t.Errorf("Readdir %q returned %d entries, ReadDir returned %d", dirname, len(infos), len(entries))
 			}
 
-			// Test Readdirnames
-			f.Seek(0, io.SeekStart) // Reset position
-			names, err := f.Readdirnames(-1)
+			// Test Readdirnames - reopen file to reset position
+			f3, err := fsys.Open(dirname)
+			if err != nil {
+				t.Fatalf("Reopen directory %q for Readdirnames failed: %v", dirname, err)
+			}
+			names, err := f3.Readdirnames(-1)
+			f3.Close()
 			if err != nil {
 				t.Fatalf("Readdirnames %q failed: %v", dirname, err)
 			}
@@ -257,10 +271,12 @@ func writeFails(t *testing.T, fsys vroot.Fs) {
 		t.Error("File.WriteString should have failed on read-only filesystem")
 	}
 
-	// WriteAt should fail
+	// WriteAt should fail (or return ErrOpNotSupported)
 	_, err = f.WriteAt([]byte("test"), 0)
 	if err == nil {
 		t.Error("File.WriteAt should have failed on read-only filesystem")
+	} else if errors.Is(err, vroot.ErrOpNotSupported) {
+		t.Logf("File.WriteAt not supported (ErrOpNotSupported)")
 	}
 
 	// Truncate should fail

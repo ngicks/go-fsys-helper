@@ -10,12 +10,9 @@ var (
 	// ErrPathEscapes is returned from [Fs] implementations
 	// if given path escapes from the root.
 	ErrPathEscapes = errors.New("path escapes from parent")
-	// ErrOpNotSupported is returned from [Fs] implementations
-	// if some method is not supported by the implementation.
-	// The implementation still functional even without
-	// specialized methods like ReadAt/WriteAt.
-	// Basic operations like Fs.Open, File.Read must still be supported to be a legit
-	// implementor.
+	// ErrOpNotSupported might be returned from ReadAt, WriteAt and Seek on [File] implementation.
+	// That indicates the implementation came from places where those methods are hard to implement,
+	// e.g. [fs.FS].
 	ErrOpNotSupported = errors.New("op not supported")
 )
 
