@@ -97,6 +97,10 @@ func resolveSymlink(fsys readLink, linkPath, realParentPath string) (string, err
 			linkResolved = filepath.Join(realLinkDir, target)
 		}
 
+		if !filepath.IsLocal(linkResolved) {
+			return linkResolved, nil
+		}
+
 		info, err := fsys.Lstat(linkResolved)
 		if err != nil {
 			return "", err
