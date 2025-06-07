@@ -16,7 +16,7 @@ func Test(t *testing.T) {
 	t.Logf("temp dir = %s", tempDir)
 	prepare.MakeFsys(tempDir, true, false)
 	fsys := os.DirFS(filepath.Join(tempDir, "root", "readable"))
-	r := vroot.NewFsRooted(fsys.(fs.ReadLinkFS), "fs.FS")
+	r := vroot.FromIoFsRooted(fsys.(fs.ReadLinkFS), "fs.FS")
 	acceptancetest.RootedReadOnly(t, r)
 }
 
@@ -25,6 +25,6 @@ func TestFsUnrooted(t *testing.T) {
 	t.Logf("temp dir = %s", tempDir)
 	prepare.MakeFsys(tempDir, true, false)
 	fsys := os.DirFS(filepath.Join(tempDir, "root", "readable"))
-	u := vroot.NewFsUnrooted(fsys.(fs.ReadLinkFS), "fs.FS")
+	u := vroot.FromIoFsUnrooted(fsys.(fs.ReadLinkFS), "fs.FS")
 	acceptancetest.UnrootedReadOnly(t, u, true)
 }

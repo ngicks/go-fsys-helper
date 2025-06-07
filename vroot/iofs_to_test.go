@@ -37,7 +37,7 @@ func TestIoFsRooted(t *testing.T) {
 		panic(err)
 	}
 	defer r.Close()
-	fsys := vroot.NewIoFsRooted(r)
+	fsys := vroot.ToIoFsRooted(r)
 	fstest.TestFS(fsys, readbleFiles...)
 }
 
@@ -49,6 +49,6 @@ func TestIoFsUnrooted(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	fsys := vroot.NewIoFsUnrooted(r)
+	fsys := vroot.ToIoFsUnrooted(r)
 	fstest.TestFS(fsys, readbleFiles...)
 }
