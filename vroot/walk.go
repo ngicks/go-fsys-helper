@@ -98,6 +98,7 @@ func resolveSymlink(fsys readLink, linkPath, realParentPath string) (string, err
 		}
 
 		if !filepath.IsLocal(linkResolved) {
+			// unrooted may resolve this but by itself.
 			return linkResolved, nil
 		}
 
