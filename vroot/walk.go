@@ -49,6 +49,11 @@ func (s *walkState) recordVisited(realPath string, info fs.FileInfo) (visited bo
 		s.visitedInodes[ino] = struct{}{}
 		return false
 	} else {
+		if realPath == "" {
+			// can't determine
+			return false
+		}
+
 		if s.visitedPaths == nil {
 			s.visitedPaths = map[string]struct{}{}
 		}
@@ -73,51 +78,6 @@ func (s *walkState) removeVisited(realPath string, info fs.FileInfo) {
 type readLink interface {
 	ReadLink(name string) (string, error)
 	Lstat(name string) (fs.FileInfo, error)
-}
-
-// resolveSymlink resolves a symlink using the provided base path for relative targets
-func resolveSymlink(fsys readLink, linkPath, realParentPath string) (string, error) {
-	linkPath = filepath.Clean(linkPath)
-	prev := ""
-	for {
-		target, err := fsys.ReadLink(linkPath)
-		if err != nil {
-			return "", err
-		}
-
-		target = filepath.Clean(target)
-
-		linkResolved := target
-		if !filepath.IsAbs(target) {
-			// Resolve relative to the real parent directory where this symlink exists
-			realLinkDir := realParentPath
-			if realParentPath == filepath.Dir(linkPath) {
-				realLinkDir = filepath.Dir(linkPath)
-			}
-			linkResolved = filepath.Join(realLinkDir, target)
-		}
-
-		if !filepath.IsLocal(linkResolved) {
-			// unrooted may resolve this but by itself.
-			return linkResolved, nil
-		}
-
-		info, err := fsys.Lstat(linkResolved)
-		if err != nil {
-			return "", err
-		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			return linkResolved, nil
-		}
-
-		if prev == linkResolved {
-			return "", wrapper.PathErr("statat", linkPath, syscall.ELOOP)
-		}
-
-		prev = linkPath
-		linkPath = linkResolved
-		realParentPath = filepath.Dir(linkResolved)
-	}
 }
 
 func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
@@ -155,7 +115,7 @@ func walkDir(
 		)
 		info, err = fsys.Stat(path)
 		if err == nil {
-			realPath_, err = resolveSymlink(fsys, path, filepath.Dir(realPath))
+			realPath_, err = resolveSymlink(fsys, realPath)
 		}
 		if err != nil {
 			return fn(path, realPath, info, err)
@@ -192,9 +152,11 @@ func walkDir(
 
 	for _, dir := range dirs {
 		childPath := filepath.Join(path, dir.Name())
-		childRealPath := filepath.Join(realPath, dir.Name())
-
-		info, err := fsys.Lstat(childRealPath)
+		childRealPath := ""
+		if realPath != "" {
+			childRealPath = filepath.Join(realPath, dir.Name())
+		}
+		info, err := fsys.Lstat(childPath)
 		if err != nil {
 			err = fn(childPath, childRealPath, nil, err)
 			if err == SkipDir && info != nil && info.IsDir() {
@@ -211,4 +173,50 @@ func walkDir(
 		}
 	}
 	return nil
+}
+
+// resolveSymlink resolves a symlink until target is other than symlink.
+func resolveSymlink(fsys readLink, linkRealPath string) (string, error) {
+	if linkRealPath == "" || linkRealPath == "." {
+		return "", nil
+	}
+	resolved := filepath.Clean(linkRealPath)
+	prev := resolved
+	for {
+		target, err := fsys.ReadLink(resolved)
+		if err != nil {
+			return "", err
+		}
+
+		target = filepath.Clean(target)
+
+		if filepath.IsAbs(target) {
+			// can't tell whether this target is non-symlnk or not,
+			// just return ""
+			return "", nil
+		}
+
+		resolved = filepath.Join(filepath.Dir(resolved), target)
+
+		if !filepath.IsLocal(resolved) {
+			// same as absolute path,
+			// return just ""
+			return "", nil
+		}
+
+		if resolved == prev {
+			// symlink targeting each other
+			return "", wrapper.PathErr("stat", linkRealPath, syscall.ELOOP)
+		}
+
+		info, err := fsys.Lstat(resolved)
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			return resolved, nil
+		}
+
+		prev = resolved
+	}
 }

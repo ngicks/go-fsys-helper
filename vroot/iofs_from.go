@@ -78,7 +78,7 @@ func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string,
 			continue
 		}
 
-		resolved, err := resolveSymlink(f.fsys, currentPath, filepath.Dir(currentPath))
+		resolved, err := resolveSymlink(f.fsys, currentPath)
 		if err != nil {
 			return "", err
 		}
