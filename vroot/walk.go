@@ -182,6 +182,7 @@ func resolveSymlink(fsys readLink, linkRealPath string) (string, error) {
 	}
 	resolved := filepath.Clean(linkRealPath)
 	prev := resolved
+	prevPrev := ""
 	for {
 		target, err := fsys.ReadLink(resolved)
 		if err != nil {
@@ -204,7 +205,7 @@ func resolveSymlink(fsys readLink, linkRealPath string) (string, error) {
 			return "", nil
 		}
 
-		if resolved == prev {
+		if resolved == prevPrev {
 			// symlink targeting each other
 			return "", wrapper.PathErr("stat", linkRealPath, syscall.ELOOP)
 		}
@@ -217,6 +218,7 @@ func resolveSymlink(fsys readLink, linkRealPath string) (string, error) {
 			return resolved, nil
 		}
 
+		prevPrev = prev
 		prev = resolved
 	}
 }
