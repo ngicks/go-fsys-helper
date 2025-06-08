@@ -36,6 +36,7 @@ func ExecuteLines(baseDir string, lines ...string) error {
 }
 
 func ExecuteLine(baseDir, txt string) error {
+	baseDir = filepath.FromSlash(baseDir)
 	switch {
 	case strings.HasSuffix(txt, "/"):
 		err := os.Mkdir(filepath.Join(baseDir, filepath.FromSlash(txt)), fs.ModePerm)
@@ -44,13 +45,13 @@ func ExecuteLine(baseDir, txt string) error {
 		idx := strings.Index(txt, ": ")
 		path := txt[:idx]
 		content := txt[idx+len(": "):]
-		err := os.WriteFile(filepath.Join(baseDir, path), []byte(content), fs.ModePerm)
+		err := os.WriteFile(filepath.Join(baseDir, filepath.FromSlash(path)), []byte(content), fs.ModePerm)
 		return err
 	case strings.Contains(txt, " -> "):
 		idx := strings.Index(txt, " -> ")
 		path := txt[:idx]
 		target := txt[idx+len(" -> "):]
-		err := os.Symlink(target, filepath.Join(baseDir, path))
+		err := os.Symlink(target, filepath.Join(baseDir, filepath.FromSlash(path)))
 		return err
 	}
 	return fmt.Errorf("unknown line %q", txt)
