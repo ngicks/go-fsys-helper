@@ -20,19 +20,22 @@ var (
 	_ Unrooted = (*ioFsFromUnrooted)(nil)
 )
 
-// ioFsFromRooted expands [fs.FS] to adapt it to [Rooted].
-// It provides read-only access and returns appropriate errors for write operations.
-//
-// Although it is "Rooted", it is still vulnerable to TOCTOU(Time-of-Check-Time-of-Use) race:
-// symlinks are evaluated by sequence of Lstat and ReadLink.
-// The target could be changed between check and actual evaluation by functions like Open, Stat, etc.
 type ioFsFromRooted struct {
 	fsys fs.ReadLinkFS
 	name string
 }
 
-// FromIoFsRooted creates a new IoFsFromRooted that wraps the given fs.FS.
-// The name parameter is used for the Name() method.
+// FromIoFsRooted widens [fs.FS] so that it can be used as [Rooted].
+// name is directly retunred from Name method.
+//
+// The returned [Rooted] provides read-only access and
+// write methods, e.g. Chmod, Chtimes and Write on [File],
+// return error that satisfies, for methods on [Fs], errors.Is(err, syscall.EROFS)
+// and for methods on [File], errors.Is(err, syscall.EPERM).
+//
+// Although it is "Rooted", it is still vulnerable to TOCTOU(Time-of-Check-Time-of-Use) race:
+// symlinks are evaluated by sequence of Lstat and ReadLink calls.
+// The target could be changed between check and actual evaluation by functions like Open, Stat, etc.
 func FromIoFsRooted(fsys fs.ReadLinkFS, name string) Rooted {
 	return &ioFsFromRooted{
 		fsys: fsys,
@@ -57,7 +60,7 @@ func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string,
 	currentPath := ""
 
 	var lastPart string
-	if skipLastElement {
+	if skipLastElement { // for readlink, lstat, lchown
 		lastPart = parts[len(parts)-1]
 		parts = parts[:len(parts)-1]
 	}
@@ -83,7 +86,7 @@ func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string,
 			return "", err
 		}
 
-		if !filepath.IsLocal(resolved) {
+		if resolved == "" || !filepath.IsLocal(resolved) {
 			// Target is absolute or has "..".
 			// *os.Root rejects this anyway, since it cannot tell final result is within root.
 			// *os.Root depends on at variants of syscalls, e.g. openat.
@@ -334,18 +337,18 @@ func (f *fsFile) WriteString(s string) (n int, err error) {
 	return 0, f.pathErr("write")
 }
 
-// ioFsFromUnrooted expands [fs.FS] to adapt it to [Unrooted].
-// It provides read-only access and returns appropriate errors for write operations.
-//
-// Unlike FsRooted, ioFsFromUnrooted allows symlinks to escape the filesystem root,
-// but still prevents direct path traversal attacks (like "../../../etc/passwd").
 type ioFsFromUnrooted struct {
 	fsys fs.ReadLinkFS
 	name string
 }
 
-// FromIoFsUnrooted creates a new IoFsFromUnrooted that wraps the given fs.FS.
-// The name parameter is used for the Name() method.
+// FromIoFsUnrooted widens [fs.FS] so that it can be used as [Unrooted].
+// name is directly retunred from Name method.
+//
+// The returned [Unrooted] provides read-only access and
+// write methods, e.g. Chmod, Chtimes and Write on [File],
+// return error that satisfies, for methods on [Fs], errors.Is(err, syscall.EROFS)
+// and for methods on [File], errors.Is(err, syscall.EPERM).
 func FromIoFsUnrooted(fsys fs.ReadLinkFS, name string) Unrooted {
 	return &ioFsFromUnrooted{
 		fsys: fsys,
