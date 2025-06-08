@@ -8,7 +8,10 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
-var _ vroot.Rooted = (*Rooted)(nil)
+var (
+	_ vroot.Rooted     = (*Rooted)(nil)
+	_ vroot.ReadFileFs = (*Rooted)(nil)
+)
 
 // Rooted adapts [*os.Root] to [vroot.Rooted].
 //
@@ -160,4 +163,10 @@ func (r *Rooted) Stat(name string) (fs.FileInfo, error) {
 
 func (r *Rooted) Symlink(oldname string, newname string) error {
 	return swapPathEscapesErr(r.root.Symlink(oldname, newname))
+}
+
+func (r *Rooted) ReadFile(name string) ([]byte, error) {
+	// fs.FS returned from (*os.Root).FS implements fs.ReadFileFs,
+	// which is same thing as os.ReadFile.
+	return fs.ReadFile(r.root.FS(), name)
 }

@@ -28,7 +28,7 @@ func init() {
 	}
 }
 
-func TestIoFsRooted(t *testing.T) {
+func TestToIoFsRooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 	prepare.MakeFsys(tempDir, true, false)
@@ -41,7 +41,7 @@ func TestIoFsRooted(t *testing.T) {
 	fstest.TestFS(fsys, readbleFiles...)
 }
 
-func TestIoFsUnrooted(t *testing.T) {
+func TestToIoFsUnrooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 	prepare.MakeFsys(tempDir, true, false)

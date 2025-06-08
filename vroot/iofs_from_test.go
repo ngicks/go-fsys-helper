@@ -11,7 +11,7 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/internal/prepare"
 )
 
-func Test(t *testing.T) {
+func TestFromIoFsRooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 	prepare.MakeFsys(tempDir, true, false)
@@ -20,7 +20,7 @@ func Test(t *testing.T) {
 	acceptancetest.RootedReadOnly(t, r)
 }
 
-func TestFsUnrooted(t *testing.T) {
+func TestFromIoFsUnrooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 	prepare.MakeFsys(tempDir, true, false)

@@ -11,7 +11,10 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/internal/wrapper"
 )
 
-var _ vroot.Unrooted = (*Unrooted)(nil)
+var (
+	_ vroot.Unrooted   = (*Unrooted)(nil)
+	_ vroot.ReadFileFs = (*Unrooted)(nil)
+)
 
 // Unrooted exposes a file system under given path as [vroot.Unrooted].
 // Like [*os.Root] implementation on js/wasm,
@@ -256,4 +259,12 @@ func (u *Unrooted) Symlink(oldname string, newname string) error {
 		return wrapper.LinkErr("symlink", oldname, newname, err)
 	}
 	return os.Symlink(oldname, newPath)
+}
+
+func (u *Unrooted) ReadFile(name string) ([]byte, error) {
+	newName, err := u.resolvePath(name)
+	if err != nil {
+		return nil, wrapper.PathErr("open", name, err)
+	}
+	return os.ReadFile(newName)
 }
