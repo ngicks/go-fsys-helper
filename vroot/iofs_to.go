@@ -18,6 +18,13 @@ type ioFsToRooted struct {
 	root Rooted
 }
 
+// ToIoFsRooted narrows [Fs] so that it can be used as [fs.FS].
+//
+// With all write methods removed, returned [fs.FS] and [fs.File] can not be type-asserted
+// to writable interface.
+//
+// The returned [fs.FS] implements [fs.SubFS].
+// The method returns rooted sub file system.
 func ToIoFsRooted(root Rooted) fs.FS {
 	return &ioFsToRooted{root: root}
 }
@@ -62,6 +69,13 @@ type ioFsToUnrooted struct {
 	root Unrooted
 }
 
+// ToIoFsUnrooted narrows [Fs] so that it can be used as [fs.FS].
+//
+// With all write methods removed, returned [fs.FS] and [fs.File] can not be type-asserted
+// to writable interface.
+//
+// The returned [fs.FS] implements [fs.SubFS].
+// The method returns unrooted sub file system.
 func ToIoFsUnrooted(root Unrooted) fs.FS {
 	return &ioFsToUnrooted{root: root}
 }

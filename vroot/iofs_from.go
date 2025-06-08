@@ -30,7 +30,7 @@ type ioFsFromRooted struct {
 //
 // The returned [Rooted] provides read-only access and
 // write methods, e.g. Chmod, Chtimes and Write on [File],
-// return error that satisfies, for methods on [Fs], errors.Is(err, syscall.EROFS)
+// return an error that satisfies, for methods on [Fs], errors.Is(err, syscall.EROFS)
 // and for methods on [File], errors.Is(err, syscall.EPERM).
 //
 // Although it is "Rooted", it is still vulnerable to TOCTOU(Time-of-Check-Time-of-Use) race:
@@ -188,7 +188,7 @@ func (f *ioFsFromRooted) OpenRoot(name string) (Rooted, error) {
 
 	readLinkFsys, ok := subFsys.(fs.ReadLinkFS)
 	if !ok {
-		return nil, fmt.Errorf("*FsRooted.OpenRoot: sub fsys does not implement fs.ReadLinkFS")
+		return nil, fmt.Errorf("*ioFsFromRooted.OpenRoot: sub fsys does not implement fs.ReadLinkFS")
 	}
 
 	return FromIoFsRooted(readLinkFsys, path.Join(f.name, name)), nil
@@ -226,13 +226,180 @@ func (f *ioFsFromRooted) Symlink(oldname string, newname string) error {
 	return wrapper.LinkErr("symlink", oldname, newname, syscall.EROFS)
 }
 
-// fsFile wraps an fs.File to implement vroot.File
+type ioFsFromUnrooted struct {
+	fsys fs.ReadLinkFS
+	name string
+}
+
+// FromIoFsUnrooted widens [fs.FS] so that it can be used as [Unrooted].
+// name is directly retunred from Name method.
+//
+// The returned [Unrooted] provides read-only access and
+// write methods, e.g. Chmod, Chtimes and Write on [File],
+// return an error that satisfies, for methods on [Fs], errors.Is(err, syscall.EROFS)
+// and for methods on [File], errors.Is(err, syscall.EPERM).
+func FromIoFsUnrooted(fsys fs.ReadLinkFS, name string) Unrooted {
+	return &ioFsFromUnrooted{
+		fsys: fsys,
+		name: name,
+	}
+}
+
+func (f *ioFsFromUnrooted) Unrooted() {}
+
+func (f *ioFsFromUnrooted) resolvePath(name string) (string, error) {
+	name = filepath.Clean(name)
+
+	if !filepath.IsLocal(name) {
+		return "", ErrPathEscapes
+	}
+
+	return filepath.ToSlash(name), nil
+}
+
+func (f *ioFsFromUnrooted) Chmod(name string, mode fs.FileMode) error {
+	return wrapper.PathErr("chmod", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Chown(name string, uid int, gid int) error {
+	return wrapper.PathErr("chown", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
+	return wrapper.PathErr("chtimes", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Close() error {
+	return nil
+}
+
+func (f *ioFsFromUnrooted) Create(name string) (File, error) {
+	return nil, wrapper.PathErr("open", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Lchown(name string, uid int, gid int) error {
+	return wrapper.PathErr("lchown", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Link(oldname string, newname string) error {
+	return wrapper.LinkErr("link", oldname, newname, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Lstat(name string) (fs.FileInfo, error) {
+	path, err := f.resolvePath(name)
+	if err != nil {
+		return nil, wrapper.PathErr("lstat", name, err)
+	}
+	return f.fsys.Lstat(path)
+}
+
+func (f *ioFsFromUnrooted) Mkdir(name string, perm fs.FileMode) error {
+	return wrapper.PathErr("mkdir", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) MkdirAll(name string, perm fs.FileMode) error {
+	return wrapper.PathErr("mkdir", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Name() string {
+	return f.name
+}
+
+func (f *ioFsFromUnrooted) Open(name string) (File, error) {
+	path, err := f.resolvePath(name)
+	if err != nil {
+		return nil, wrapper.PathErr("open", name, err)
+	}
+	file, err := f.fsys.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return newFsFile(file, path), nil
+}
+
+func (f *ioFsFromUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
+	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
+		return nil, wrapper.PathErr("open", name, syscall.EROFS)
+	}
+	return f.Open(name)
+}
+
+func (f *ioFsFromUnrooted) OpenRoot(name string) (Rooted, error) {
+	subPath, err := f.resolvePath(name)
+	if err != nil {
+		return nil, wrapper.PathErr("open", name, err)
+	}
+
+	subFsys, err := fs.Sub(f.fsys, subPath)
+	if err != nil {
+		return nil, err
+	}
+
+	readLinkFsys, ok := subFsys.(fs.ReadLinkFS)
+	if !ok {
+		return nil, fmt.Errorf("*ioFsFromUnrooted.OpenRoot: sub fsys does not implement fs.ReadLinkFS")
+	}
+
+	return FromIoFsRooted(readLinkFsys, path.Join(f.name, name)), nil
+}
+
+func (f *ioFsFromUnrooted) ReadLink(name string) (string, error) {
+	resolved, err := f.resolvePath(name)
+	if err != nil {
+		return "", wrapper.PathErr("readlink", name, err)
+	}
+	return f.fsys.ReadLink(resolved)
+}
+
+func (f *ioFsFromUnrooted) Remove(name string) error {
+	return wrapper.PathErr("remove", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) RemoveAll(name string) error {
+	return wrapper.PathErr("RemoveAll", name, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Rename(oldname string, newname string) error {
+	return wrapper.LinkErr("rename", oldname, newname, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) Stat(name string) (fs.FileInfo, error) {
+	path, err := f.resolvePath(name)
+	if err != nil {
+		return nil, wrapper.PathErr("stat", name, err)
+	}
+	return fs.Stat(f.fsys, path)
+}
+
+func (f *ioFsFromUnrooted) Symlink(oldname string, newname string) error {
+	return wrapper.LinkErr("symlink", oldname, newname, syscall.EROFS)
+}
+
+func (f *ioFsFromUnrooted) OpenUnrooted(name string) (Unrooted, error) {
+	subPath, err := f.resolvePath(name)
+	if err != nil {
+		return nil, wrapper.PathErr("open", name, err)
+	}
+
+	subFsys, err := fs.Sub(f.fsys, subPath)
+	if err != nil {
+		return nil, err
+	}
+
+	readLinkFsys, ok := subFsys.(fs.ReadLinkFS)
+	if !ok {
+		return nil, fmt.Errorf("*ioFsFromUnrooted.OpenUnrooted: sub fsys does not implement fs.ReadLinkFS")
+	}
+
+	return FromIoFsUnrooted(readLinkFsys, path.Join(f.name, name)), nil
+}
+
+var _ File = (*fsFile)(nil)
+
 type fsFile struct {
 	file fs.File
 	name string
 }
-
-var _ File = (*fsFile)(nil)
 
 func newFsFile(file fs.File, name string) *fsFile {
 	return &fsFile{file: file, name: name}
@@ -335,172 +502,4 @@ func (f *fsFile) WriteAt(b []byte, off int64) (n int, err error) {
 
 func (f *fsFile) WriteString(s string) (n int, err error) {
 	return 0, f.pathErr("write")
-}
-
-type ioFsFromUnrooted struct {
-	fsys fs.ReadLinkFS
-	name string
-}
-
-// FromIoFsUnrooted widens [fs.FS] so that it can be used as [Unrooted].
-// name is directly retunred from Name method.
-//
-// The returned [Unrooted] provides read-only access and
-// write methods, e.g. Chmod, Chtimes and Write on [File],
-// return error that satisfies, for methods on [Fs], errors.Is(err, syscall.EROFS)
-// and for methods on [File], errors.Is(err, syscall.EPERM).
-func FromIoFsUnrooted(fsys fs.ReadLinkFS, name string) Unrooted {
-	return &ioFsFromUnrooted{
-		fsys: fsys,
-		name: name,
-	}
-}
-
-func (f *ioFsFromUnrooted) Unrooted() {}
-
-func (f *ioFsFromUnrooted) resolvePath(name string) (string, error) {
-	name = filepath.Clean(name)
-
-	if !filepath.IsLocal(name) {
-		return "", ErrPathEscapes
-	}
-
-	return filepath.ToSlash(name), nil
-}
-
-func (f *ioFsFromUnrooted) Chmod(name string, mode fs.FileMode) error {
-	return wrapper.PathErr("chmod", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Chown(name string, uid int, gid int) error {
-	return wrapper.PathErr("chown", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return wrapper.PathErr("chtimes", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Close() error {
-	return nil
-}
-
-func (f *ioFsFromUnrooted) Create(name string) (File, error) {
-	return nil, wrapper.PathErr("open", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Lchown(name string, uid int, gid int) error {
-	return wrapper.PathErr("lchown", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Link(oldname string, newname string) error {
-	return wrapper.LinkErr("link", oldname, newname, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Lstat(name string) (fs.FileInfo, error) {
-	path, err := f.resolvePath(name)
-	if err != nil {
-		return nil, wrapper.PathErr("lstat", name, err)
-	}
-	return f.fsys.Lstat(path)
-}
-
-func (f *ioFsFromUnrooted) Mkdir(name string, perm fs.FileMode) error {
-	return wrapper.PathErr("mkdir", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) MkdirAll(name string, perm fs.FileMode) error {
-	return wrapper.PathErr("mkdir", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Name() string {
-	return f.name
-}
-
-func (f *ioFsFromUnrooted) Open(name string) (File, error) {
-	path, err := f.resolvePath(name)
-	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
-	}
-	file, err := f.fsys.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	return newFsFile(file, path), nil
-}
-
-func (f *ioFsFromUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
-	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
-		return nil, wrapper.PathErr("open", name, syscall.EROFS)
-	}
-	return f.Open(name)
-}
-
-func (f *ioFsFromUnrooted) OpenRoot(name string) (Rooted, error) {
-	subPath, err := f.resolvePath(name)
-	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
-	}
-
-	subFsys, err := fs.Sub(f.fsys, subPath)
-	if err != nil {
-		return nil, err
-	}
-
-	readLinkFsys, ok := subFsys.(fs.ReadLinkFS)
-	if !ok {
-		return nil, fmt.Errorf("*FsUnrooted.OpenRoot: sub fsys does not implement fs.ReadLinkFS")
-	}
-
-	return FromIoFsRooted(readLinkFsys, path.Join(f.name, name)), nil
-}
-
-func (f *ioFsFromUnrooted) ReadLink(name string) (string, error) {
-	resolved, err := f.resolvePath(name)
-	if err != nil {
-		return "", wrapper.PathErr("readlink", name, err)
-	}
-	return f.fsys.ReadLink(resolved)
-}
-
-func (f *ioFsFromUnrooted) Remove(name string) error {
-	return wrapper.PathErr("remove", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) RemoveAll(name string) error {
-	return wrapper.PathErr("RemoveAll", name, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Rename(oldname string, newname string) error {
-	return wrapper.LinkErr("rename", oldname, newname, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) Stat(name string) (fs.FileInfo, error) {
-	path, err := f.resolvePath(name)
-	if err != nil {
-		return nil, wrapper.PathErr("stat", name, err)
-	}
-	return fs.Stat(f.fsys, path)
-}
-
-func (f *ioFsFromUnrooted) Symlink(oldname string, newname string) error {
-	return wrapper.LinkErr("symlink", oldname, newname, syscall.EROFS)
-}
-
-func (f *ioFsFromUnrooted) OpenUnrooted(name string) (Unrooted, error) {
-	subPath, err := f.resolvePath(name)
-	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
-	}
-
-	subFsys, err := fs.Sub(f.fsys, subPath)
-	if err != nil {
-		return nil, err
-	}
-
-	readLinkFsys, ok := subFsys.(fs.ReadLinkFS)
-	if !ok {
-		return nil, fmt.Errorf("*FsUnrooted.OpenUnrooted: sub fsys does not implement fs.ReadLinkFS")
-	}
-
-	return FromIoFsUnrooted(readLinkFsys, path.Join(f.name, name)), nil
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
@@ -18,6 +19,7 @@ func TestFromIoFsRooted(t *testing.T) {
 	fsys := os.DirFS(filepath.Join(tempDir, "root", "readable"))
 	r := vroot.FromIoFsRooted(fsys.(fs.ReadLinkFS), "fs.FS")
 	acceptancetest.RootedReadOnly(t, r)
+	fstest.TestFS(vroot.ToIoFsRooted(r), readbleFiles...)
 }
 
 func TestFromIoFsUnrooted(t *testing.T) {
@@ -27,4 +29,5 @@ func TestFromIoFsUnrooted(t *testing.T) {
 	fsys := os.DirFS(filepath.Join(tempDir, "root", "readable"))
 	u := vroot.FromIoFsUnrooted(fsys.(fs.ReadLinkFS), "fs.FS")
 	acceptancetest.UnrootedReadOnly(t, u, true)
+	fstest.TestFS(vroot.ToIoFsUnrooted(u), readbleFiles...)
 }
