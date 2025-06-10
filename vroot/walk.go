@@ -20,7 +20,9 @@ type WalkOption struct {
 	ResolveSymlink bool
 }
 
-type inode struct {
+// fileIdent is combination of device number and inode of the file for unix systems.
+// VolumeSerialNumber and FileIndex for windows system.
+type fileIdent struct {
 	dev   uint64
 	inode uint64
 }
@@ -31,22 +33,22 @@ type walkState struct {
 	visitedPaths map[string]struct{}
 	// visitedInodes tracks visited inodes to avoid revisiting bind mounts
 	// key is "device:inode"
-	visitedInodes map[inode]struct{}
+	visitedInodes map[fileIdent]struct{}
 }
 
-func (s *walkState) recordVisited(realPath string, info fs.FileInfo) (visited bool) {
-	ino, ok := inodeFromSys(info)
+func (s *walkState) recordVisited(fsys Fs, realPath string, info fs.FileInfo) (visited bool) {
+	ident, ok := fileIdentFromSys(fsys, realPath, info)
 	if ok {
 		// Here it is trying to find loop by dev:inode.
 		// This is suppose to break file system loop by bind mounts.
 		if s.visitedInodes == nil {
-			s.visitedInodes = map[inode]struct{}{}
+			s.visitedInodes = map[fileIdent]struct{}{}
 		}
-		if _, visited := s.visitedInodes[ino]; visited {
+		if _, visited := s.visitedInodes[ident]; visited {
 			// Skip this directory to avoid infinite loops
 			return true
 		}
-		s.visitedInodes[ino] = struct{}{}
+		s.visitedInodes[ident] = struct{}{}
 		return false
 	} else {
 		if realPath == "" {
@@ -66,10 +68,10 @@ func (s *walkState) recordVisited(realPath string, info fs.FileInfo) (visited bo
 	}
 }
 
-func (s *walkState) removeVisited(realPath string, info fs.FileInfo) {
-	ino, ok := inodeFromSys(info)
+func (s *walkState) removeVisited(fsys Fs, realPath string, info fs.FileInfo) {
+	ident, ok := fileIdentFromSys(fsys, realPath, info)
 	if ok {
-		delete(s.visitedInodes, ino)
+		delete(s.visitedInodes, ident)
 	} else {
 		delete(s.visitedPaths, realPath)
 	}
@@ -132,11 +134,11 @@ func walkDir(
 	}
 
 	if info.IsDir() {
-		if visited := state.recordVisited(realPath, info); visited {
+		if visited := state.recordVisited(fsys, realPath, info); visited {
 			// already visited; loop detected.
 			return nil
 		}
-		defer state.removeVisited(realPath, info)
+		defer state.removeVisited(fsys, realPath, info)
 	}
 
 	dirs, err := ReadDir(fsys, path)

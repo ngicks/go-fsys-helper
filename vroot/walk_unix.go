@@ -7,10 +7,10 @@ import (
 	"syscall"
 )
 
-func inodeFromSys(stat fs.FileInfo) (inode, bool) {
+func fileIdentFromSys(_ Fs, _ string, stat fs.FileInfo) (fileIdent, bool) {
 	s, ok := stat.Sys().(*syscall.Stat_t)
 	if !ok {
-		return inode{}, false
+		return fileIdent{}, false
 	}
-	return inode{s.Dev, s.Ino}, true
+	return fileIdent{s.Dev, s.Ino}, true
 }

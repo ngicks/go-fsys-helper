@@ -89,7 +89,7 @@ func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string,
 		if resolved == "" || !filepath.IsLocal(resolved) {
 			// Target is absolute or has "..".
 			// *os.Root rejects this anyway, since it cannot tell final result is within root.
-			// *os.Root depends on at variants of syscalls, e.g. openat.
+			// *os.Root depends on "at" variants of syscalls(e.g. openat.)
 			// The root directory may be moved after open,
 			// but you don't have robust way to convert an fd back to a path on the filesystem.
 			return "", ErrPathEscapes
@@ -423,6 +423,10 @@ func (f *fsFile) Close() error {
 
 func (f *fsFile) Name() string {
 	return f.name
+}
+
+func (f *fsFile) Fd() uintptr {
+	return Fd(f.file)
 }
 
 func (f *fsFile) Read(b []byte) (n int, err error) {

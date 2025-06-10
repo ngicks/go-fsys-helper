@@ -41,3 +41,16 @@ func ReadFile(fsys Fs, name string) ([]byte, error) {
 	defer f.Close()
 	return io.ReadAll(f)
 }
+
+type fdFile interface {
+	Fd() uintptr
+}
+
+// Fd returns fd of f if it implements interface{ Fd() uintptr }.
+// Otherwise returns invalid value(0xffffffff).
+func Fd(f any) uintptr {
+	if fdFile, ok := f.(fdFile); ok {
+		return fdFile.Fd()
+	}
+	return 0xffffffff
+}

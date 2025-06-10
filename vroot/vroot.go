@@ -68,7 +68,10 @@ type File interface {
 	Chown(uid int, gid int) error
 	Close() error
 
-	// Fd() uintptr
+	// Fd returns internal detail of file handle.
+	// Only os-backed File should reutrn this value.
+	// Otherwise, return 0xffffffff to indicate this is invalid value.
+	Fd() uintptr
 
 	Name() string
 	Read(b []byte) (n int, err error)

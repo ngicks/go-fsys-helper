@@ -249,6 +249,10 @@ func (r *readOnlyFile) Name() string {
 	return r.f.Name()
 }
 
+func (r *readOnlyFile) Fd() uintptr {
+	return r.f.Fd()
+}
+
 func (r *readOnlyFile) Read(b []byte) (n int, err error) {
 	return r.f.Read(b)
 }
