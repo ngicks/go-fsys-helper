@@ -47,10 +47,10 @@ type fdFile interface {
 }
 
 // Fd returns fd of f if it implements interface{ Fd() uintptr }.
-// Otherwise returns invalid value(0xffffffff).
+// Otherwise returns invalid value(^(uintptr(0))).
 func Fd(f any) uintptr {
 	if fdFile, ok := f.(fdFile); ok {
 		return fdFile.Fd()
 	}
-	return 0xffffffff
+	return ^(uintptr(0))
 }

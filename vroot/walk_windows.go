@@ -13,7 +13,7 @@ func fileIdentFromSys(fsys Fs, realPath string, _ fs.FileInfo) (fileIdent, bool)
 	defer f.Close()
 
 	fd := f.Fd()
-	if fd == 0xffffffff { // invalid value
+	if fd == ^(uintptr(0)) { // invalid value
 		return fileIdent{}, false
 	}
 
