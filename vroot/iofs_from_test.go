@@ -19,7 +19,7 @@ func TestFromIoFsRooted(t *testing.T) {
 	fsys := os.DirFS(filepath.Join(tempDir, "root", "readable"))
 	r := vroot.FromIoFsRooted(fsys.(fs.ReadLinkFS), "fs.FS")
 	acceptancetest.RootedReadOnly(t, r)
-	fstest.TestFS(vroot.ToIoFsRooted(r), readbleFiles...)
+	fstest.TestFS(vroot.ToIoFsRooted(r), prepare.RootFsysReadableFiles...)
 }
 
 func TestFromIoFsUnrooted(t *testing.T) {
@@ -29,5 +29,5 @@ func TestFromIoFsUnrooted(t *testing.T) {
 	fsys := os.DirFS(filepath.Join(tempDir, "root", "readable"))
 	u := vroot.FromIoFsUnrooted(fsys.(fs.ReadLinkFS), "fs.FS")
 	acceptancetest.UnrootedReadOnly(t, u, true)
-	fstest.TestFS(vroot.ToIoFsUnrooted(u), readbleFiles...)
+	fstest.TestFS(vroot.ToIoFsUnrooted(u), prepare.RootFsysReadableFiles...)
 }

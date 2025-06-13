@@ -19,6 +19,22 @@ func init() {
 	}
 }
 
+var RootFsysReadableFiles []string
+
+func init() {
+	for _, txt := range acceptancetest.RootFsys {
+		if !strings.HasPrefix(txt, "root/readable") {
+			continue
+		}
+		switch {
+		case strings.Contains(txt, ": "):
+			idx := strings.Index(txt, ": ")
+			path := txt[:idx]
+			RootFsysReadableFiles = append(RootFsysReadableFiles, strings.TrimPrefix(path, "root/readable/"))
+		}
+	}
+}
+
 func MakeFsys(tempDir string, readable, writable bool) {
 	for _, txt := range acceptancetest.RootFsys {
 		if !readable && strings.HasPrefix(txt, "root/readable") {

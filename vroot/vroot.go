@@ -70,7 +70,7 @@ type File interface {
 
 	// Fd returns internal detail of file handle.
 	// Only os-backed File should reutrn this value.
-	// Otherwise, return 0xffffffff to indicate this is invalid value.
+	// Otherwise, return ^(uintptr(0)) to indicate this is invalid value.
 	Fd() uintptr
 
 	Name() string

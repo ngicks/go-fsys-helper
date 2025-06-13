@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -46,66 +45,7 @@ func FromIoFsRooted(fsys fs.ReadLinkFS, name string) Rooted {
 func (f *ioFsFromRooted) Rooted() {}
 
 func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string, error) {
-	name = filepath.Clean(name)
-
-	if name == "." {
-		return ".", nil
-	}
-
-	if !filepath.IsLocal(name) {
-		return "", ErrPathEscapes
-	}
-
-	parts := strings.Split(name, string(filepath.Separator))
-	currentPath := ""
-
-	var lastPart string
-	if skipLastElement { // for readlink, lstat, lchown
-		lastPart = parts[len(parts)-1]
-		parts = parts[:len(parts)-1]
-	}
-
-	for _, part := range parts {
-		if currentPath == "" {
-			currentPath = part
-		} else {
-			currentPath = currentPath + string(filepath.Separator) + part
-		}
-
-		info, err := f.fsys.Lstat(currentPath)
-		if err != nil {
-			return "", err
-		}
-
-		if info.Mode()&fs.ModeSymlink == 0 {
-			continue
-		}
-
-		resolved, err := resolveSymlink(f.fsys, currentPath)
-		if err != nil {
-			return "", err
-		}
-
-		if resolved == "" || !filepath.IsLocal(resolved) {
-			// Target is absolute or has "..".
-			// *os.Root rejects this anyway, since it cannot tell final result is within root.
-			// *os.Root depends on "at" variants of syscalls(e.g. openat.)
-			// The root directory may be moved after open,
-			// but you don't have robust way to convert an fd back to a path on the filesystem.
-			return "", ErrPathEscapes
-		}
-
-		currentPath = resolved
-	}
-
-	if lastPart != "" {
-		if currentPath != "" {
-			currentPath += string(filepath.Separator)
-		}
-		currentPath += lastPart
-	}
-
-	return filepath.ToSlash(currentPath), nil
+	return ResolvePath(f.fsys, name, skipLastElement)
 }
 
 func (f *ioFsFromRooted) Chmod(name string, mode fs.FileMode) error {

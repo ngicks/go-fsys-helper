@@ -11,8 +11,12 @@ func PathErr(op, path string, err error) error {
 	}
 	pathErr, ok := err.(*fs.PathError)
 	if ok {
-		pathErr.Op = op
-		pathErr.Path = path
+		if op != "" {
+			pathErr.Op = op
+		}
+		if path != "" {
+			pathErr.Path = path
+		}
 		return err
 	}
 	return &fs.PathError{Op: op, Path: path, Err: err}

@@ -4,9 +4,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"syscall"
-
-	"github.com/ngicks/go-fsys-helper/vroot/internal/wrapper"
 )
 
 var (
@@ -75,11 +72,6 @@ func (s *walkState) removeVisited(fsys Fs, realPath string, info fs.FileInfo) {
 	} else {
 		delete(s.visitedPaths, realPath)
 	}
-}
-
-type readLink interface {
-	ReadLink(name string) (string, error)
-	Lstat(name string) (fs.FileInfo, error)
 }
 
 func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
@@ -175,52 +167,4 @@ func walkDir(
 		}
 	}
 	return nil
-}
-
-// resolveSymlink resolves a symlink until target is other than symlink.
-func resolveSymlink(fsys readLink, linkRealPath string) (string, error) {
-	if linkRealPath == "" || linkRealPath == "." {
-		return "", nil
-	}
-	resolved := filepath.Clean(linkRealPath)
-	prev := resolved
-	prevPrev := ""
-	for {
-		target, err := fsys.ReadLink(resolved)
-		if err != nil {
-			return "", err
-		}
-
-		target = filepath.Clean(target)
-
-		if filepath.IsAbs(target) {
-			// can't tell whether this target is non-symlnk or not,
-			// just return ""
-			return "", nil
-		}
-
-		resolved = filepath.Join(filepath.Dir(resolved), target)
-
-		if !filepath.IsLocal(resolved) {
-			// same as absolute path,
-			// return just ""
-			return "", nil
-		}
-
-		if resolved == prevPrev {
-			// symlink targeting each other
-			return "", wrapper.PathErr("stat", linkRealPath, syscall.ELOOP)
-		}
-
-		info, err := fsys.Lstat(resolved)
-		if err != nil {
-			return "", err
-		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			return resolved, nil
-		}
-
-		prevPrev = prev
-		prev = resolved
-	}
 }
