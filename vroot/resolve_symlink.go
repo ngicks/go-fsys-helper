@@ -26,30 +26,35 @@ func ResolvePath(fsys readLink, name string, skipLastElement bool) (string, erro
 		return "", ErrPathEscapes
 	}
 
-	// TODO: use strings.SplitSeq, strings.LastIndex and strings.Builder to
-	// minimize allocation.
-	parts := strings.Split(name, string(filepath.Separator))
-	currentPath := ""
-
 	var lastPart string
-	if skipLastElement { // for readlink, lstat, lchown
-		lastPart = parts[len(parts)-1]
-		parts = parts[:len(parts)-1]
+	if skipLastElement {
+		// Use strings.LastIndex to find the last separator and extract the last part
+		if idx := strings.LastIndex(name, string(filepath.Separator)); idx >= 0 {
+			lastPart = name[idx+1:]
+			name = name[:idx]
+		} else {
+			// No separator found, the entire name is the last part
+			return name, nil
+		}
 	}
 
-	for i, part := range parts {
-		if currentPath == "" {
-			currentPath = part
-		} else {
-			currentPath = currentPath + string(filepath.Separator) + part
+	var pathBuilder strings.Builder
+	i := 0
+	off := 0
+	for part := range strings.SplitSeq(name, string(filepath.Separator)) {
+		if i > 0 {
+			pathBuilder.WriteByte(filepath.Separator)
 		}
+
+		off += len(part)
+		i++
+
+		pathBuilder.WriteString(part)
+		currentPath := pathBuilder.String()
 
 		info, err := fsys.Lstat(currentPath)
 		if err != nil {
-			if len(part) > i+1 {
-				currentPath += string(filepath.Separator) + filepath.Join(parts[i+1:]...)
-			}
-			return filepath.Join(currentPath), err
+			return currentPath + name[off+i-1:], err
 		}
 
 		if info.Mode()&fs.ModeSymlink == 0 {
@@ -71,17 +76,19 @@ func ResolvePath(fsys readLink, name string, skipLastElement bool) (string, erro
 			return "", ErrPathEscapes
 		}
 
-		currentPath = resolved
+		// Reset the builder and start from the resolved path
+		pathBuilder.Reset()
+		pathBuilder.WriteString(resolved)
 	}
 
 	if lastPart != "" {
-		if currentPath != "" {
-			currentPath += string(filepath.Separator)
+		if pathBuilder.Len() > 0 {
+			pathBuilder.WriteByte(filepath.Separator)
 		}
-		currentPath += lastPart
+		pathBuilder.WriteString(lastPart)
 	}
 
-	return filepath.ToSlash(currentPath), nil
+	return filepath.ToSlash(pathBuilder.String()), nil
 }
 
 // resolveSymlink resolves a symlink until target is other than symlink.
