@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 var (
@@ -65,6 +66,14 @@ func compareStat(t *testing.T, expected, actual fs.FS, path string) (expectedSta
 					return
 				}
 			}
+			// Git doesn't preserve mtime on fresh clone, so mask timestamps for comparison
+			expectedStat = &timeMaskFileInfo{expectedStat}
+			actualStat = &timeMaskFileInfo{actualStat}
+			es = fs.FormatFileInfo(expectedStat)
+			as = fs.FormatFileInfo(actualStat)
+			if es == as {
+				return
+			}
 			t.Errorf("stat not equal: expected(%q) != atcual(%q)", es, as)
 			return
 		}
@@ -80,6 +89,16 @@ type sizeMaskFileInfo struct {
 
 func (s *sizeMaskFileInfo) Size() int64 {
 	return 0
+}
+
+var _ fs.FileInfo = (*timeMaskFileInfo)(nil)
+
+type timeMaskFileInfo struct {
+	fs.FileInfo
+}
+
+func (t *timeMaskFileInfo) ModTime() time.Time {
+	return time.Time{} // Return zero time to mask timestamp differences
 }
 
 func compareContent(t *testing.T, expected, actual fs.FS, path string) {
