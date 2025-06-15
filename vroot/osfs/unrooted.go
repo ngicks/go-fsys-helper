@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
-	"github.com/ngicks/go-fsys-helper/vroot/internal/wrapper"
 )
 
 var (
@@ -40,7 +40,7 @@ func NewUnrooted(path string) (*Unrooted, error) {
 		return nil, err
 	}
 	if !s.IsDir() {
-		return nil, wrapper.PathErr("stat", absRoot, syscall.ENOTDIR)
+		return nil, fsutil.WrapPathErr("stat", absRoot, syscall.ENOTDIR)
 	}
 
 	return &Unrooted{
@@ -71,7 +71,7 @@ func (u *Unrooted) resolvePath(path string) (string, error) {
 func (u *Unrooted) Chmod(name string, mode fs.FileMode) error {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return wrapper.PathErr("chmod", name, err)
+		return fsutil.WrapPathErr("chmod", name, err)
 	}
 	return os.Chmod(path, mode)
 }
@@ -79,7 +79,7 @@ func (u *Unrooted) Chmod(name string, mode fs.FileMode) error {
 func (u *Unrooted) Chown(name string, uid int, gid int) error {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return wrapper.PathErr("chown", name, err)
+		return fsutil.WrapPathErr("chown", name, err)
 	}
 	return os.Chown(path, uid, gid)
 }
@@ -87,7 +87,7 @@ func (u *Unrooted) Chown(name string, uid int, gid int) error {
 func (u *Unrooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return wrapper.PathErr("chtimes", name, err)
+		return fsutil.WrapPathErr("chtimes", name, err)
 	}
 	return os.Chtimes(path, atime, mtime)
 }
@@ -99,7 +99,7 @@ func (u *Unrooted) Close() error {
 func (u *Unrooted) Create(name string) (vroot.File, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 	f, err := os.Create(path)
 	if err != nil {
@@ -111,7 +111,7 @@ func (u *Unrooted) Create(name string) (vroot.File, error) {
 func (u *Unrooted) Lchown(name string, uid int, gid int) error {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return wrapper.PathErr("", name, err)
+		return fsutil.WrapPathErr("", name, err)
 	}
 	if u.root == path { // *os.Root resolves the given root, mimicking.
 		return os.Chown(path, uid, gid)
@@ -122,11 +122,11 @@ func (u *Unrooted) Lchown(name string, uid int, gid int) error {
 func (u *Unrooted) Link(oldname string, newname string) error {
 	oldPath, err := u.resolvePath(oldname)
 	if err != nil {
-		return wrapper.LinkErr("link", oldname, newname, err)
+		return fsutil.WrapLinkErr("link", oldname, newname, err)
 	}
 	newPath, err := u.resolvePath(newname)
 	if err != nil {
-		return wrapper.LinkErr("link", oldname, newname, err)
+		return fsutil.WrapLinkErr("link", oldname, newname, err)
 	}
 	return os.Link(oldPath, newPath)
 }
@@ -134,7 +134,7 @@ func (u *Unrooted) Link(oldname string, newname string) error {
 func (u *Unrooted) Lstat(name string) (fs.FileInfo, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("lstat", name, err)
+		return nil, fsutil.WrapPathErr("lstat", name, err)
 	}
 	if u.root == path {
 		return os.Stat(path)
@@ -145,7 +145,7 @@ func (u *Unrooted) Lstat(name string) (fs.FileInfo, error) {
 func (u *Unrooted) Mkdir(name string, perm fs.FileMode) error {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return wrapper.PathErr("mkdir", name, err)
+		return fsutil.WrapPathErr("mkdir", name, err)
 	}
 	return os.Mkdir(path, perm)
 }
@@ -153,7 +153,7 @@ func (u *Unrooted) Mkdir(name string, perm fs.FileMode) error {
 func (u *Unrooted) MkdirAll(name string, perm fs.FileMode) error {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return wrapper.PathErr("mkdir", name, err)
+		return fsutil.WrapPathErr("mkdir", name, err)
 	}
 	return os.MkdirAll(path, perm)
 }
@@ -165,7 +165,7 @@ func (u *Unrooted) Name() string {
 func (u *Unrooted) Open(name string) (vroot.File, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -177,7 +177,7 @@ func (u *Unrooted) Open(name string) (vroot.File, error) {
 func (u *Unrooted) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 	f, err := os.OpenFile(path, flag, perm)
 	if err != nil {
@@ -189,7 +189,7 @@ func (u *Unrooted) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File
 func (u *Unrooted) OpenRoot(name string) (vroot.Rooted, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 	root, err := os.OpenRoot(path)
 	if err != nil {
@@ -201,7 +201,7 @@ func (u *Unrooted) OpenRoot(name string) (vroot.Rooted, error) {
 func (u *Unrooted) OpenUnrooted(name string) (vroot.Unrooted, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 	return NewUnrooted(path)
 }
@@ -209,10 +209,10 @@ func (u *Unrooted) OpenUnrooted(name string) (vroot.Unrooted, error) {
 func (u *Unrooted) ReadLink(name string) (string, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return "", wrapper.PathErr("link", name, err)
+		return "", fsutil.WrapPathErr("link", name, err)
 	}
 	if u.root == path {
-		return "", wrapper.PathErr("readlink", path, syscall.EINVAL)
+		return "", fsutil.WrapPathErr("readlink", path, syscall.EINVAL)
 	}
 	return os.Readlink(path)
 }
@@ -220,7 +220,7 @@ func (u *Unrooted) ReadLink(name string) (string, error) {
 func (u *Unrooted) Remove(name string) error {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return wrapper.PathErr("", name, err)
+		return fsutil.WrapPathErr("", name, err)
 	}
 	return os.Remove(path)
 }
@@ -228,7 +228,7 @@ func (u *Unrooted) Remove(name string) error {
 func (u *Unrooted) RemoveAll(name string) error {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return wrapper.PathErr("RemoveAll", name, err)
+		return fsutil.WrapPathErr("RemoveAll", name, err)
 	}
 	return os.RemoveAll(path)
 }
@@ -236,11 +236,11 @@ func (u *Unrooted) RemoveAll(name string) error {
 func (u *Unrooted) Rename(oldname string, newname string) error {
 	oldPath, err := u.resolvePath(oldname)
 	if err != nil {
-		return wrapper.LinkErr("rename", oldname, newname, err)
+		return fsutil.WrapLinkErr("rename", oldname, newname, err)
 	}
 	newPath, err := u.resolvePath(newname)
 	if err != nil {
-		return wrapper.LinkErr("rename", oldname, newname, err)
+		return fsutil.WrapLinkErr("rename", oldname, newname, err)
 	}
 	return os.Rename(oldPath, newPath)
 }
@@ -248,7 +248,7 @@ func (u *Unrooted) Rename(oldname string, newname string) error {
 func (u *Unrooted) Stat(name string) (fs.FileInfo, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("stat", name, err)
+		return nil, fsutil.WrapPathErr("stat", name, err)
 	}
 	return os.Stat(path)
 }
@@ -256,7 +256,7 @@ func (u *Unrooted) Stat(name string) (fs.FileInfo, error) {
 func (u *Unrooted) Symlink(oldname string, newname string) error {
 	newPath, err := u.resolvePath(newname)
 	if err != nil {
-		return wrapper.LinkErr("symlink", oldname, newname, err)
+		return fsutil.WrapLinkErr("symlink", oldname, newname, err)
 	}
 	return os.Symlink(oldname, newPath)
 }
@@ -264,7 +264,7 @@ func (u *Unrooted) Symlink(oldname string, newname string) error {
 func (u *Unrooted) ReadFile(name string) ([]byte, error) {
 	newName, err := u.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 	return os.ReadFile(newName)
 }

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/ngicks/go-common/serr"
+	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
-	"github.com/ngicks/go-fsys-helper/vroot/internal/wrapper"
 )
 
 var _ vroot.Rooted = (*Overlay)(nil)
@@ -113,11 +113,11 @@ func doInTopOrUpperLayer[V comparable](
 
 	whited, err := topMeta.QueryWhiteout(name)
 	if err != nil {
-		err = wrapper.PathErr(op, name, err)
+		err = fsutil.WrapPathErr(op, name, err)
 		return
 	}
 	if whited {
-		err = wrapper.PathErr(op, name, syscall.ENOENT)
+		err = fsutil.WrapPathErr(op, name, syscall.ENOENT)
 		return
 	}
 
@@ -128,7 +128,7 @@ func doInTopOrUpperLayer[V comparable](
 
 	v, err = layerOp(ll, name)
 	if errors.Is(err, ErrWhitedOut) {
-		err = wrapper.PathErr(op, name, syscall.ENOENT)
+		err = fsutil.WrapPathErr(op, name, syscall.ENOENT)
 		return
 	}
 
@@ -184,7 +184,7 @@ func (o *nolockOverlay) Lstat(name string) (fs.FileInfo, error) {
 }
 
 func (o *Overlay) resolvePath(name string, skipLastElement bool) (string, error) {
-	return vroot.ResolvePath(&nolockOverlay{o}, name, skipLastElement)
+	return fsutil.ResolvePath(&nolockOverlay{o}, name, skipLastElement)
 }
 
 // No lock.
@@ -207,7 +207,7 @@ func (o *Overlay) statNoLock(name string) (fs.FileInfo, error) {
 		Layers.Lstat,
 		resolved,
 	)
-	return info, wrapper.PathErr("", name, err)
+	return info, fsutil.WrapPathErr("", name, err)
 }
 
 // Stat returns file info, searching through layers and following symlinks
@@ -252,7 +252,7 @@ func (o *Overlay) openMergedFileNoLock(name string, flag int, perm fs.FileMode, 
 
 	if underFiles == nil {
 		if topFile == nil {
-			return nil, wrapper.PathErr("open", name, syscall.ENOENT)
+			return nil, fsutil.WrapPathErr("open", name, syscall.ENOENT)
 		}
 		underFiles = &layersFile{}
 	} else {
@@ -271,7 +271,7 @@ func (o *Overlay) openFileNoLock(name string, flag int, perm fs.FileMode) (f vro
 
 	defer func() {
 		if err != nil {
-			err = wrapper.PathErr("open", name, err)
+			err = fsutil.WrapPathErr("open", name, err)
 		}
 	}()
 
@@ -386,27 +386,27 @@ func (o *Overlay) removeNoLock(name string) error {
 	name = filepath.Clean(name)
 
 	if name == "." || name == string(filepath.Separator) {
-		return wrapper.PathErr("RemoveAll", name, syscall.EINVAL)
+		return fsutil.WrapPathErr("RemoveAll", name, syscall.EINVAL)
 	}
 
 	topInfo, topErr := o.top.Lstat(name)
 	if topErr != nil && !errors.Is(topErr, fs.ErrNotExist) {
-		return wrapper.PathErr("remove", name, topErr)
+		return fsutil.WrapPathErr("remove", name, topErr)
 	}
 
 	lowerInfo, lowerErr := o.layers.Lstat(name)
 	if topErr != nil && lowerErr != nil {
 		// At least either should be existent and accessible
-		return wrapper.PathErr("remove", name, topErr)
+		return fsutil.WrapPathErr("remove", name, topErr)
 	}
 
 	if topErr == nil && topInfo.IsDir() {
 		dirents, err := vroot.ReadDir(o.top, name)
 		if err != nil {
-			return wrapper.PathErr("remove", name, err)
+			return fsutil.WrapPathErr("remove", name, err)
 		}
 		if len(dirents) > 0 {
-			return wrapper.PathErr("remove", name, syscall.ENOTEMPTY)
+			return fsutil.WrapPathErr("remove", name, syscall.ENOTEMPTY)
 		}
 		// It is possible that lower directories have file and only top dir is empty.
 		// Handle that case later but it's ok to remove top dir.
@@ -428,12 +428,12 @@ func (o *Overlay) removeNoLock(name string) error {
 	if topIsDir && lowerIsDir {
 		f, err := o.layers.Open(name)
 		if err != nil {
-			return wrapper.PathErr("remove", name, err)
+			return fsutil.WrapPathErr("remove", name, err)
 		}
 		dirents, err := f.readDir(nil)
 		_ = f.close()
 		if err != nil {
-			return wrapper.PathErr("remove", name, err)
+			return fsutil.WrapPathErr("remove", name, err)
 		}
 		if len(dirents) == 0 {
 			shouldWhiteOut = true
@@ -443,14 +443,14 @@ func (o *Overlay) removeNoLock(name string) error {
 	if topErr == nil {
 		err := o.top.Remove(name)
 		if err != nil {
-			return wrapper.PathErr("remove", name, err)
+			return fsutil.WrapPathErr("remove", name, err)
 		}
 	}
 
 	if shouldWhiteOut {
 		err := o.topMeta.RecordWhiteout(name)
 		if err != nil {
-			return wrapper.PathErr("remove", name, err)
+			return fsutil.WrapPathErr("remove", name, err)
 		}
 	}
 
@@ -467,7 +467,7 @@ func (o *Overlay) removeAllNoLock(name string) error {
 	name = filepath.Clean(name)
 
 	if name == "." || name == string(filepath.Separator) {
-		return wrapper.PathErr("RemoveAll", name, syscall.EINVAL)
+		return fsutil.WrapPathErr("RemoveAll", name, syscall.EINVAL)
 	}
 
 	// Check if target exists
@@ -476,7 +476,7 @@ func (o *Overlay) removeAllNoLock(name string) error {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil // Already doesn't exist, nothing to do
 		}
-		return wrapper.PathErr("RemoveAll", name, err)
+		return fsutil.WrapPathErr("RemoveAll", name, err)
 	}
 
 	// If it's not a directory, just remove it
@@ -490,13 +490,13 @@ func (o *Overlay) removeAllNoLock(name string) error {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
-		return wrapper.PathErr("RemoveAll", name, err)
+		return fsutil.WrapPathErr("RemoveAll", name, err)
 	}
 	defer f.Close()
 
 	dirents, err := f.Readdir(-1)
 	if err != nil {
-		return wrapper.PathErr("RemoveAll", name, err)
+		return fsutil.WrapPathErr("RemoveAll", name, err)
 	}
 
 	// Remove all directory contents recursively
@@ -523,12 +523,12 @@ func (o *Overlay) mkdirNoLock(name string, perm fs.FileMode) error {
 	name = filepath.Clean(name)
 
 	if name == "." {
-		return wrapper.PathErr("mkdir", name, syscall.EEXIST)
+		return fsutil.WrapPathErr("mkdir", name, syscall.EEXIST)
 	}
 
 	resolved, err := o.resolvePath(name, false)
 	if err == nil && resolved == "." {
-		return wrapper.PathErr("mkdir", name, syscall.EEXIST)
+		return fsutil.WrapPathErr("mkdir", name, syscall.EEXIST)
 	}
 	parent := filepath.Dir(resolved)
 	var parentChecked bool
@@ -542,7 +542,7 @@ func (o *Overlay) mkdirNoLock(name string, perm fs.FileMode) error {
 				return err
 			}
 			if !info.IsDir() {
-				return wrapper.PathErr("mkdir", parent, syscall.ENOTDIR)
+				return fsutil.WrapPathErr("mkdir", parent, syscall.ENOTDIR)
 			}
 		}
 		parentChecked = true
@@ -569,15 +569,15 @@ func (o *Overlay) mkdirNoLock(name string, perm fs.FileMode) error {
 				// Directory exists in overlay but not in top layer, create it in top layer
 				err := o.top.Mkdir(resolved, perm)
 				if err != nil && !errors.Is(err, fs.ErrExist) {
-					return wrapper.PathErr("mkdir", name, err)
+					return fsutil.WrapPathErr("mkdir", name, err)
 				}
 			}
-			return wrapper.PathErr("mkdir", name, fs.ErrExist)
+			return fsutil.WrapPathErr("mkdir", name, fs.ErrExist)
 		} else {
-			return wrapper.PathErr("mkdir", name, syscall.ENOTDIR)
+			return fsutil.WrapPathErr("mkdir", name, syscall.ENOTDIR)
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return wrapper.PathErr("mkdir", name, err)
+		return fsutil.WrapPathErr("mkdir", name, err)
 	}
 
 	return o.top.Mkdir(resolved, perm)
@@ -631,7 +631,7 @@ func (o *Overlay) renameNoLock(oldname, newname string) error {
 	} else if err == nil {
 		if (oldInfo.IsDir() && !newInfo.IsDir()) ||
 			(!oldInfo.IsDir() && newInfo.IsDir()) {
-			return wrapper.LinkErr("rename", oldname, newname, syscall.EEXIST)
+			return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EEXIST)
 		}
 		if newInfo.IsDir() {
 			dirents, err := o.readLinkNoLock(newname)
@@ -639,7 +639,7 @@ func (o *Overlay) renameNoLock(oldname, newname string) error {
 				return err
 			}
 			if len(dirents) != 0 {
-				return wrapper.LinkErr("rename", oldname, newname, syscall.ENOTDIR)
+				return fsutil.WrapLinkErr("rename", oldname, newname, syscall.ENOTDIR)
 			}
 		}
 	}
@@ -650,7 +650,7 @@ func (o *Overlay) renameNoLock(oldname, newname string) error {
 	}
 
 	if err := o.topMeta.RecordWhiteout(oldname); err != nil {
-		return wrapper.LinkErr("rename", oldname, newname, err)
+		return fsutil.WrapLinkErr("rename", oldname, newname, err)
 	}
 	return nil
 }
@@ -667,7 +667,7 @@ func (o *Overlay) linkNoLock(oldname, newname string) error {
 		return err
 	}
 	if err == nil {
-		return wrapper.LinkErr("link", oldname, newname, syscall.EEXIST)
+		return fsutil.WrapLinkErr("link", oldname, newname, syscall.EEXIST)
 	}
 	if err := o.copyOnWriteNoLock(oldname); err != nil {
 		return err
@@ -766,7 +766,7 @@ func (o *Overlay) OpenRoot(name string) (vroot.Rooted, error) {
 	}
 
 	if !info.IsDir() {
-		return nil, wrapper.PathErr("open", name, syscall.ENOTDIR)
+		return nil, fsutil.WrapPathErr("open", name, syscall.ENOTDIR)
 	}
 
 	err = o.copyOnWriteNoLock(resolved)

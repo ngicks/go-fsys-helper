@@ -4,12 +4,14 @@ import (
 	"errors"
 	"io/fs"
 	"time"
+
+	"github.com/ngicks/go-fsys-helper/fsutil"
 )
 
 var (
 	// ErrPathEscapes is returned from [Fs] implementations
 	// if given path escapes from the root.
-	ErrPathEscapes = errors.New("path escapes from parent")
+	ErrPathEscapes = fsutil.ErrPathEscapes
 	// ErrOpNotSupported might be returned from ReadAt, WriteAt and Seek on [File] implementation.
 	// That indicates the implementation came from places where those methods are hard to implement,
 	// e.g. [fs.FS].

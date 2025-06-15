@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ngicks/go-fsys-helper/vroot/internal/wrapper"
+	"github.com/ngicks/go-fsys-helper/fsutil"
 )
 
 var (
@@ -45,19 +45,19 @@ func FromIoFsRooted(fsys fs.ReadLinkFS, name string) Rooted {
 func (f *ioFsFromRooted) Rooted() {}
 
 func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string, error) {
-	return ResolvePath(f.fsys, name, skipLastElement)
+	return fsutil.ResolvePath(f.fsys, name, skipLastElement)
 }
 
 func (f *ioFsFromRooted) Chmod(name string, mode fs.FileMode) error {
-	return wrapper.PathErr("chmod", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chmod", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Chown(name string, uid int, gid int) error {
-	return wrapper.PathErr("chown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chown", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return wrapper.PathErr("chtimes", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chtimes", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Close() error {
@@ -65,31 +65,31 @@ func (f *ioFsFromRooted) Close() error {
 }
 
 func (f *ioFsFromRooted) Create(name string) (File, error) {
-	return nil, wrapper.PathErr("open", name, syscall.EROFS)
+	return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Lchown(name string, uid int, gid int) error {
-	return wrapper.PathErr("lchown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("lchown", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Link(oldname string, newname string) error {
-	return wrapper.LinkErr("link", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("link", oldname, newname, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Lstat(name string) (fs.FileInfo, error) {
 	path, err := f.resolvePath(name, true)
 	if err != nil {
-		return nil, wrapper.PathErr("lstat", name, err)
+		return nil, fsutil.WrapPathErr("lstat", name, err)
 	}
 	return f.fsys.Lstat(path)
 }
 
 func (f *ioFsFromRooted) Mkdir(name string, perm fs.FileMode) error {
-	return wrapper.PathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) MkdirAll(name string, perm fs.FileMode) error {
-	return wrapper.PathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Name() string {
@@ -99,7 +99,7 @@ func (f *ioFsFromRooted) Name() string {
 func (f *ioFsFromRooted) Open(name string) (File, error) {
 	path, err := f.resolvePath(name, false)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 	file, err := f.fsys.Open(path)
 	if err != nil {
@@ -110,7 +110,7 @@ func (f *ioFsFromRooted) Open(name string) (File, error) {
 
 func (f *ioFsFromRooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
-		return nil, wrapper.PathErr("open", name, syscall.EROFS)
+		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 	}
 	return f.Open(name)
 }
@@ -118,7 +118,7 @@ func (f *ioFsFromRooted) OpenFile(name string, flag int, perm fs.FileMode) (File
 func (f *ioFsFromRooted) OpenRoot(name string) (Rooted, error) {
 	subPath, err := f.resolvePath(name, false)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 
 	subFsys, err := fs.Sub(f.fsys, subPath)
@@ -137,33 +137,33 @@ func (f *ioFsFromRooted) OpenRoot(name string) (Rooted, error) {
 func (f *ioFsFromRooted) ReadLink(name string) (string, error) {
 	resolved, err := f.resolvePath(name, true)
 	if err != nil {
-		return "", wrapper.PathErr("readlink", name, err)
+		return "", fsutil.WrapPathErr("readlink", name, err)
 	}
 	return f.fsys.ReadLink(resolved)
 }
 
 func (f *ioFsFromRooted) Remove(name string) error {
-	return wrapper.PathErr("remove", name, syscall.EROFS)
+	return fsutil.WrapPathErr("remove", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) RemoveAll(name string) error {
-	return wrapper.PathErr("RemoveAll", name, syscall.EROFS)
+	return fsutil.WrapPathErr("RemoveAll", name, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Rename(oldname string, newname string) error {
-	return wrapper.LinkErr("rename", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EROFS)
 }
 
 func (f *ioFsFromRooted) Stat(name string) (fs.FileInfo, error) {
 	path, err := f.resolvePath(name, false)
 	if err != nil {
-		return nil, wrapper.PathErr("stat", name, err)
+		return nil, fsutil.WrapPathErr("stat", name, err)
 	}
 	return fs.Stat(f.fsys, path)
 }
 
 func (f *ioFsFromRooted) Symlink(oldname string, newname string) error {
-	return wrapper.LinkErr("symlink", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.EROFS)
 }
 
 type ioFsFromUnrooted struct {
@@ -198,15 +198,15 @@ func (f *ioFsFromUnrooted) resolvePath(name string) (string, error) {
 }
 
 func (f *ioFsFromUnrooted) Chmod(name string, mode fs.FileMode) error {
-	return wrapper.PathErr("chmod", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chmod", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Chown(name string, uid int, gid int) error {
-	return wrapper.PathErr("chown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chown", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return wrapper.PathErr("chtimes", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chtimes", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Close() error {
@@ -214,31 +214,31 @@ func (f *ioFsFromUnrooted) Close() error {
 }
 
 func (f *ioFsFromUnrooted) Create(name string) (File, error) {
-	return nil, wrapper.PathErr("open", name, syscall.EROFS)
+	return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Lchown(name string, uid int, gid int) error {
-	return wrapper.PathErr("lchown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("lchown", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Link(oldname string, newname string) error {
-	return wrapper.LinkErr("link", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("link", oldname, newname, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Lstat(name string) (fs.FileInfo, error) {
 	path, err := f.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("lstat", name, err)
+		return nil, fsutil.WrapPathErr("lstat", name, err)
 	}
 	return f.fsys.Lstat(path)
 }
 
 func (f *ioFsFromUnrooted) Mkdir(name string, perm fs.FileMode) error {
-	return wrapper.PathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) MkdirAll(name string, perm fs.FileMode) error {
-	return wrapper.PathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Name() string {
@@ -248,7 +248,7 @@ func (f *ioFsFromUnrooted) Name() string {
 func (f *ioFsFromUnrooted) Open(name string) (File, error) {
 	path, err := f.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 	file, err := f.fsys.Open(path)
 	if err != nil {
@@ -259,7 +259,7 @@ func (f *ioFsFromUnrooted) Open(name string) (File, error) {
 
 func (f *ioFsFromUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
-		return nil, wrapper.PathErr("open", name, syscall.EROFS)
+		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 	}
 	return f.Open(name)
 }
@@ -267,7 +267,7 @@ func (f *ioFsFromUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (Fi
 func (f *ioFsFromUnrooted) OpenRoot(name string) (Rooted, error) {
 	subPath, err := f.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 
 	subFsys, err := fs.Sub(f.fsys, subPath)
@@ -286,39 +286,39 @@ func (f *ioFsFromUnrooted) OpenRoot(name string) (Rooted, error) {
 func (f *ioFsFromUnrooted) ReadLink(name string) (string, error) {
 	resolved, err := f.resolvePath(name)
 	if err != nil {
-		return "", wrapper.PathErr("readlink", name, err)
+		return "", fsutil.WrapPathErr("readlink", name, err)
 	}
 	return f.fsys.ReadLink(resolved)
 }
 
 func (f *ioFsFromUnrooted) Remove(name string) error {
-	return wrapper.PathErr("remove", name, syscall.EROFS)
+	return fsutil.WrapPathErr("remove", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) RemoveAll(name string) error {
-	return wrapper.PathErr("RemoveAll", name, syscall.EROFS)
+	return fsutil.WrapPathErr("RemoveAll", name, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Rename(oldname string, newname string) error {
-	return wrapper.LinkErr("rename", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Stat(name string) (fs.FileInfo, error) {
 	path, err := f.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("stat", name, err)
+		return nil, fsutil.WrapPathErr("stat", name, err)
 	}
 	return fs.Stat(f.fsys, path)
 }
 
 func (f *ioFsFromUnrooted) Symlink(oldname string, newname string) error {
-	return wrapper.LinkErr("symlink", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.EROFS)
 }
 
 func (f *ioFsFromUnrooted) OpenUnrooted(name string) (Unrooted, error) {
 	subPath, err := f.resolvePath(name)
 	if err != nil {
-		return nil, wrapper.PathErr("open", name, err)
+		return nil, fsutil.WrapPathErr("open", name, err)
 	}
 
 	subFsys, err := fs.Sub(f.fsys, subPath)
@@ -346,7 +346,7 @@ func newFsFile(file fs.File, name string) *fsFile {
 }
 
 func (f *fsFile) pathErr(op string) error {
-	return wrapper.PathErr(op, f.name, syscall.EPERM)
+	return fsutil.WrapPathErr(op, f.name, syscall.EPERM)
 }
 
 func (f *fsFile) Chmod(mode fs.FileMode) error {
@@ -377,14 +377,14 @@ func (f *fsFile) ReadAt(b []byte, off int64) (n int, err error) {
 	if ra, ok := f.file.(io.ReaderAt); ok {
 		return ra.ReadAt(b, off)
 	}
-	return 0, wrapper.PathErr("readat", f.name, ErrOpNotSupported)
+	return 0, fsutil.WrapPathErr("readat", f.name, ErrOpNotSupported)
 }
 
 func (f *fsFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	if readDirFile, ok := f.file.(fs.ReadDirFile); ok {
 		return readDirFile.ReadDir(n)
 	}
-	return nil, wrapper.PathErr("readdir", f.name, errors.New("not implemented"))
+	return nil, fsutil.WrapPathErr("readdir", f.name, errors.New("not implemented"))
 }
 
 func (f *fsFile) Readdir(n int) ([]fs.FileInfo, error) {
@@ -421,7 +421,7 @@ func (f *fsFile) Seek(offset int64, whence int) (ret int64, err error) {
 	if s, ok := f.file.(io.Seeker); ok {
 		return s.Seek(offset, whence)
 	}
-	return 0, wrapper.PathErr("seek", f.name, ErrOpNotSupported)
+	return 0, fsutil.WrapPathErr("seek", f.name, ErrOpNotSupported)
 }
 
 func (f *fsFile) Stat() (fs.FileInfo, error) {

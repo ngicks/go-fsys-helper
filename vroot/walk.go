@@ -4,6 +4,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/ngicks/go-fsys-helper/fsutil"
 )
 
 var (
@@ -109,7 +111,7 @@ func walkDir(
 		)
 		info, err = fsys.Stat(path)
 		if err == nil {
-			realPath_, err = resolveSymlink(fsys, realPath)
+			realPath_, err = fsutil.ResolveSymlink(fsys, realPath)
 		}
 		if err != nil {
 			return fn(path, realPath, info, err)

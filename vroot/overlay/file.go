@@ -9,8 +9,8 @@ import (
 	"syscall"
 
 	"github.com/ngicks/go-common/serr"
+	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
-	"github.com/ngicks/go-fsys-helper/vroot/internal/wrapper"
 )
 
 var _ vroot.File = (*overlayFile)(nil)
@@ -62,7 +62,7 @@ func (f *overlayFile) ReadAt(b []byte, off int64) (n int, err error) {
 
 func (f *overlayFile) checkClosed(op string) error {
 	if f.closed {
-		return wrapper.PathErr(op, f.name, fs.ErrClosed)
+		return fsutil.WrapPathErr(op, f.name, fs.ErrClosed)
 	}
 	return nil
 }
@@ -159,18 +159,18 @@ func (f *overlayFile) Seek(offset int64, whence int) (ret int64, err error) {
 
 	switch whence {
 	default:
-		return 0, wrapper.PathErr("seek", f.name, fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid))
+		return 0, fsutil.WrapPathErr("seek", f.name, fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid))
 	case io.SeekStart:
 		if offset < 0 {
-			return 0, wrapper.PathErr("seek", f.name, fmt.Errorf("negative offset %d: %w", whence, fs.ErrInvalid))
+			return 0, fsutil.WrapPathErr("seek", f.name, fmt.Errorf("negative offset %d: %w", whence, fs.ErrInvalid))
 		}
 	case io.SeekCurrent:
 		if offset != 0 {
-			return 0, wrapper.PathErr("seek", f.name, fs.ErrInvalid)
+			return 0, fsutil.WrapPathErr("seek", f.name, fs.ErrInvalid)
 		}
 	case io.SeekEnd:
 		if offset > 0 {
-			return 0, wrapper.PathErr("seek", f.name, fmt.Errorf("positive offset %d: %w", whence, fs.ErrInvalid))
+			return 0, fsutil.WrapPathErr("seek", f.name, fmt.Errorf("positive offset %d: %w", whence, fs.ErrInvalid))
 		}
 		f.cursor = math.MaxInt
 	}
