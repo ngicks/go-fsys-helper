@@ -32,40 +32,59 @@ func (d *dir) addChild(name string, hdr *Section) {
 	if d.files == nil {
 		d.files = make(map[string]direntry)
 	}
-	name, rest, ok := strings.Cut(name, "/")
-	if ok {
-		child, ok := d.files[name]
-		if !ok {
-			child = &dir{}
-			d.files[name] = child
-			d.ordered = append(d.ordered, child)
+
+	currentDir := d
+	offset := 0
+	pathLen := len(name)
+
+	for component := range strings.SplitSeq(name, "/") {
+		// Update offset to track position in original string
+		offset += len(component)
+		isLastComponent := offset >= pathLen
+		if !isLastComponent {
+			offset++ // Account for the "/" separator
 		}
-		child.(*dir).addChild(rest, hdr)
-	} else {
-		var ent direntry
-		switch hdr.h.Typeflag {
-		case tar.TypeDir:
-			if existiing := d.files[name]; existiing != nil {
-				dirHandle, ok := existiing.(*dir)
-				if !ok {
-					// TODO: warn about this?
-					dirHandle = &dir{}
-					d.files[name] = dirHandle
-				}
-				dirHandle.h = hdr
-			} else {
-				ent = &dir{h: hdr}
+
+		if !isLastComponent {
+			// Intermediate component - ensure directory exists
+			child, ok := currentDir.files[component]
+			if !ok {
+				child = &dir{}
+				currentDir.files[component] = child
+				currentDir.ordered = append(currentDir.ordered, child)
 			}
-		case tar.TypeSymlink:
-			ent = &symlink{h: hdr}
-		case tar.TypeLink:
-			ent = &hardlink{h: hdr}
-		default:
-			ent = &file{h: hdr}
-		}
-		if ent != nil {
-			d.files[name] = ent
-			d.ordered = append(d.ordered, ent)
+			currentDir = child.(*dir)
+			// Ensure the child directory has an initialized files map
+			if currentDir.files == nil {
+				currentDir.files = make(map[string]direntry)
+			}
+		} else {
+			// Final component - add the actual entry
+			var ent direntry
+			switch hdr.h.Typeflag {
+			case tar.TypeDir:
+				if existing := currentDir.files[component]; existing != nil {
+					dirHandle, ok := existing.(*dir)
+					if !ok {
+						// TODO: warn about this?
+						dirHandle = &dir{}
+						currentDir.files[component] = dirHandle
+					}
+					dirHandle.h = hdr
+				} else {
+					ent = &dir{h: hdr}
+				}
+			case tar.TypeSymlink:
+				ent = &symlink{h: hdr}
+			case tar.TypeLink:
+				ent = &hardlink{h: hdr}
+			default:
+				ent = &file{h: hdr}
+			}
+			if ent != nil {
+				currentDir.files[component] = ent
+				currentDir.ordered = append(currentDir.ordered, ent)
+			}
 		}
 	}
 }
@@ -75,26 +94,46 @@ func (d *dir) openChild(name string) (direntry, error) {
 		return d, nil
 	}
 
-	name, rest, ok := strings.Cut(name, "/")
-	child := d.files[name]
-	if child == nil {
-		return nil, pathErr("open", name, fs.ErrNotExist)
-	}
-	if ok {
-		switch x := child.(type) {
-		case *dir:
-			return x.openChild(rest)
-		case *symlink:
-			// Return symlink itself, symlink resolution will be handled in Fs.Open
+	currentDir := d
+	offset := 0
+	pathLen := len(name)
+
+	for component := range strings.SplitSeq(name, "/") {
+		child := currentDir.files[component]
+		if child == nil {
+			return nil, pathErr("open", component, fs.ErrNotExist)
+		}
+
+		// Update offset to track position in original string
+		offset += len(component)
+		isLastComponent := offset >= pathLen
+		if !isLastComponent {
+			offset++ // Account for the "/" separator
+		}
+
+		if !isLastComponent {
+			// More path components to traverse
+			switch x := child.(type) {
+			case *dir:
+				currentDir = x
+				continue
+			case *symlink:
+				// Return symlink itself, symlink resolution will be handled in Fs.Open
+				return child, nil
+			case *hardlink:
+				// Return hardlink itself, hardlink resolution will be handled in Fs.Open
+				return child, nil
+			default:
+				return nil, pathErr("open", component, syscall.ENOTDIR)
+			}
+		} else {
+			// Final component - return the child
 			return child, nil
-		case *hardlink:
-			// Return hardlink itself, hardlink resolution will be handled in Fs.Open
-			return child, nil
-		default:
-			return nil, pathErr("open", name, syscall.ENOTDIR)
 		}
 	}
-	return child, nil
+
+	// Should not reach here, but return current directory as fallback
+	return currentDir, nil
 }
 
 var (
