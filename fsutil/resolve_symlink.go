@@ -13,6 +13,18 @@ import (
 // (a path starts with ".." or an absolute path.)
 var ErrPathEscapes = errors.New("path escapes from parent")
 
+// ResolvePath resolves symbolic links in the given path by traversing each
+// path component and following symlinks when encountered.
+//
+// If skipLastElement is true, the final path component is preserved without
+// symlink resolution (useful for operations on the symlink itself e.g. Lstat, Lchown).
+//
+// Returns ErrPathEscapes for paths that would escape the parent directory (including absolute paths.)
+// When a path component doesn't exist, returns an error that satisfies errors.Is(err, fs.ErrNotExist)
+// with the path concatenated from the intermediate resolution result and remaining unresolved components.
+//
+// ResolvePath is still vulnerable to attack using TOCTOU(Time Of Check Time Of Use) race;
+// unlike [*os.Root] which leverages openat and lstatat, ResolvePath is just a sequence of Lstat and ReadLink.
 func ResolvePath(
 	fsys interface {
 		ReadLinkFs
@@ -34,13 +46,13 @@ func ResolvePath(
 	var lastPart string
 	if skipLastElement {
 		// Use strings.LastIndex to find the last separator and extract the last part
-		if idx := strings.LastIndex(name, string(filepath.Separator)); idx >= 0 {
-			lastPart = name[idx+1:]
-			name = name[:idx]
-		} else {
+		idx := strings.LastIndex(name, string(filepath.Separator))
+		if idx < 0 {
 			// No separator found, the entire name is the last part
 			return name, nil
 		}
+		lastPart = name[idx+1:]
+		name = name[:idx]
 	}
 
 	var pathBuilder strings.Builder
@@ -66,7 +78,7 @@ func ResolvePath(
 			continue
 		}
 
-		resolved, err := resolveSymlink(fsys, currentPath)
+		resolved, err := ResolveSymlink(fsys, currentPath)
 		if err != nil {
 			return "", err
 		}
@@ -96,8 +108,18 @@ func ResolvePath(
 	return filepath.ToSlash(pathBuilder.String()), nil
 }
 
-// resolveSymlink resolves a symlink until target is other than symlink.
-func resolveSymlink(
+// ResolveSymlink resolves a symlink.
+//
+// linkRealPath must be a real path for a link.
+// Otherwise it might return an error that satisfies errors.Ie(err, fs.ErrNotExist),
+// or even an incorrect path.
+//
+// If linkRealPath is a link to another link, ResolvePath resolves that link until it finds
+// a file other than a symlink.
+//
+// In case linkRealPath is a link to other link and that link targets to the file pointed by linkRealPath,
+// then ResolveSymlink returns an error that satisfies error.Is(err, syscall.ELOOP).
+func ResolveSymlink(
 	fsys interface {
 		ReadLinkFs
 		LstatFs

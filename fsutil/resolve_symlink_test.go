@@ -42,7 +42,7 @@ func Test_resolveSymlink(t *testing.T) {
 	}
 
 	fsys := osfsLite{filepath.Join(tempDir, "root")}
-	resolved, err := resolveSymlink(fsys, "a")
+	resolved, err := ResolveSymlink(fsys, "a")
 	if resolved != "" || !errors.Is(err, syscall.ELOOP) {
 		t.Errorf(
 			"incorrect: expected \"\" and error that satisfies erorrs.Is(err, syscall.ELOOP), but is %q and %v",
