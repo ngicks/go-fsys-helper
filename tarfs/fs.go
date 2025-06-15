@@ -29,7 +29,7 @@ func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
 	}
 	// first collect entries in the map
 	// Tar archives may have duplicate entry for same name for incremental update, etc.
-	headers, err := tryCollectHeaderOffsets(iterHeaders(r))
+	headers, err := tryCollectHeaderOffsets(Sections(r))
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
 	} else {
 		// Is it even possible?
 		fsys.root = &dir{
-			h: &headerOffset{
+			h: &Section{
 				h: &tar.Header{
 					Typeflag: tar.TypeDir,
 					Name:     "./",

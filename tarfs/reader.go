@@ -12,9 +12,9 @@ type seekReadReaderAt interface {
 	io.Seeker
 }
 
-func makeReader(ra io.ReaderAt, h *headerOffset) seekReadReaderAt {
+func makeReader(ra io.ReaderAt, h *Section) seekReadReaderAt {
 	if h.holes == nil {
-		return io.NewSectionReader(ra, int64(h.bodyStart), int64(h.bodyEnd)-int64(h.bodyStart))
+		return io.NewSectionReader(ra, h.BodyStart(), h.BodyEnd()-h.BodyStart())
 	}
 
 	var readers []stream.SizedReaderAt
@@ -28,7 +28,7 @@ func makeReader(ra io.ReaderAt, h *headerOffset) seekReadReaderAt {
 
 		space := current.Offset - (prev.Offset + prev.Length)
 		if space != 0 { // not first one?
-			sr := io.NewSectionReader(ra, int64(h.bodyStart)+int64(cur), space)
+			sr := io.NewSectionReader(ra, h.BodyStart()+int64(cur), space)
 			cur += int(space)
 			readers = append(readers, stream.SizedReaderAt{R: sr, Size: sr.Size()})
 			size += int(sr.Size())

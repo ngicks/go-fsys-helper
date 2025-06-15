@@ -20,24 +20,45 @@ func tryMapsCollect[K comparable, V any](keyMapper func(V) K, seq iter.Seq2[V, e
 	return collected, nil
 }
 
-func tryCollectHeaderOffsets(seq iter.Seq2[*headerOffset, error]) (map[string]*headerOffset, error) {
-	return tryMapsCollect(func(ho *headerOffset) string { return path.Clean(ho.h.Name) }, seq)
+func tryCollectHeaderOffsets(seq iter.Seq2[*Section, error]) (map[string]*Section, error) {
+	return tryMapsCollect(func(ho *Section) string { return path.Clean(ho.h.Name) }, seq)
 }
 
-type headerOffset struct {
+// Section is file section within tar reader.
+type Section struct {
 	h                      *tar.Header
-	headerStart, headerEnd int
-	bodyStart, bodyEnd     int
+	headerStart, headerEnd int64
+	bodyEnd                int64
 	holes                  sparseHoles
 }
 
-func iterHeaders(r io.ReaderAt) iter.Seq2[*headerOffset, error] {
-	return func(yield func(*headerOffset, error) bool) {
+func (s *Section) Header() *tar.Header {
+	return s.h
+}
+
+func (s *Section) HeaderStart() int64 {
+	return s.headerStart
+}
+
+func (s *Section) HeaderEnd() int64 {
+	return s.headerEnd
+}
+
+func (s *Section) BodyStart() int64 {
+	return s.headerEnd
+}
+
+func (s *Section) BodyEnd() int64 {
+	return s.bodyEnd
+}
+
+func Sections(r io.ReaderAt) iter.Seq2[*Section, error] {
+	return func(yield func(*Section, error) bool) {
 		countingR := &countingReader{R: io.NewSectionReader(r, 0, math.MaxInt64-1)}
 		tr := tar.NewReader(countingR)
 
 		var (
-			prev *headerOffset
+			prev *Section
 			blk  block
 		)
 		for {
@@ -53,7 +74,7 @@ func iterHeaders(r io.ReaderAt) iter.Seq2[*headerOffset, error] {
 
 			headerEnd := countingR.Count
 
-			hh := &headerOffset{h: h, headerEnd: headerEnd, bodyStart: headerEnd}
+			hh := &Section{h: h, headerEnd: headerEnd}
 			if prev != nil {
 				// bodyEnd padded to 512 bytes block boundary
 				hh.headerStart = prev.bodyEnd + (-prev.bodyEnd)&(blockSize-1)
@@ -66,19 +87,19 @@ func iterHeaders(r io.ReaderAt) iter.Seq2[*headerOffset, error] {
 				tar.TypeCont, tar.TypeXHeader, tar.TypeXGlobalHeader,
 				tar.TypeGNULongName, tar.TypeGNULongLink:
 				// They have size for name.
-				hh.bodyEnd = hh.bodyStart
+				hh.bodyEnd = hh.headerEnd
 			default:
 				// Not totally sure but in testdata tars there's typeflag value not defined in archive/tar
 				// nor there https://www.gnu.org/software/tar/manual/html_node/Standard.html
-				hh.bodyEnd = hh.bodyStart + int(hh.h.Size)
+				hh.bodyEnd = hh.headerEnd + hh.h.Size
 				if hh.holes != nil {
 					// reverse-caluculating size
 					// I dunno how many tar files out wilds have sparse in them.
-					var holeSize int
+					var holeSize int64
 					for _, hole := range hh.holes {
-						holeSize += int(hole.Length)
+						holeSize += hole.Length
 					}
-					hh.bodyEnd = hh.bodyStart + int(hh.h.Size) - holeSize
+					hh.bodyEnd = hh.headerEnd + hh.h.Size - holeSize
 				}
 			}
 
@@ -92,12 +113,12 @@ func iterHeaders(r io.ReaderAt) iter.Seq2[*headerOffset, error] {
 
 type countingReader struct {
 	R     *io.SectionReader
-	Count int
+	Count int64
 }
 
 func (r *countingReader) Read(p []byte) (int, error) {
 	n, err := r.R.Read(p)
-	r.Count += n
+	r.Count += int64(n)
 	return n, err
 }
 
@@ -110,12 +131,12 @@ func (r *countingReader) ReadAt(p []byte, off int64) (n int, err error) {
 func (r *countingReader) Seek(offset int64, whence int) (int64, error) {
 	n, err := r.R.Seek(offset, whence)
 	if err == nil {
-		r.Count = int(n)
+		r.Count = n
 	}
 	return n, err
 }
 
-func reconstructSparse(r io.ReaderAt, hdr *headerOffset, blk *block) (sparseHoles, error) {
+func reconstructSparse(r io.ReaderAt, hdr *Section, blk *block) (sparseHoles, error) {
 	if hdr.h.Typeflag == tar.TypeXGlobalHeader {
 		return nil, nil
 	}
@@ -145,7 +166,7 @@ func reconstructSparse(r io.ReaderAt, hdr *headerOffset, blk *block) (sparseHole
 	}
 }
 
-func handleSparseFile(sr io.Reader, hdr *headerOffset, rawHdr *block) (sparseHoles, error) {
+func handleSparseFile(sr io.Reader, hdr *Section, rawHdr *block) (sparseHoles, error) {
 	var spd sparseDatas
 	var err error
 	if hdr.h.Typeflag == tar.TypeGNUSparse {
@@ -191,7 +212,7 @@ func readOldGNUSparseMap(sr io.Reader, blk *block) (sparseDatas, error) {
 	}
 }
 
-func readGNUSparsePAXHeaders(sr io.Reader, hdr *headerOffset) (sparseDatas, error) {
+func readGNUSparsePAXHeaders(sr io.Reader, hdr *Section) (sparseDatas, error) {
 	// Identify the version of GNU headers.
 	var is1x0 bool
 	major, minor := hdr.h.PAXRecords[paxGNUSparseMajor], hdr.h.PAXRecords[paxGNUSparseMinor]

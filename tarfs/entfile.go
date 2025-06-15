@@ -7,10 +7,10 @@ import (
 )
 
 type file struct {
-	h *headerOffset
+	h *Section
 }
 
-func (f *file) header() *headerOffset {
+func (f *file) header() *Section {
 	return f.h
 }
 

@@ -11,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-
 	"testing"
 )
 
@@ -67,7 +66,7 @@ func Test_iterHeaders_makeReader(t *testing.T) {
 				panic(err)
 			}
 			defer f.Close()
-			headers, err := tryCollectHeaderOffsets(iterHeaders(f))
+			headers, err := tryCollectHeaderOffsets(Sections(f))
 			if err != nil {
 				panic(err)
 			}
