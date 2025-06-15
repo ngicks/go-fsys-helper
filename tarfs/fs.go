@@ -18,8 +18,10 @@ var _ fs.FS = (*Fs)(nil)
 // var _ fs.ReadLinkFS = (*Fs)(nil)
 
 type Fs struct {
-	r    io.ReaderAt
-	root *dir
+	r        io.ReaderAt
+	root     *dir
+	subRoot  *dir
+	isRooted bool // If true, prevents path escapes beyond root/subRoot
 }
 
 type FsOption struct {
@@ -27,6 +29,9 @@ type FsOption struct {
 	AllowDev bool
 	// If true, tar.Type
 	HandleSymlink bool
+	// If true, Fs and Sub-Fs disallow traversing upward from its root via symlink.
+	// Hardlinks are still resolved
+	IsRooted bool
 }
 
 func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
@@ -41,14 +46,15 @@ func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
 	}
 
 	fsys := &Fs{
-		r: r,
+		r:        r,
+		isRooted: opt.IsRooted,
 	}
 
 	if rootHeader, ok := headers["."]; ok {
-		fsys.root = &dir{h: rootHeader}
+		fsys.subRoot = &dir{h: rootHeader}
 	} else {
 		// Is it even possible?
-		fsys.root = &dir{
+		fsys.subRoot = &dir{
 			h: &Section{
 				h: &tar.Header{
 					Typeflag: tar.TypeDir,
@@ -82,38 +88,19 @@ func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
 		default:
 			continue
 		}
-		fsys.root.addChild(key, headers[key])
+		fsys.subRoot.addChild(key, headers[key])
 	}
+
+	// for root fsys root and subRoot is totally same.
+	// But different for sub-fsys returned from Sub.
+	fsys.root = fsys.subRoot
 
 	return fsys, nil
 }
 
-func (fsys *Fs) open(name string) (direntry, error) {
-	// TODO: unroll openChild's recursive way to mere for loop.
-	return fsys.root.openChild(name)
-}
-
-func (fsys *Fs) openResolve(name string) (direntry, error) {
-	if !fs.ValidPath(name) {
-		return nil, pathErr("open", name, fs.ErrInvalid)
-	}
-
-	dirent, err := fsys.open(name)
-	if err != nil {
-		return nil, err
-	}
-
-	hl, ok := dirent.(*hardlink)
-	if !ok {
-		return dirent, nil
-	}
-
-	dirent, err = fsys.open(path.Clean(hl.header().Header().Linkname))
-	if err != nil {
-		return nil, err
-	}
-
-	return hl.overlayHardlink(dirent), nil
+func (fsys *Fs) resolveHardlink(hl *hardlink) (direntry, error) {
+	target := path.Clean(hl.header().Header().Linkname)
+	return fsys.root.openChild(target, false, fsys)
 }
 
 func (fsys *Fs) findFile(name string, skipLastElement bool) (direntry, error) {
@@ -121,16 +108,20 @@ func (fsys *Fs) findFile(name string, skipLastElement bool) (direntry, error) {
 		return nil, pathErr("open", name, fs.ErrInvalid)
 	}
 
-	resolved, err := fsys.resolvePath(name, skipLastElement)
+	// Use our internal symlink resolution
+	dirent, err := fsys.subRoot.openChild(name, skipLastElement, fsys)
 	if err != nil {
 		overrideErr(err, func(err *fs.PathError) { err.Path = name })
 		return nil, err
 	}
 
-	dirent, err := fsys.openResolve(resolved)
-	if err != nil {
-		overrideErr(err, func(err *fs.PathError) { err.Path = name })
-		return nil, err
+	// Handle hardlinks
+	if hl, ok := dirent.(*hardlink); ok {
+		target, err := fsys.resolveHardlink(hl)
+		if err != nil {
+			return nil, err
+		}
+		return hl.overlayHardlink(target), nil
 	}
 
 	return dirent, nil
@@ -158,4 +149,29 @@ func (fsys *Fs) Lstat(name string) (fs.FileInfo, error) {
 		return nil, err
 	}
 	return f.header().Header().FileInfo(), nil
+}
+
+var _ fs.SubFS = (*Fs)(nil)
+
+func (fsys *Fs) Sub(dirPath string) (fs.FS, error) {
+	if !fs.ValidPath(dirPath) {
+		return nil, &fs.PathError{Op: "sub", Path: dirPath, Err: fs.ErrInvalid}
+	}
+
+	f, err := fsys.findFile(dirPath, false)
+	if err != nil {
+		return nil, &fs.PathError{Op: "sub", Path: dirPath, Err: err}
+	}
+
+	subRootDir, ok := f.(*dir)
+	if !ok {
+		return nil, &fs.PathError{Op: "sub", Path: dirPath, Err: fs.ErrNotExist}
+	}
+
+	return &Fs{
+		r:        fsys.r,
+		isRooted: fsys.isRooted,
+		root:     fsys.root,
+		subRoot:  subRootDir,
+	}, nil
 }

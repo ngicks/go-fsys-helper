@@ -3,10 +3,13 @@ package tarfs
 import (
 	"bytes"
 	_ "embed"
+	"errors"
 	"io/fs"
 	"slices"
 	"testing"
 	"testing/fstest"
+
+	"github.com/ngicks/go-fsys-helper/fsutil"
 )
 
 var (
@@ -109,6 +112,70 @@ func TestFs_symlink(t *testing.T) {
 		expected := []string{"nested_outside.txt"}
 		if !slices.Equal(expected, names) {
 			t.Errorf("not equal:expected(%#v) != actual(%#v)", expected, names)
+		}
+	})
+}
+
+func TestFs_symlink_path_ecapes(t *testing.T) {
+	type testCase struct {
+		name    func() string
+		rooted  bool
+		err     error
+		content []byte
+	}
+
+	for _, tc := range []testCase{
+		{
+			func() string { return "rooted" },
+			true,
+			fsutil.ErrPathEscapes,
+			nil,
+		},
+		{
+			func() string { return "unrooted" },
+			false,
+			nil,
+			[]byte("foofoofoo"),
+		},
+	} {
+		t.Run(tc.name(), func(t *testing.T) {
+			fsys, err := New(bytes.NewReader(symlinkBin), &FsOption{HandleSymlink: true, IsRooted: tc.rooted})
+			if err != nil {
+				panic(err)
+			}
+			sub, err := fsys.Sub("root/readable")
+			if err != nil {
+				panic(err)
+			}
+			bin, err := fs.ReadFile(sub, "symlink_escapes")
+			if !errors.Is(err, tc.err) {
+				t.Fatalf("should be %q but is %a", tc.err, err)
+			}
+			if err == nil {
+				if !bytes.Equal(tc.content, bin) {
+					t.Errorf("not equal: expected(%q) != actual(%q)", string(tc.content), string(bin))
+				}
+			}
+		})
+	}
+
+	t.Run("unrooted", func(t *testing.T) {
+		fsys, err := New(bytes.NewReader(symlinkBin), &FsOption{HandleSymlink: true, IsRooted: false})
+		if err != nil {
+			panic(err)
+		}
+		sub, err := fsys.Sub("root/readable")
+		if err != nil {
+			panic(err)
+		}
+		bin, err := fs.ReadFile(sub, "symlink_escapes")
+		if err != nil {
+			t.Fatalf("failed with %v", err)
+		}
+
+		expected := []byte("foofoofoo")
+		if !bytes.Equal(expected, bin) {
+			t.Errorf("not equal: expected(%q) != actual(%q)", string(expected), string(bin))
 		}
 	})
 }

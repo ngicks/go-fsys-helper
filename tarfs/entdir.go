@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/ngicks/go-fsys-helper/fsutil"
 )
 
 type dir struct {
 	h       *Section
+	parent  *dir // Parent directory for upward navigation
 	files   map[string]direntry
 	ordered []direntry
 }
@@ -49,14 +53,17 @@ func (d *dir) addChild(name string, hdr *Section) {
 			// Intermediate component - ensure directory exists
 			child, ok := currentDir.files[component]
 			if !ok {
-				child = &dir{}
+				child = &dir{parent: currentDir}
 				currentDir.files[component] = child
 				currentDir.ordered = append(currentDir.ordered, child)
 			}
 			currentDir = child.(*dir)
-			// Ensure the child directory has an initialized files map
+			// Ensure the child directory has an initialized files map and parent link
 			if currentDir.files == nil {
 				currentDir.files = make(map[string]direntry)
+			}
+			if currentDir.parent == nil {
+				currentDir.parent = d // Set parent if not already set
 			}
 		} else {
 			// Final component - add the actual entry
@@ -67,12 +74,15 @@ func (d *dir) addChild(name string, hdr *Section) {
 					dirHandle, ok := existing.(*dir)
 					if !ok {
 						// TODO: warn about this?
-						dirHandle = &dir{}
+						dirHandle = &dir{parent: currentDir}
 						currentDir.files[component] = dirHandle
 					}
 					dirHandle.h = hdr
+					if dirHandle.parent == nil {
+						dirHandle.parent = currentDir
+					}
 				} else {
-					ent = &dir{h: hdr}
+					ent = &dir{h: hdr, parent: currentDir}
 				}
 			case tar.TypeSymlink:
 				ent = &symlink{h: hdr}
@@ -89,51 +99,91 @@ func (d *dir) addChild(name string, hdr *Section) {
 	}
 }
 
-func (d *dir) openChild(name string) (direntry, error) {
+func (d *dir) openChild(name string, skipLastComponent bool, fsys *Fs) (direntry, error) {
 	if name == "." {
 		return d, nil
 	}
+	return d.openChildResolve(name, skipLastComponent, fsys, 0)
+}
 
-	currentDir := d
-	offset := 0
-	pathLen := len(name)
+func (d *dir) openChildResolve(name string, skipLastComponent bool, fsys *Fs, depth int) (direntry, error) {
+	const maxSymlinkDepth = 40 // Linux maximum symlink resolution depth
+	if depth > maxSymlinkDepth {
+		return nil, pathErr("open", name, syscall.ELOOP) // too many levels of symbolic links
+	}
 
-	for component := range strings.SplitSeq(name, "/") {
-		child := currentDir.files[component]
-		if child == nil {
-			return nil, pathErr("open", component, fs.ErrNotExist)
+	var (
+		currentDir               = d
+		currentDirent   direntry = d
+		component       string
+		rest            = name
+		isLastComponent bool
+	)
+	for len(rest) > 0 {
+		component, rest, _ = strings.Cut(rest, "/")
+		isLastComponent = len(rest) == 0
+
+		switch component {
+		case ".":
+			return currentDir, nil
+		case "..":
+			if fsys.isRooted && (currentDir == fsys.root || currentDir == fsys.subRoot) {
+				return nil, pathErr("open", name, fsutil.ErrPathEscapes)
+			}
+			if currentDir.parent == nil {
+				return nil, pathErr("open", name, fs.ErrNotExist)
+			}
+			currentDir = currentDir.parent
+			continue
 		}
 
-		// Update offset to track position in original string
-		offset += len(component)
-		isLastComponent := offset >= pathLen
-		if !isLastComponent {
-			offset++ // Account for the "/" separator
+		currentDirent = currentDir.files[component]
+		if currentDirent == nil {
+			return nil, pathErr("open", name, fs.ErrNotExist)
+		}
+
+		if !isLastComponent || !skipLastComponent {
+			// Need to potentially resolve symlinks
+			if symlink, ok := currentDirent.(*symlink); ok {
+				target, _ := symlink.readLink()
+
+				// Check for absolute symlinks - they always escape our filesystem root
+				if strings.HasPrefix(target, "/") {
+					return nil, pathErr("open", component, fsutil.ErrPathEscapes)
+				}
+
+				target = path.Clean(target)
+
+				rest = target + "/" + rest
+
+				continue
+			}
 		}
 
 		if !isLastComponent {
 			// More path components to traverse
-			switch x := child.(type) {
+			switch x := currentDirent.(type) {
 			case *dir:
 				currentDir = x
 				continue
-			case *symlink:
-				// Return symlink itself, symlink resolution will be handled in Fs.Open
-				return child, nil
 			case *hardlink:
-				// Return hardlink itself, hardlink resolution will be handled in Fs.Open
-				return child, nil
+				// This is almost impossible but handle anyway
+				target, err := fsys.resolveHardlink(x)
+				if err != nil {
+					return nil, err
+				}
+				if dirTarget, ok := target.(*dir); ok {
+					currentDir = dirTarget
+					continue
+				}
+				return nil, pathErr("open", component, syscall.ENOTDIR)
 			default:
 				return nil, pathErr("open", component, syscall.ENOTDIR)
 			}
-		} else {
-			// Final component - return the child
-			return child, nil
 		}
 	}
 
-	// Should not reach here, but return current directory as fallback
-	return currentDir, nil
+	return currentDirent, nil
 }
 
 var (
