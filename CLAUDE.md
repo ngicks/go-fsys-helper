@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Rules
+
+- If I say "Explain"(case insensitive) I am just needing explanation. DO NOT FIX at this point.
+
 ## Commands
 
 - **Change directory**: Before executing any `go` command, `cd` into that `go module`. Don't run them on `./`. Each time after command is done, `cd ../` to move back to root dhir.
