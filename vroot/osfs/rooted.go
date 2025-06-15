@@ -166,7 +166,5 @@ func (r *Rooted) Symlink(oldname string, newname string) error {
 }
 
 func (r *Rooted) ReadFile(name string) ([]byte, error) {
-	// fs.FS returned from (*os.Root).FS implements fs.ReadFileFs,
-	// which is same thing as os.ReadFile.
-	return fs.ReadFile(r.root.FS(), name)
+	return r.root.ReadFile(name)
 }
