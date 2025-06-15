@@ -187,12 +187,6 @@ func (o *Overlay) resolvePath(name string, skipLastElement bool) (string, error)
 	return fsutil.ResolvePath(&nolockOverlay{o}, name, skipLastElement)
 }
 
-// No lock.
-func (o *Overlay) copyOnWriteNoLock(name string) error {
-	topLayer := Layer{meta: o.topMeta, fsys: o.top}
-	return copyOnWrite(name, topLayer, o.layers, o.opts.CopyPolicy)
-}
-
 func (o *Overlay) statNoLock(name string) (fs.FileInfo, error) {
 	resolved, err := o.resolvePath(name, false)
 	if err != nil {
