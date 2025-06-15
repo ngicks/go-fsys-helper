@@ -83,6 +83,7 @@ func init() {
 		}
 	}
 
+	// download if specified go version wasn't exist
 	if _, err := exec.Command("go", "install", fmt.Sprintf("golang.org/dl/go%s@latest", curMod.Go)).Output(); err != nil {
 		printPanic(err)
 	}
