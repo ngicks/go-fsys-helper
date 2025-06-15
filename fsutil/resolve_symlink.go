@@ -130,9 +130,7 @@ func ResolveSymlink(
 		return "", nil
 	}
 	resolved := filepath.Clean(linkRealPath)
-	prev := resolved
-	prevPrev := ""
-	for {
+	for range 40 { // following linux's maxium: https://man7.org/linux/man-pages/man7/path_resolution.7.html
 		target, err := fsys.ReadLink(resolved)
 		if err != nil {
 			return "", err
@@ -154,11 +152,6 @@ func ResolveSymlink(
 			return "", nil
 		}
 
-		if resolved == prevPrev {
-			// symlink targeting each other
-			return "", WrapPathErr("stat", linkRealPath, syscall.ELOOP)
-		}
-
 		info, err := fsys.Lstat(resolved)
 		if err != nil {
 			return "", err
@@ -166,8 +159,7 @@ func ResolveSymlink(
 		if info.Mode()&os.ModeSymlink == 0 {
 			return resolved, nil
 		}
-
-		prevPrev = prev
-		prev = resolved
 	}
+
+	return "", WrapPathErr("stat", linkRealPath, syscall.ELOOP)
 }
