@@ -4,6 +4,7 @@ import (
 	"io"
 	"io/fs"
 	"sync"
+	"syscall"
 )
 
 type file struct {
@@ -16,21 +17,27 @@ func (f *file) header() *Section {
 
 func (f *file) open(r io.ReaderAt, path string) openDirentry {
 	return &openFile{
-		r:    makeReader(r, f.h),
-		path: path,
-		file: f,
+		r:        makeReader(r, f.h),
+		path:     path,
+		fileInfo: f.header(),
+		file:     f,
 	}
+}
+
+func (f *file) readLink() (string, error) {
+	return "", pathErr("readlink", "", syscall.EINVAL)
 }
 
 var _ fs.File = (*openFile)(nil)
 
 type openFile struct {
-	mu     sync.Mutex
-	closed bool
-	readMu sync.Mutex // guards Read, Seek, not for ReadAt since the method does not need a guard.
-	r      seekReadReaderAt
-	path   string
-	file   *file
+	mu       sync.Mutex
+	closed   bool
+	readMu   sync.Mutex // guards Read, Seek, not for ReadAt since the method does not need a guard.
+	r        seekReadReaderAt
+	path     string
+	file     *file
+	fileInfo *Section // maybe overriten by hardlink
 }
 
 func (f *openFile) checkClosed(op string) error {
@@ -50,7 +57,7 @@ func (f *openFile) Stat() (fs.FileInfo, error) {
 	if err := f.checkClosed("stat"); err != nil {
 		return nil, err
 	}
-	return f.file.h.h.FileInfo(), nil
+	return f.fileInfo.Header().FileInfo(), nil
 }
 
 func (f *openFile) Read(p []byte) (n int, err error) {

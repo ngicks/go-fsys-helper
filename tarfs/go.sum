@@ -1,2 +1,4 @@
+github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20250615063755-f8bf2bdc2a29 h1:PSweVU46KB+1/rhenq9qDULc9YXoosHv+a66evihhzU=
+github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20250615063755-f8bf2bdc2a29/go.mod h1:3Ko4N72NP33xyl3yIEj3JzbOAA8Ko/ZxgmbAl7uZhf4=
 github.com/ngicks/go-fsys-helper/stream v0.2.0 h1:u4lPPDq7frEvwxRmdMkyTzYhB652YGdOPMJuCljGYD4=
 github.com/ngicks/go-fsys-helper/stream v0.2.0/go.mod h1:+7p+ekRp4CjEkl6VWa9IjzOxNgvMmdsoj5IszCjVBUg=

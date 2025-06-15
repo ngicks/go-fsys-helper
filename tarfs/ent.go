@@ -10,6 +10,7 @@ import (
 type direntry interface {
 	header() *Section
 	open(r io.ReaderAt, path string) openDirentry
+	readLink() (string, error)
 }
 
 // openDirentry is the stateful file opened through [direntry].

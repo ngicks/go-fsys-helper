@@ -2,7 +2,9 @@ package tarfs
 
 import (
 	"bytes"
+	"compress/gzip"
 	_ "embed"
+	"io"
 	"io/fs"
 	"os"
 	"testing"
@@ -10,10 +12,27 @@ import (
 	"time"
 )
 
-var (
-	//go:embed testdata/muh/tree.tar
-	treeBin []byte
-)
+func ungzip(bin []byte) []byte {
+	var err error
+	gr, err := gzip.NewReader(bytes.NewReader(bin))
+	if err != nil {
+		panic(err)
+	}
+	expanded, err := io.ReadAll(gr)
+	if err != nil {
+		panic(err)
+	}
+	err = gr.Close()
+	if err != nil {
+		panic(err)
+	}
+	return expanded
+}
+
+//go:embed testdata/muh/tree.tar.gz
+var treeBinGz []byte
+
+var treeBin = ungzip(treeBinGz)
 
 func TestFs(t *testing.T) {
 	fsys, err := New(bytes.NewReader(treeBin), nil)

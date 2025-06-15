@@ -5,12 +5,17 @@ import (
 	"io"
 	"io/fs"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"time"
 )
 
 var _ fs.FS = (*Fs)(nil)
+
+// Compile-time check for fs.ReadLinkFS interface (Go 1.25+)
+// This will be available when Go 1.25 is released
+// var _ fs.ReadLinkFS = (*Fs)(nil)
 
 type Fs struct {
 	r    io.ReaderAt
@@ -19,8 +24,9 @@ type Fs struct {
 
 type FsOption struct {
 	// If true, tar.TypeChar, tar.TypeBlock, tar.TypeFifo are added as a file.
-	AllowDev      bool
-	handleSymlink bool // export this field when symlink support is added.
+	AllowDev bool
+	// If true, tar.Type
+	HandleSymlink bool
 }
 
 func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
@@ -65,9 +71,10 @@ func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
 		case tar.TypeReg, tar.TypeRegA, tar.TypeGNUSparse:
 		case tar.TypeDir:
 		case tar.TypeSymlink:
-			if !opt.handleSymlink {
+			if !opt.HandleSymlink {
 				continue
 			}
+		case tar.TypeLink:
 		case tar.TypeChar, tar.TypeBlock, tar.TypeFifo:
 			if !opt.AllowDev {
 				continue
@@ -81,16 +88,74 @@ func New(r io.ReaderAt, opt *FsOption) (*Fs, error) {
 	return fsys, nil
 }
 
-func (fsys *Fs) Open(name string) (fs.File, error) {
+func (fsys *Fs) open(name string) (direntry, error) {
+	// TODO: unroll openChild's recursive way to mere for loop.
+	return fsys.root.openChild(name)
+}
+
+func (fsys *Fs) openResolve(name string) (direntry, error) {
 	if !fs.ValidPath(name) {
 		return nil, pathErr("open", name, fs.ErrInvalid)
 	}
-	f, err := fsys.root.openChild(name)
+
+	dirent, err := fsys.open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	hl, ok := dirent.(*hardlink)
+	if !ok {
+		return dirent, nil
+	}
+
+	dirent, err = fsys.open(path.Clean(hl.header().Header().Linkname))
+	if err != nil {
+		return nil, err
+	}
+
+	return hl.overlayHardlink(dirent), nil
+}
+
+func (fsys *Fs) findFile(name string, skipLastElement bool) (direntry, error) {
+	if !fs.ValidPath(name) {
+		return nil, pathErr("open", name, fs.ErrInvalid)
+	}
+
+	resolved, err := fsys.resolvePath(name, skipLastElement)
 	if err != nil {
 		overrideErr(err, func(err *fs.PathError) { err.Path = name })
 		return nil, err
 	}
-	return f.open(fsys.r, name), err
+
+	dirent, err := fsys.openResolve(resolved)
+	if err != nil {
+		overrideErr(err, func(err *fs.PathError) { err.Path = name })
+		return nil, err
+	}
+
+	return dirent, nil
 }
 
-// TODO: add sub
+func (fsys *Fs) Open(name string) (fs.File, error) {
+	f, err := fsys.findFile(name, false)
+	if err != nil {
+		return nil, err
+	}
+	return f.open(fsys.r, name), nil
+}
+
+func (fsys *Fs) ReadLink(name string) (string, error) {
+	f, err := fsys.findFile(name, true)
+	if err != nil {
+		return "", err
+	}
+	return f.readLink()
+}
+
+func (fsys *Fs) Lstat(name string) (fs.FileInfo, error) {
+	f, err := fsys.findFile(name, true)
+	if err != nil {
+		return nil, err
+	}
+	return f.header().Header().FileInfo(), nil
+}

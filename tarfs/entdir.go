@@ -21,7 +21,11 @@ func (d *dir) header() *Section {
 }
 
 func (d *dir) open(_ io.ReaderAt, path string) openDirentry {
-	return &openDir{path: path, dir: d}
+	return &openDir{path: path, fileInfo: d.header(), dir: d}
+}
+
+func (d *dir) readLink() (string, error) {
+	return "", pathErr("readlink", "", syscall.EINVAL)
 }
 
 func (d *dir) addChild(name string, hdr *Section) {
@@ -39,14 +43,24 @@ func (d *dir) addChild(name string, hdr *Section) {
 		child.(*dir).addChild(rest, hdr)
 	} else {
 		var ent direntry
-		if hdr.h.Typeflag == tar.TypeDir {
+		switch hdr.h.Typeflag {
+		case tar.TypeDir:
 			if existiing := d.files[name]; existiing != nil {
-				existiing.(*dir).h = hdr
+				dirHandle, ok := existiing.(*dir)
+				if !ok {
+					// TODO: warn about this?
+					dirHandle = &dir{}
+					d.files[name] = dirHandle
+				}
+				dirHandle.h = hdr
 			} else {
 				ent = &dir{h: hdr}
 			}
-		} else {
-			// TODO: handle symlink after Go1.25
+		case tar.TypeSymlink:
+			ent = &symlink{h: hdr}
+		case tar.TypeLink:
+			ent = &hardlink{h: hdr}
+		default:
 			ent = &file{h: hdr}
 		}
 		if ent != nil {
@@ -70,7 +84,12 @@ func (d *dir) openChild(name string) (direntry, error) {
 		switch x := child.(type) {
 		case *dir:
 			return x.openChild(rest)
-			// TODO: handle symlink after Go1.25. tarfs should be always rooted.
+		case *symlink:
+			// Return symlink itself, symlink resolution will be handled in Fs.Open
+			return child, nil
+		case *hardlink:
+			// Return hardlink itself, hardlink resolution will be handled in Fs.Open
+			return child, nil
 		default:
 			return nil, pathErr("open", name, syscall.ENOTDIR)
 		}
@@ -89,8 +108,9 @@ type openDir struct {
 
 	cursor int
 
-	dir  *dir
-	path string
+	dir      *dir
+	fileInfo *Section
+	path     string
 }
 
 func (d *openDir) checkClosed(op string) error {
@@ -110,7 +130,7 @@ func (d *openDir) Stat() (fs.FileInfo, error) {
 	if err := d.checkClosed("stat"); err != nil {
 		return nil, err
 	}
-	return d.dir.h.h.FileInfo(), nil
+	return d.fileInfo.Header().FileInfo(), nil
 }
 
 func (d *openDir) Read([]byte) (int, error) {

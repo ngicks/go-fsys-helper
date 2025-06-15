@@ -1,4 +1,22 @@
 package tarfs
 
-// implement when https://github.com/golang/go/issues/49580 is merged?
-// High chance when Go1.25?
+import (
+	"io"
+)
+
+type symlink struct {
+	h *Section
+}
+
+func (s *symlink) header() *Section {
+	return s.h
+}
+
+func (s *symlink) open(r io.ReaderAt, path string) openDirentry {
+	// Symlinks should not be opened directly - they should be resolved first
+	panic("symlink.open() should not be called - symlinks should be resolved before opening")
+}
+
+func (s *symlink) readLink() (string, error) {
+	return s.h.h.Linkname, nil
+}
