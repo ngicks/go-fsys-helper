@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"syscall"
 )
 
 func (o *Overlay) topAsLayer() *Layer {
@@ -33,6 +34,10 @@ func (o *Overlay) copyOnWriteNoLock(name string) error {
 		// If name is already resolved, dir also cannot be symlink because it is traversing backward.
 		_, err := o.topAsLayer().Lstat(dir)
 		if errors.Is(err, fs.ErrNotExist) {
+			info, err := o.layers.Lstat(dir)
+			if err == nil && !info.IsDir() {
+				return &fs.PathError{Op: "open", Path: dir, Err: syscall.ENOTDIR}
+			}
 			// Parent doesn't exist, copy it using copy policy
 			err = o.copyOnWriteNoLock(dir)
 			if err != nil {
