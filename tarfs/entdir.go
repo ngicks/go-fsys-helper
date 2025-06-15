@@ -103,14 +103,12 @@ func (d *dir) openChild(name string, skipLastComponent bool, fsys *Fs) (direntry
 	if name == "." {
 		return d, nil
 	}
-	return d.openChildResolve(name, skipLastComponent, fsys, 0)
+	return d.openChildResolve(name, skipLastComponent, fsys)
 }
 
-func (d *dir) openChildResolve(name string, skipLastComponent bool, fsys *Fs, depth int) (direntry, error) {
-	const maxSymlinkDepth = 40 // Linux maximum symlink resolution depth
-	if depth > maxSymlinkDepth {
-		return nil, pathErr("open", name, syscall.ELOOP) // too many levels of symbolic links
-	}
+func (d *dir) openChildResolve(name string, skipLastComponent bool, fsys *Fs) (direntry, error) {
+	const maxSymlinkResolution = 40
+	currentResolved := 0
 
 	var (
 		currentDir               = d
@@ -145,11 +143,16 @@ func (d *dir) openChildResolve(name string, skipLastComponent bool, fsys *Fs, de
 		if !isLastComponent || !skipLastComponent {
 			// Need to potentially resolve symlinks
 			if symlink, ok := currentDirent.(*symlink); ok {
+				if currentResolved >= maxSymlinkResolution {
+					return nil, pathErr("open", name, syscall.ELOOP)
+				}
+				currentResolved++
+
 				target, _ := symlink.readLink()
 
 				// Check for absolute symlinks - they always escape our filesystem root
 				if strings.HasPrefix(target, "/") {
-					return nil, pathErr("open", component, fsutil.ErrPathEscapes)
+					return nil, pathErr("open", name, fsutil.ErrPathEscapes)
 				}
 
 				target = path.Clean(target)
@@ -176,9 +179,9 @@ func (d *dir) openChildResolve(name string, skipLastComponent bool, fsys *Fs, de
 					currentDir = dirTarget
 					continue
 				}
-				return nil, pathErr("open", component, syscall.ENOTDIR)
+				return nil, pathErr("open", name, syscall.ENOTDIR)
 			default:
-				return nil, pathErr("open", component, syscall.ENOTDIR)
+				return nil, pathErr("open", name, syscall.ENOTDIR)
 			}
 		}
 	}
