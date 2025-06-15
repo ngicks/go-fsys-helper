@@ -19,7 +19,8 @@ var treeTarGzBase64 = `H4sIAAAAAAAAA+2YTW7DIBBGWecUPoENZAbOg622yyg/VquevkNRlLRSf
 	`/hsg5tF/x4xTSume7v+Iy/0f4f6nBcX/826nuEbd/x+X859w/rdAzOP8BwAAAAAAAIAO+ABC8URH` +
 	`ACgAAA==`
 
-func Example_simple_usage() {
+// un-gzip embedded base64 string and returns tar binary.
+func getTarReader() io.ReaderAt {
 	treeTarGz, err := base64.StdEncoding.DecodeString(treeTarGzBase64)
 	if err != nil {
 		panic(err)
@@ -28,12 +29,19 @@ func Example_simple_usage() {
 	if err != nil {
 		panic(err)
 	}
-	treeBin, err := io.ReadAll(gr)
+	tarBin, err := io.ReadAll(gr)
 	if err != nil {
 		panic(err)
 	}
+	err = gr.Close()
+	if err != nil {
+		panic(err)
+	}
+	return bytes.NewReader(tarBin)
+}
 
-	fsys, err := tarfs.New(bytes.NewReader(treeBin), nil)
+func Example_simple_usage() {
+	fsys, err := tarfs.New(getTarReader(), nil)
 	if err != nil {
 		panic(err)
 	}
