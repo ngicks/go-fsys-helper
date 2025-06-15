@@ -682,7 +682,7 @@ func (o *Overlay) Link(oldname, newname string) error {
 	return o.linkNoLock(oldname, newname)
 }
 
-func (o *Overlay) symlinkNoLink(oldname, newname string) error {
+func (o *Overlay) symlinkNoLock(oldname, newname string) error {
 	err := o.copyOnWriteNoLock(newname)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -694,11 +694,11 @@ func (o *Overlay) symlinkNoLink(oldname, newname string) error {
 func (o *Overlay) Symlink(oldname, newname string) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
-	return o.symlinkNoLink(oldname, newname)
+	return o.symlinkNoLock(oldname, newname)
 }
 
 // Chmod changes file permissions
-func (o *Overlay) chmodNoLink(name string, mode fs.FileMode) error {
+func (o *Overlay) chmodNoLock(name string, mode fs.FileMode) error {
 	if err := o.copyOnWriteNoLock(name); err != nil {
 		return err
 	}
@@ -708,10 +708,10 @@ func (o *Overlay) chmodNoLink(name string, mode fs.FileMode) error {
 func (o *Overlay) Chmod(name string, mode fs.FileMode) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
-	return o.chmodNoLink(name, mode)
+	return o.chmodNoLock(name, mode)
 }
 
-func (o *Overlay) chownNoLink(name string, uid, gid int) error {
+func (o *Overlay) chownNoLock(name string, uid, gid int) error {
 	if err := o.copyOnWriteNoLock(name); err != nil {
 		return err
 	}
@@ -721,7 +721,7 @@ func (o *Overlay) chownNoLink(name string, uid, gid int) error {
 func (o *Overlay) Chown(name string, uid, gid int) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
-	return o.chownNoLink(name, uid, gid)
+	return o.chownNoLock(name, uid, gid)
 }
 
 func (o *Overlay) Lchown(name string, uid, gid int) error {
@@ -735,7 +735,7 @@ func (o *Overlay) Lchown(name string, uid, gid int) error {
 	return o.top.Lchown(resolved, uid, gid)
 }
 
-func (o *Overlay) chtimesNoLink(name string, atime, mtime time.Time) error {
+func (o *Overlay) chtimesNoLock(name string, atime, mtime time.Time) error {
 	if err := o.copyOnWriteNoLock(name); err != nil {
 		return err
 	}
@@ -745,7 +745,7 @@ func (o *Overlay) chtimesNoLink(name string, atime, mtime time.Time) error {
 func (o *Overlay) Chtimes(name string, atime, mtime time.Time) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
-	return o.chtimesNoLink(name, atime, mtime)
+	return o.chtimesNoLock(name, atime, mtime)
 }
 
 // OpenRoot opens a subdirectory as a new rooted filesystem
