@@ -94,7 +94,13 @@ func openRandom[FS, File any](
 	}
 }
 
+// randomUint32Padded return math/rand/v2.Uint32 as left-0-padded string.
+// The returned string always satisfies len(s) == 10 and '0' <= s[i] <= '9'.
 func randomUint32Padded() string {
+	// os.MkdiTemp does this thing. Just shadowing the behavior.
+	// But there's no strong opinion about this;
+	// It can be longer, or even shorter. We can expand this to
+	// 9999999999 instead of 4294967295.
 	s := strconv.FormatUint(uint64(rand.Uint32()), 10)
 	var builder strings.Builder
 	builder.Grow(len("4294967295"))
