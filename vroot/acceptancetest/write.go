@@ -47,6 +47,12 @@ func write(t *testing.T, fsys vroot.Fs) {
 	t.Run("path normalization", func(t *testing.T) {
 		testPathNormalization(t, fsys)
 	})
+	t.Run("remove", func(t *testing.T) {
+		testRemove(t, fsys)
+	})
+	t.Run("removeall", func(t *testing.T) {
+		testRemoveAll(t, fsys)
+	})
 }
 
 // Test that Create and OpenFile fail when parent directories don't exist
@@ -431,4 +437,218 @@ func testPathNormalization(t *testing.T, fsys vroot.Fs) {
 	if err != nil {
 		t.Errorf("Stat ./without_dot.txt (with ./) failed: %v", err)
 	}
+}
+
+// Test Remove operations on files and directories
+func testRemove(t *testing.T, fsys vroot.Fs) {
+	// Create a file to remove
+	f, err := fsys.Create("test_remove_file.txt")
+	if err != nil {
+		t.Fatalf("Create file for removal failed: %v", err)
+	}
+	f.Write([]byte("content to be removed"))
+	f.Close()
+
+	// Test removing a file
+	err = fsys.Remove("test_remove_file.txt")
+	if err != nil {
+		t.Fatalf("Remove file failed: %v", err)
+	}
+
+	// Verify file is gone
+	_, err = fsys.Stat("test_remove_file.txt")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Remove file effect not observed: file still exists or wrong error: %v", err)
+	}
+
+	// Create an empty directory to remove
+	err = fsys.Mkdir("test_remove_empty_dir", 0o755)
+	if err != nil {
+		t.Fatalf("Mkdir for removal failed: %v", err)
+	}
+
+	// Test removing an empty directory
+	err = fsys.Remove("test_remove_empty_dir")
+	if err != nil {
+		t.Fatalf("Remove empty directory failed: %v", err)
+	}
+
+	// Verify directory is gone
+	_, err = fsys.Stat("test_remove_empty_dir")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Remove directory effect not observed: directory still exists or wrong error: %v", err)
+	}
+
+	// Create a non-empty directory
+	err = fsys.Mkdir("test_remove_nonempty_dir", 0o755)
+	if err != nil {
+		t.Fatalf("Mkdir for non-empty test failed: %v", err)
+	}
+	f2, err := fsys.Create(filepath.FromSlash("test_remove_nonempty_dir/file.txt"))
+	if err != nil {
+		t.Fatalf("Create file in directory failed: %v", err)
+	}
+	f2.Close()
+
+	// Test that removing non-empty directory fails
+	err = fsys.Remove("test_remove_nonempty_dir")
+	if err == nil {
+		t.Error("Remove should fail on non-empty directory")
+	}
+
+	// Test removing non-existent file
+	err = fsys.Remove("non_existent_file.txt")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Remove non-existent file should return ErrNotExist, got: %v", err)
+	}
+
+	// Create a symlink and test removing it
+	err = fsys.Symlink("target.txt", "test_remove_symlink")
+	if err != nil {
+		t.Fatalf("Create symlink for removal failed: %v", err)
+	}
+
+	// Remove the symlink (not the target)
+	err = fsys.Remove("test_remove_symlink")
+	if err != nil {
+		t.Fatalf("Remove symlink failed: %v", err)
+	}
+
+	// Verify symlink is gone
+	_, err = fsys.Lstat("test_remove_symlink")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Remove symlink effect not observed: symlink still exists or wrong error: %v", err)
+	}
+
+	// Clean up
+	fsys.RemoveAll("test_remove_nonempty_dir")
+}
+
+// Test RemoveAll operations on complex directory structures
+func testRemoveAll(t *testing.T, fsys vroot.Fs) {
+	// Create a complex directory structure
+	// test_removeall/
+	//   ├── file1.txt
+	//   ├── file2.txt
+	//   ├── subdir1/
+	//   │   ├── nested_file.txt
+	//   │   └── deep/
+	//   │       └── very_deep.txt
+	//   ├── subdir2/
+	//   │   └── another_file.txt
+	//   └── symlink_to_file1
+
+	basePath := "test_removeall"
+	err := fsys.Mkdir(basePath, 0o755)
+	if err != nil {
+		t.Fatalf("Create base directory failed: %v", err)
+	}
+
+	// Create files in root
+	files := []string{
+		filepath.FromSlash("test_removeall/file1.txt"),
+		filepath.FromSlash("test_removeall/file2.txt"),
+	}
+	for _, file := range files {
+		f, err := fsys.Create(file)
+		if err != nil {
+			t.Fatalf("Create %s failed: %v", file, err)
+		}
+		f.Write([]byte("test content"))
+		f.Close()
+	}
+
+	// Create subdirectories with files
+	subdirs := []string{
+		filepath.FromSlash("test_removeall/subdir1"),
+		filepath.FromSlash("test_removeall/subdir1/deep"),
+		filepath.FromSlash("test_removeall/subdir2"),
+	}
+	for _, dir := range subdirs {
+		err = fsys.MkdirAll(dir, 0o755)
+		if err != nil {
+			t.Fatalf("MkdirAll %s failed: %v", dir, err)
+		}
+	}
+
+	// Create nested files
+	nestedFiles := []string{
+		filepath.FromSlash("test_removeall/subdir1/nested_file.txt"),
+		filepath.FromSlash("test_removeall/subdir1/deep/very_deep.txt"),
+		filepath.FromSlash("test_removeall/subdir2/another_file.txt"),
+	}
+	for _, file := range nestedFiles {
+		f, err := fsys.Create(file)
+		if err != nil {
+			t.Fatalf("Create %s failed: %v", file, err)
+		}
+		f.Write([]byte("nested content"))
+		f.Close()
+	}
+
+	// Create a symlink
+	err = fsys.Symlink("file1.txt", filepath.FromSlash("test_removeall/symlink_to_file1"))
+	if err != nil {
+		t.Fatalf("Create symlink failed: %v", err)
+	}
+
+	// Test RemoveAll on the entire structure
+	err = fsys.RemoveAll(basePath)
+	if err != nil {
+		t.Fatalf("RemoveAll failed: %v", err)
+	}
+
+	// Verify everything is gone
+	_, err = fsys.Stat(basePath)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("RemoveAll effect not observed: base directory still exists or wrong error: %v", err)
+	}
+
+	// Test RemoveAll on non-existent path (should succeed)
+	err = fsys.RemoveAll("non_existent_path")
+	if err != nil {
+		t.Errorf("RemoveAll on non-existent path should succeed, got: %v", err)
+	}
+
+	// Test RemoveAll on a single file
+	f, err := fsys.Create("single_file_removeall.txt")
+	if err != nil {
+		t.Fatalf("Create single file failed: %v", err)
+	}
+	f.Close()
+
+	err = fsys.RemoveAll("single_file_removeall.txt")
+	if err != nil {
+		t.Errorf("RemoveAll on single file failed: %v", err)
+	}
+
+	_, err = fsys.Stat("single_file_removeall.txt")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("RemoveAll on single file: file still exists or wrong error: %v", err)
+	}
+
+	// Test RemoveAll with permission issues (create read-only directory)
+	err = fsys.Mkdir("readonly_parent", 0o755)
+	if err != nil {
+		t.Fatalf("Create readonly parent failed: %v", err)
+	}
+	err = fsys.Mkdir(filepath.FromSlash("readonly_parent/child"), 0o755)
+	if err != nil {
+		t.Fatalf("Create child in readonly parent failed: %v", err)
+	}
+
+	// Make parent read-only to prevent deletion of child
+	err = fsys.Chmod("readonly_parent", 0o555)
+	if err != nil {
+		t.Fatalf("Chmod readonly_parent failed: %v", err)
+	}
+
+	// This might fail due to permissions
+	err = fsys.RemoveAll("readonly_parent")
+	// Clean up by restoring permissions first
+	fsys.Chmod("readonly_parent", 0o755)
+	fsys.RemoveAll("readonly_parent")
+
+	// We don't assert on the error here as behavior may vary by implementation
+	// Some implementations might handle this gracefully, others might fail
 }
