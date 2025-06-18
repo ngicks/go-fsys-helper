@@ -20,6 +20,10 @@ import (
 type Layers []Layer
 
 func doInUpperLayer[V comparable](ll Layers, operation func(idx int, l Layer, name string) (V, error), name string) (v V, err error) {
+	if len(ll) == 0 {
+		return *new(V), fs.ErrNotExist
+	}
+
 	var result V
 
 	for i, l := range slices.Backward(ll) {
@@ -81,6 +85,10 @@ func (ll Layers) ReadLink(name string) (string, error) {
 }
 
 func (ll Layers) Open(name string) (*layersFile, error) {
+	if len(ll) == 0 {
+		return nil, fs.ErrNotExist
+	}
+
 	var (
 		files []vroot.File
 		isDir bool
