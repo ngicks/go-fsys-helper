@@ -57,6 +57,13 @@ func (d *dir) addChild(name string, hdr *Section) {
 				currentDir.files[component] = child
 				currentDir.ordered = append(currentDir.ordered, child)
 			}
+			_, ok = child.(*dir)
+			if !ok {
+				// TODO: warn about this?
+				child = &dir{parent: currentDir}
+				currentDir.files[component] = child
+				currentDir.ordered = append(currentDir.ordered, child)
+			}
 			currentDir = child.(*dir)
 			// Ensure the child directory has an initialized files map and parent link
 			if currentDir.files == nil {
