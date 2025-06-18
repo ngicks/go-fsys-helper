@@ -775,6 +775,21 @@ func (o *Overlay) OpenRoot(name string) (vroot.Rooted, error) {
 
 	topSubMeta := SubMetadataStore(o.topMeta, resolved)
 
+	whited, err := o.topMeta.QueryWhiteout(resolved)
+	if err != nil {
+		return nil, err
+	}
+
+	if whited {
+		return &Overlay{
+			rw:      o.rw,
+			opts:    o.opts,
+			top:     topSubRoot,
+			topMeta: topSubMeta,
+			layers:  nil,
+		}, nil
+	}
+
 	// Open subdirectories in other layers
 	var subLayers []Layer
 	for _, layer := range slices.Backward(o.layers) {
