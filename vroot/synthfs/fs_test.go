@@ -1,0 +1,102 @@
+package synthfs
+
+import (
+	"io/fs"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/ngicks/go-fsys-helper/vroot"
+	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
+	"github.com/ngicks/go-fsys-helper/vroot/clock"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/prepare"
+)
+
+func must1(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func prep(fsys vroot.Fs) {
+	// Create all content under root/, not just writable
+	for l := range prepare.FilterLineDirection(
+		func(l prepare.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
+		slices.Values(prepare.RootFsysDirections),
+	) {
+		switch l.LineKind {
+		default:
+			continue
+		case prepare.LineKindMkdir:
+			must1(fsys.MkdirAll(l.Path, fs.ModePerm))
+		case prepare.LineKindWriteFile:
+			must1(vroot.WriteFile(fsys, l.Path, l.Content, fs.ModePerm))
+		case prepare.LineKindSymlink:
+			must1(fsys.Symlink(l.TargetPath, l.Path))
+		}
+	}
+}
+
+func TestRooted(t *testing.T) {
+	opt := Option{
+		Clock: clock.RealWallClock(),
+	}
+	r := NewRooted("synth", NewMemFileAllocator(clock.RealWallClock()), opt)
+	prep(r)
+	rr, err := r.OpenRoot("root/writable")
+	must1(err)
+	acceptancetest.RootedReadWrite(t, rr)
+}
+
+func TestUnrooted(t *testing.T) {
+	opt := Option{
+		Clock: clock.RealWallClock(),
+	}
+	r := NewUnrooted("synth", NewMemFileAllocator(clock.RealWallClock()), opt)
+	prep(r)
+	rr, err := r.OpenUnrooted("root/writable")
+	must1(err)
+	acceptancetest.UnrootedReadWrite(t, rr, false)
+}
+
+func TestUmaskZero(t *testing.T) {
+	zeroUmask := fs.FileMode(0)
+	opt := Option{
+		Clock: clock.RealWallClock(),
+		Umask: &zeroUmask,
+	}
+	r := NewRooted("synth", NewMemFileAllocator(clock.RealWallClock()), opt)
+
+	// Create a file with 0777 permissions
+	err := vroot.WriteFile(r, "test.txt", []byte("test"), 0o777)
+	if err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// Check that the file has the full permissions (not masked)
+	info, err := r.Stat("test.txt")
+	if err != nil {
+		t.Fatalf("Stat failed: %v", err)
+	}
+
+	// With zero umask, the file should have 0777 permissions
+	if info.Mode().Perm() != 0o777 {
+		t.Errorf("Expected file permissions 0777, got %o", info.Mode().Perm())
+	}
+
+	// Test with directory
+	err = r.Mkdir("testdir", 0o755)
+	if err != nil {
+		t.Fatalf("Mkdir failed: %v", err)
+	}
+
+	dirInfo, err := r.Stat("testdir")
+	if err != nil {
+		t.Fatalf("Stat testdir failed: %v", err)
+	}
+
+	// With zero umask, the directory should have 0755 permissions
+	if dirInfo.Mode().Perm() != 0o755 {
+		t.Errorf("Expected directory permissions 0755, got %o", dirInfo.Mode().Perm())
+	}
+}

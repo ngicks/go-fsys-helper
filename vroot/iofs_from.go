@@ -105,7 +105,7 @@ func (f *ioFsFromRooted) Open(name string) (File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newFsFile(file, path), nil
+	return NewFsFile(file, path), nil
 }
 
 func (f *ioFsFromRooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
@@ -254,7 +254,7 @@ func (f *ioFsFromUnrooted) Open(name string) (File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newFsFile(file, path), nil
+	return NewFsFile(file, path), nil
 }
 
 func (f *ioFsFromUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
@@ -334,60 +334,60 @@ func (f *ioFsFromUnrooted) OpenUnrooted(name string) (Unrooted, error) {
 	return FromIoFsUnrooted(readLinkFsys, path.Join(f.name, name)), nil
 }
 
-var _ File = (*fsFile)(nil)
+var _ File = (*FsFile)(nil)
 
-type fsFile struct {
+type FsFile struct {
 	file fs.File
 	name string
 }
 
-func newFsFile(file fs.File, name string) *fsFile {
-	return &fsFile{file: file, name: name}
+func NewFsFile(file fs.File, name string) *FsFile {
+	return &FsFile{file: file, name: name}
 }
 
-func (f *fsFile) pathErr(op string) error {
+func (f *FsFile) pathErr(op string) error {
 	return fsutil.WrapPathErr(op, f.name, syscall.EPERM)
 }
 
-func (f *fsFile) Chmod(mode fs.FileMode) error {
+func (f *FsFile) Chmod(mode fs.FileMode) error {
 	return f.pathErr("chmod")
 }
 
-func (f *fsFile) Chown(uid int, gid int) error {
+func (f *FsFile) Chown(uid int, gid int) error {
 	return f.pathErr("chown")
 }
 
-func (f *fsFile) Close() error {
+func (f *FsFile) Close() error {
 	return f.file.Close()
 }
 
-func (f *fsFile) Name() string {
+func (f *FsFile) Name() string {
 	return f.name
 }
 
-func (f *fsFile) Fd() uintptr {
+func (f *FsFile) Fd() uintptr {
 	return Fd(f.file)
 }
 
-func (f *fsFile) Read(b []byte) (n int, err error) {
+func (f *FsFile) Read(b []byte) (n int, err error) {
 	return f.file.Read(b)
 }
 
-func (f *fsFile) ReadAt(b []byte, off int64) (n int, err error) {
+func (f *FsFile) ReadAt(b []byte, off int64) (n int, err error) {
 	if ra, ok := f.file.(io.ReaderAt); ok {
 		return ra.ReadAt(b, off)
 	}
 	return 0, fsutil.WrapPathErr("readat", f.name, ErrOpNotSupported)
 }
 
-func (f *fsFile) ReadDir(n int) ([]fs.DirEntry, error) {
+func (f *FsFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	if readDirFile, ok := f.file.(fs.ReadDirFile); ok {
 		return readDirFile.ReadDir(n)
 	}
 	return nil, fsutil.WrapPathErr("readdir", f.name, errors.New("not implemented"))
 }
 
-func (f *fsFile) Readdir(n int) ([]fs.FileInfo, error) {
+func (f *FsFile) Readdir(n int) ([]fs.FileInfo, error) {
 	entries, err := f.ReadDir(n)
 	if err != nil {
 		return nil, err
@@ -404,7 +404,7 @@ func (f *fsFile) Readdir(n int) ([]fs.FileInfo, error) {
 	return infos, nil
 }
 
-func (f *fsFile) Readdirnames(n int) (names []string, err error) {
+func (f *FsFile) Readdirnames(n int) (names []string, err error) {
 	entries, err := f.ReadDir(n)
 	if err != nil {
 		return nil, err
@@ -417,33 +417,33 @@ func (f *fsFile) Readdirnames(n int) (names []string, err error) {
 	return names, nil
 }
 
-func (f *fsFile) Seek(offset int64, whence int) (ret int64, err error) {
+func (f *FsFile) Seek(offset int64, whence int) (ret int64, err error) {
 	if s, ok := f.file.(io.Seeker); ok {
 		return s.Seek(offset, whence)
 	}
 	return 0, fsutil.WrapPathErr("seek", f.name, ErrOpNotSupported)
 }
 
-func (f *fsFile) Stat() (fs.FileInfo, error) {
+func (f *FsFile) Stat() (fs.FileInfo, error) {
 	return f.file.Stat()
 }
 
-func (f *fsFile) Sync() error {
+func (f *FsFile) Sync() error {
 	return f.pathErr("sync")
 }
 
-func (f *fsFile) Truncate(size int64) error {
+func (f *FsFile) Truncate(size int64) error {
 	return f.pathErr("truncate")
 }
 
-func (f *fsFile) Write(b []byte) (n int, err error) {
+func (f *FsFile) Write(b []byte) (n int, err error) {
 	return 0, f.pathErr("write")
 }
 
-func (f *fsFile) WriteAt(b []byte, off int64) (n int, err error) {
+func (f *FsFile) WriteAt(b []byte, off int64) (n int, err error) {
 	return 0, f.pathErr("write")
 }
 
-func (f *fsFile) WriteString(s string) (n int, err error) {
+func (f *FsFile) WriteString(s string) (n int, err error) {
 	return 0, f.pathErr("write")
 }

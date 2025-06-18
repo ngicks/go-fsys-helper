@@ -34,7 +34,7 @@ func (fsys *ioFsToRooted) Close() error {
 }
 
 func (fsys *ioFsToRooted) Open(name string) (fs.File, error) {
-	return newReadOnlyFile(fsys.root.Open(filepath.FromSlash(name)))
+	return NewReadOnlyFile(fsys.root.Open(filepath.FromSlash(name)))
 }
 
 func (fsys *ioFsToRooted) ReadDir(name string) ([]fs.DirEntry, error) {
@@ -85,7 +85,7 @@ func (fsys *ioFsToUnrooted) Close() error {
 }
 
 func (fsys *ioFsToUnrooted) Open(name string) (fs.File, error) {
-	return newReadOnlyFile(fsys.root.Open(filepath.FromSlash(name)))
+	return NewReadOnlyFile(fsys.root.Open(filepath.FromSlash(name)))
 }
 
 func (fsys *ioFsToUnrooted) ReadDir(name string) ([]fs.DirEntry, error) {

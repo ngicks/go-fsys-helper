@@ -3,6 +3,7 @@ package vroot
 import (
 	"errors"
 	"io/fs"
+	_ "os"
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
@@ -33,6 +34,8 @@ type Fs interface {
 	Lstat(name string) (fs.FileInfo, error)
 	Mkdir(name string, perm fs.FileMode) error
 	MkdirAll(name string, perm fs.FileMode) error
+	// Name returns name for the Fs.
+	// For osfs, it reutnrs the name of the directory presented to OpenRoot.
 	Name() string
 	Open(name string) (File, error)
 	OpenFile(name string, flag int, perm fs.FileMode) (File, error)

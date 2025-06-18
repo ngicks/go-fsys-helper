@@ -3,6 +3,7 @@ package vroot
 import (
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 )
 
@@ -53,4 +54,17 @@ func Fd(f any) uintptr {
 		return ff.Fd()
 	}
 	return ^(uintptr(0))
+}
+
+// WriteFile is short hand for creating file at name and writing data into it.
+func WriteFile(fsys Fs, name string, data []byte, perm fs.FileMode) error {
+	f, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err1 := f.Close(); err1 != nil && err == nil {
+		err = err1
+	}
+	return err
 }

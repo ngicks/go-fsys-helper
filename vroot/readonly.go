@@ -67,14 +67,14 @@ func (r *ReadOnlyRooted) Name() string {
 }
 
 func (r *ReadOnlyRooted) Open(name string) (File, error) {
-	return newReadOnlyFile(r.rooted.Open(name))
+	return NewReadOnlyFile(r.rooted.Open(name))
 }
 
 func (r *ReadOnlyRooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
 		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 	}
-	return newReadOnlyFile(r.Open(name))
+	return NewReadOnlyFile(r.Open(name))
 }
 
 func (r *ReadOnlyRooted) OpenRoot(name string) (Rooted, error) {
@@ -166,14 +166,14 @@ func (r *ReadOnlyUnrooted) Name() string {
 }
 
 func (r *ReadOnlyUnrooted) Open(name string) (File, error) {
-	return newReadOnlyFile(r.rooted.Open(name))
+	return NewReadOnlyFile(r.rooted.Open(name))
 }
 
 func (r *ReadOnlyUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
 		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 	}
-	return newReadOnlyFile(r.Open(name))
+	return NewReadOnlyFile(r.Open(name))
 }
 
 func (r *ReadOnlyUnrooted) OpenRoot(name string) (Rooted, error) {
@@ -216,87 +216,87 @@ func (r *ReadOnlyUnrooted) Symlink(oldname string, newname string) error {
 	return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.EROFS)
 }
 
-var _ File = (*readOnlyFile)(nil)
+var _ File = (*ReadOnlyFile)(nil)
 
-type readOnlyFile struct {
+type ReadOnlyFile struct {
 	f File
 }
 
-func newReadOnlyFile(f File, err error) (File, error) {
+func NewReadOnlyFile(f File, err error) (File, error) {
 	if f == nil {
 		return nil, err
 	}
-	return &readOnlyFile{f: f}, err
+	return &ReadOnlyFile{f: f}, err
 }
 
-func (r *readOnlyFile) pathErr(op string) error {
+func (r *ReadOnlyFile) pathErr(op string) error {
 	return fsutil.WrapPathErr(op, r.f.Name(), syscall.EPERM)
 }
 
-func (r *readOnlyFile) Chmod(mode fs.FileMode) error {
+func (r *ReadOnlyFile) Chmod(mode fs.FileMode) error {
 	return r.pathErr("chmod")
 }
 
-func (r *readOnlyFile) Chown(uid int, gid int) error {
+func (r *ReadOnlyFile) Chown(uid int, gid int) error {
 	return r.pathErr("chown")
 }
 
-func (r *readOnlyFile) Close() error {
+func (r *ReadOnlyFile) Close() error {
 	return r.f.Close()
 }
 
-func (r *readOnlyFile) Name() string {
+func (r *ReadOnlyFile) Name() string {
 	return r.f.Name()
 }
 
-func (r *readOnlyFile) Fd() uintptr {
+func (r *ReadOnlyFile) Fd() uintptr {
 	return r.f.Fd()
 }
 
-func (r *readOnlyFile) Read(b []byte) (n int, err error) {
+func (r *ReadOnlyFile) Read(b []byte) (n int, err error) {
 	return r.f.Read(b)
 }
 
-func (r *readOnlyFile) ReadAt(b []byte, off int64) (n int, err error) {
+func (r *ReadOnlyFile) ReadAt(b []byte, off int64) (n int, err error) {
 	return r.f.ReadAt(b, off)
 }
 
-func (r *readOnlyFile) ReadDir(n int) ([]fs.DirEntry, error) {
+func (r *ReadOnlyFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	return r.f.ReadDir(n)
 }
 
-func (r *readOnlyFile) Readdir(n int) ([]fs.FileInfo, error) {
+func (r *ReadOnlyFile) Readdir(n int) ([]fs.FileInfo, error) {
 	return r.f.Readdir(n)
 }
 
-func (r *readOnlyFile) Readdirnames(n int) (names []string, err error) {
+func (r *ReadOnlyFile) Readdirnames(n int) (names []string, err error) {
 	return r.f.Readdirnames(n)
 }
 
-func (r *readOnlyFile) Seek(offset int64, whence int) (ret int64, err error) {
+func (r *ReadOnlyFile) Seek(offset int64, whence int) (ret int64, err error) {
 	return r.f.Seek(offset, whence)
 }
 
-func (r *readOnlyFile) Stat() (fs.FileInfo, error) {
+func (r *ReadOnlyFile) Stat() (fs.FileInfo, error) {
 	return r.f.Stat()
 }
 
-func (r *readOnlyFile) Sync() error {
+func (r *ReadOnlyFile) Sync() error {
 	return r.pathErr("sync")
 }
 
-func (r *readOnlyFile) Truncate(size int64) error {
+func (r *ReadOnlyFile) Truncate(size int64) error {
 	return r.pathErr("truncate")
 }
 
-func (r *readOnlyFile) Write(b []byte) (n int, err error) {
+func (r *ReadOnlyFile) Write(b []byte) (n int, err error) {
 	return 0, r.pathErr("write")
 }
 
-func (r *readOnlyFile) WriteAt(b []byte, off int64) (n int, err error) {
+func (r *ReadOnlyFile) WriteAt(b []byte, off int64) (n int, err error) {
 	return 0, r.pathErr("writeat")
 }
 
-func (r *readOnlyFile) WriteString(s string) (n int, err error) {
+func (r *ReadOnlyFile) WriteString(s string) (n int, err error) {
 	return 0, r.pathErr("write")
 }
