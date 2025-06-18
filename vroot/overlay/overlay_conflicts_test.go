@@ -197,7 +197,7 @@ func TestOverlay_CopyOnWriteConflicts(t *testing.T) {
 	// Test copy-on-write with concurrent operations
 	t.Run("copy-on-write during file modification", func(t *testing.T) {
 		// File exists in lower layer - root/readable/file1.txt
-		
+
 		// Open for writing - should trigger copy-on-write
 		f, err := r.OpenFile("root/readable/file1.txt", os.O_RDWR, 0)
 		if err != nil {
@@ -214,7 +214,7 @@ func TestOverlay_CopyOnWriteConflicts(t *testing.T) {
 		// Verify original file in lower layer is unchanged by opening read-only
 		// and checking it doesn't contain our modification
 		// (This is difficult to test directly, but we can verify the overlay behavior)
-		
+
 		// File should now exist in top layer
 		_, err = r.top.Lstat("root/readable/file1.txt")
 		if err != nil {
@@ -225,7 +225,7 @@ func TestOverlay_CopyOnWriteConflicts(t *testing.T) {
 	t.Run("copy-on-write directory structure", func(t *testing.T) {
 		// File exists in nested directory in lower layer
 		filePath := "root/readable/subdir/nested_file.txt"
-		
+
 		// Modify the nested file
 		f, err := r.OpenFile(filePath, os.O_RDWR, 0)
 		if err != nil {

@@ -21,7 +21,7 @@ func TestOverlay_UnixSpecificBehavior(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		testFile, err := r.top.Create("root/writable/unix_test.txt")
 		if err != nil {
 			t.Fatal(err)

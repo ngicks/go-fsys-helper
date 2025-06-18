@@ -23,7 +23,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		testFile, err := r.top.Create("root/writable/concurrent.txt")
 		if err != nil {
 			t.Fatal(err)
@@ -51,7 +51,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 		go func() {
 			_, _ = f1.Write([]byte(" from f1"))
 		}()
-		
+
 		_, err = f2.Write([]byte(" from f2"))
 		if err != nil {
 			t.Errorf("concurrent write failed: %v", err)
@@ -65,7 +65,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		f, err := r.Create("root/writable/empty.txt")
 		if err != nil {
 			t.Fatal(err)
@@ -104,7 +104,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 		for i := 0; i < 50; i++ {
 			longPath = filepath.Join(longPath, "very_long_directory_name_that_creates_deep_nesting")
 		}
-		
+
 		err := r.MkdirAll(longPath, fs.ModePerm)
 		if err != nil {
 			// Might fail due to path length limits
@@ -158,7 +158,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		f, err := r.top.Create("root/writable/timestamp_test.txt")
 		if err != nil {
 			t.Fatal(err)
@@ -188,7 +188,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		f, err := r.top.Create("root/writable/perm_test.txt")
 		if err != nil {
 			t.Fatal(err)
@@ -197,7 +197,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 
 		// Test various permission combinations
 		perms := []fs.FileMode{0o000, 0o444, 0o666, 0o755, 0o777}
-		
+
 		for _, perm := range perms {
 			err = r.Chmod("root/writable/perm_test.txt", perm)
 			if err != nil {
@@ -226,7 +226,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		
+
 		err = r.Symlink("a", "root/writable/b")
 		if err != nil {
 			t.Fatal(err)
@@ -267,7 +267,7 @@ func TestOverlay_EdgeCases(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		f, err := r.Create("root/writable/large.txt")
 		if err != nil {
 			t.Fatal(err)

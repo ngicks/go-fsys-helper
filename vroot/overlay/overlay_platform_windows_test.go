@@ -20,7 +20,7 @@ func TestOverlay_WindowsSpecificBehavior(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		testFile, err := r.top.Create("root/writable/windows_test.txt")
 		if err != nil {
 			t.Fatal(err)
@@ -56,7 +56,7 @@ func TestOverlay_WindowsSpecificBehavior(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable/windir", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		testFile, err := r.top.Create("root/writable/windir/locked.txt")
 		if err != nil {
 			t.Fatal(err)
@@ -141,7 +141,7 @@ func TestOverlay_WindowsSpecificBehavior(t *testing.T) {
 		if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 			t.Fatal(err)
 		}
-		
+
 		testFile, err := r.top.Create("root/writable/lock_test.txt")
 		if err != nil {
 			t.Fatal(err)

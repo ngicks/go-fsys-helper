@@ -34,10 +34,10 @@ func TestMetadataStoreSimpleText(t *testing.T) {
 	t.Run("persistence", func(t *testing.T) {
 		// Clear any existing whiteouts by removing the whiteout file
 		fsys.Remove(overlay.MetadataStoreSimpleTextWhiteout)
-		
+
 		// Create a new store and add some whiteouts
 		store1 := overlay.NewMetadataStoreSimpleText(fsys)
-		
+
 		paths := []string{
 			"persistent/file1.txt",
 			"persistent/dir", // White out the entire directory
