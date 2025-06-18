@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 //
 // Run same test for every file.
 func readFile(t *testing.T, fsys vroot.Fs) {
-	files := []string{"file1.txt", "file2.txt", "subdir/nested_file.txt"}
+	files := []string{"file1.txt", "file2.txt", filepath.FromSlash("subdir/nested_file.txt")}
 	expectedContents := []string{"bazbazbaz", "quxquxqux", "nested_file"}
 
 	for i, filename := range files {
@@ -99,7 +100,7 @@ func readFile(t *testing.T, fsys vroot.Fs) {
 //
 // Run same test for every directory.
 func readDirectory(t *testing.T, fsys vroot.Fs) {
-	dirs := []string{".", "subdir", "subdir/double_nested"}
+	dirs := []string{".", "subdir", filepath.FromSlash("subdir/double_nested")}
 
 	for _, dirname := range dirs {
 		t.Run(dirname, func(t *testing.T) {
@@ -297,9 +298,9 @@ func writeFails(t *testing.T, fsys vroot.Fs) {
 // ReadLink succeeds.
 func followSymlink(t *testing.T, fsys vroot.Fs) {
 	symlinks := map[string]string{
-		"symlink_inner":         "./file1.txt",
-		"symlink_inner_dir":     "./subdir",
-		"subdir/symlink_upward": "../symlink_inner",
+		"symlink_inner":     filepath.FromSlash("./file1.txt"),
+		"symlink_inner_dir": filepath.FromSlash("./subdir"),
+		filepath.FromSlash("subdir/symlink_upward"): filepath.FromSlash("../symlink_inner"),
 	}
 
 	for linkName, target := range symlinks {

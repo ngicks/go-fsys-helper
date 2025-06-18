@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -51,13 +52,13 @@ func write(t *testing.T, fsys vroot.Fs) {
 // Test that Create and OpenFile fail when parent directories don't exist
 func testCreateFailsWithoutParentDirs(t *testing.T, fsys vroot.Fs) {
 	// Test that Create fails when parent directories don't exist
-	_, err := fsys.Create("nonexistent/dir/test.txt")
+	_, err := fsys.Create(filepath.FromSlash("nonexistent/dir/test.txt"))
 	if err == nil {
 		t.Error("Create should fail when parent directories don't exist")
 	}
 
 	// Test that OpenFile with O_CREATE fails when parent directories don't exist
-	_, err = fsys.OpenFile("another/nonexistent/path/test.txt", os.O_CREATE|os.O_RDWR, 0o644)
+	_, err = fsys.OpenFile(filepath.FromSlash("another/nonexistent/path/test.txt"), os.O_CREATE|os.O_RDWR, 0o644)
 	if err == nil {
 		t.Error("OpenFile with O_CREATE should fail when parent directories don't exist")
 	}
@@ -241,18 +242,18 @@ func testMkdir(t *testing.T, fsys vroot.Fs) {
 	}
 
 	// Test MkdirAll
-	err = fsys.MkdirAll("test_deep/nested/dir", 0o755)
+	err = fsys.MkdirAll(filepath.FromSlash("test_deep/nested/dir"), 0o755)
 	if err != nil {
 		t.Fatalf("MkdirAll failed: %v", err)
 	}
 	// MkdirAll again. It should return nil error
-	err = fsys.MkdirAll("test_deep/nested/dir", 0o755)
+	err = fsys.MkdirAll(filepath.FromSlash("test_deep/nested/dir"), 0o755)
 	if err != nil {
 		t.Fatalf("MkdirAll failed: %v", err)
 	}
 
 	// Verify MkdirAll effect
-	info, err = fsys.Stat("test_deep/nested/dir")
+	info, err = fsys.Stat(filepath.FromSlash("test_deep/nested/dir"))
 	if err != nil {
 		t.Fatalf("Stat after MkdirAll failed: %v", err)
 	}
@@ -397,7 +398,7 @@ func testRename(t *testing.T, fsys vroot.Fs) {
 // This test just sits here to prevent it from happening again.
 func testPathNormalization(t *testing.T, fsys vroot.Fs) {
 	// Create a file with "./" prefix
-	f1, err := fsys.Create("./with_dot.txt")
+	f1, err := fsys.Create(filepath.FromSlash("./with_dot.txt"))
 	if err != nil {
 		t.Fatalf("Create ./with_dot.txt failed: %v", err)
 	}
@@ -416,7 +417,7 @@ func testPathNormalization(t *testing.T, fsys vroot.Fs) {
 		t.Errorf("Stat with_dot.txt (without ./) failed: %v", err)
 	}
 
-	_, err = fsys.Stat("./with_dot.txt") // with "./"
+	_, err = fsys.Stat(filepath.FromSlash("./with_dot.txt")) // with "./"
 	if err != nil {
 		t.Errorf("Stat ./with_dot.txt (with ./) failed: %v", err)
 	}
@@ -426,7 +427,7 @@ func testPathNormalization(t *testing.T, fsys vroot.Fs) {
 		t.Errorf("Stat without_dot.txt (without ./) failed: %v", err)
 	}
 
-	_, err = fsys.Stat("./without_dot.txt") // with "./"
+	_, err = fsys.Stat(filepath.FromSlash("./without_dot.txt")) // with "./"
 	if err != nil {
 		t.Errorf("Stat ./without_dot.txt (with ./) failed: %v", err)
 	}

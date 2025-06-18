@@ -12,9 +12,9 @@ import (
 )
 
 var escapingSymlinks = []string{ // pairs of link name and target.
-	"symlink_escapes", "../../outside/outside_file.txt",
-	"symlink_escapes_dir", "../../outside/dir",
-	"subdir/symlink_upward_escapes", "../symlink_escapes",
+	"symlink_escapes", filepath.FromSlash("../../outside/outside_file.txt"),
+	"symlink_escapes_dir", filepath.FromSlash("../../outside/dir"),
+	filepath.FromSlash("subdir/symlink_upward_escapes"), filepath.FromSlash("../symlink_escapes"),
 }
 
 // test symlink resolusion fails if it escapes the root.
@@ -124,12 +124,12 @@ func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted, hasOu
 func pathTraversalFails(t *testing.T, fsys vroot.Fs, isReadOnly bool) {
 	traversalPaths := []string{
 		"..",
-		"../..",
-		"../outside",
-		"../outside/outside_file.txt",
-		"subdir/../../outside",
-		"subdir/../..",
-		"./subdir/../../outside/outside_file.txt",
+		filepath.FromSlash("../.."),
+		filepath.FromSlash("../outside"),
+		filepath.FromSlash("../outside/outside_file.txt"),
+		filepath.FromSlash("subdir/../../outside"),
+		filepath.FromSlash("subdir/../.."),
+		filepath.FromSlash("./subdir/../../outside/outside_file.txt"),
 	}
 
 	for _, path := range traversalPaths {
