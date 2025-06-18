@@ -2,6 +2,8 @@
 
 A collection of go modules that implement useful functions around fs.FS, io.Reader/Writer, ~~afero.Fs~~ and etc
 
+All modules do not support `GOOS=plan9`.
+
 ## vroot
 
 A file system abstraction library that requires capability which `*os.Root` has at least.
