@@ -1,6 +1,7 @@
 package acceptancetest
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot/overlay"
@@ -12,7 +13,7 @@ import (
 func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 	t.Run("basic_operations", func(t *testing.T) {
 		store := newStore()
-		
+
 		// Test recording a whiteout
 		err := store.RecordWhiteout("file.txt")
 		if err != nil {
@@ -46,7 +47,7 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 
 	t.Run("parent_path_checking", func(t *testing.T) {
 		store := newStore()
-		
+
 		// Whiteout a parent directory
 		err := store.RecordWhiteout("dir")
 		if err != nil {
@@ -59,14 +60,14 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 			expected bool
 		}
 		testCases := []testCase{
-			{"dir", true},                 // The whited out path itself
-			{"dir/file.txt", true},        // Direct child
-			{"dir/subdir", true},          // Direct child directory
-			{"dir/subdir/file.txt", true}, // Nested child
-			{"dir/a/b/c/d/e.txt", true},   // Deeply nested child
-			{"other.txt", false},          // Unrelated file
-			{"directory", false},          // Similar name but different
-			{"dir2", false},               // Similar name but different
+			{"dir", true}, // The whited out path itself
+			{filepath.FromSlash("dir/file.txt"), true},        // Direct child
+			{filepath.FromSlash("dir/subdir"), true},          // Direct child directory
+			{filepath.FromSlash("dir/subdir/file.txt"), true}, // Nested child
+			{filepath.FromSlash("dir/a/b/c/d/e.txt"), true},   // Deeply nested child
+			{"other.txt", false},                              // Unrelated file
+			{"directory", false},                              // Similar name but different
+			{"dir2", false},                                   // Similar name but different
 		}
 
 		for _, tc := range testCases {
@@ -83,13 +84,13 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 
 	t.Run("nested_whiteouts", func(t *testing.T) {
 		store := newStore()
-		
+
 		// Record nested whiteouts
 		paths := []string{
-			"a/b/c/file1.txt",
-			"a/b/file2.txt",
-			"a/file3.txt",
-			"x/y/z/deep.txt",
+			filepath.FromSlash("a/b/c/file1.txt"),
+			filepath.FromSlash("a/b/file2.txt"),
+			filepath.FromSlash("a/file3.txt"),
+			filepath.FromSlash("x/y/z/deep.txt"),
 		}
 
 		for _, path := range paths {
@@ -117,12 +118,12 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 			expected bool
 		}
 		parentTests := []parentTestCase{
-			{"a", false},     // Parent of a/file3.txt
-			{"a/b", false},   // Parent of a/b/file2.txt
-			{"a/b/c", false}, // Parent of a/b/c/file1.txt
-			{"x", false},     // Parent of x/y/z/deep.txt
-			{"x/y", false},   // Parent of x/y/z/deep.txt
-			{"x/y/z", false}, // Parent of x/y/z/deep.txt
+			{"a", false},                         // Parent of a/file3.txt
+			{filepath.FromSlash("a/b"), false},   // Parent of a/b/file2.txt
+			{filepath.FromSlash("a/b/c"), false}, // Parent of a/b/c/file1.txt
+			{"x", false},                         // Parent of x/y/z/deep.txt
+			{filepath.FromSlash("x/y"), false},   // Parent of x/y/z/deep.txt
+			{filepath.FromSlash("x/y/z"), false}, // Parent of x/y/z/deep.txt
 		}
 
 		for _, tc := range parentTests {
@@ -139,7 +140,7 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 
 	t.Run("root_whiteout_rejected", func(t *testing.T) {
 		store := newStore()
-		
+
 		// Test that whiting out the root is rejected
 		err := store.RecordWhiteout(".")
 		if err == nil {
@@ -150,8 +151,8 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 		rootPaths := []string{
 			".",
 			"",
-			"./",
-			"./.",
+			filepath.FromSlash("./"),
+			filepath.FromSlash("./."),
 		}
 
 		for _, rootPath := range rootPaths {
@@ -173,13 +174,13 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 
 	t.Run("remove_with_children", func(t *testing.T) {
 		store := newStore()
-		
+
 		// Add a parent and child whiteout
 		err := store.RecordWhiteout("parent")
 		if err != nil {
 			t.Errorf("RecordWhiteout failed: %v", err)
 		}
-		err = store.RecordWhiteout("parent/child.txt")
+		err = store.RecordWhiteout(filepath.FromSlash("parent/child.txt"))
 		if err != nil {
 			t.Errorf("RecordWhiteout failed: %v", err)
 		}
@@ -200,7 +201,7 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 		}
 
 		// But child should still be whited out
-		has, err = store.QueryWhiteout("parent/child.txt")
+		has, err = store.QueryWhiteout(filepath.FromSlash("parent/child.txt"))
 		if err != nil {
 			t.Errorf("QueryWhiteout failed: %v", err)
 		}
@@ -209,7 +210,7 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 		}
 
 		// Other children should not be whited out due to parent removal
-		has, err = store.QueryWhiteout("parent/other.txt")
+		has, err = store.QueryWhiteout(filepath.FromSlash("parent/other.txt"))
 		if err != nil {
 			t.Errorf("QueryWhiteout failed: %v", err)
 		}
@@ -220,7 +221,7 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 
 	t.Run("edge_cases", func(t *testing.T) {
 		store := newStore()
-		
+
 		// Test empty paths and edge cases
 		type edgeTestCase struct {
 			record string
@@ -229,9 +230,9 @@ func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
 		}
 		testCases := []edgeTestCase{
 			{"a", "a", true},
-			{"a", "a/", true}, // Trailing slash should be handled
-			{"a/", "a", true}, // Trailing slash in record should be handled
-			{"a/b", "a/b/", true},
+			{"a", filepath.FromSlash("a/"), true}, // Trailing slash should be handled
+			{filepath.FromSlash("a/"), "a", true}, // Trailing slash in record should be handled
+			{filepath.FromSlash("a/b"), filepath.FromSlash("a/b/"), true},
 		}
 
 		for _, tc := range testCases {
