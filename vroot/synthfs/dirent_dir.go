@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -136,7 +135,6 @@ func (d *dir) findDirent(name string, skipLastComponent bool, fsys *fsys) (diren
 				} else {
 					rest = target
 				}
-				rest = path.Clean(rest)
 				continue
 			}
 		}
