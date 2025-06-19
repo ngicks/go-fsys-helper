@@ -14,6 +14,7 @@ import (
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/clock"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
 // Option configures a synthetic filesystem.
@@ -432,7 +433,7 @@ func (f *fsys) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, er
 
 	// Check permissions
 	info, _ := dirent.stat()
-	if flag&os.O_WRONLY != 0 || flag&os.O_RDWR != 0 {
+	if !openflag.Writable(flag) {
 		if !info.(stat).isWritable() {
 			return nil, fsutil.WrapPathErr("open", name, syscall.EACCES)
 		}

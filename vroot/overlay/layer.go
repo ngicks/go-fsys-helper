@@ -3,12 +3,12 @@ package overlay
 import (
 	"errors"
 	"io/fs"
-	"os"
 	"syscall"
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
 var (
@@ -89,7 +89,7 @@ func (l *Layer) Open(name string) (vroot.File, error) {
 // OpenFile opens a file with flags, respecting whiteouts
 func (l *Layer) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, error) {
 	// Check for write flags - return EROFS for any write operations
-	if flag&(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
+	if openflag.WriteOp(flag) {
 		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 	}
 

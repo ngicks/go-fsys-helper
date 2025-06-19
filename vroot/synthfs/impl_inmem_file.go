@@ -14,6 +14,7 @@ import (
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/clock"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
 var _ vroot.File = (*memFileHandle)(nil)
@@ -44,7 +45,7 @@ func (f *memFileHandle) Name() string {
 }
 
 func (f *memFileHandle) Read(p []byte) (n int, err error) {
-	if f.flag&os.O_WRONLY != 0 {
+	if !openflag.Readable(f.flag) {
 		return 0, fsutil.WrapPathErr("read", f.path, syscall.EBADF)
 	}
 	f.mu.Lock()
@@ -58,7 +59,7 @@ func (f *memFileHandle) Read(p []byte) (n int, err error) {
 }
 
 func (f *memFileHandle) ReadAt(p []byte, off int64) (n int, err error) {
-	if f.flag&os.O_WRONLY != 0 {
+	if !openflag.Readable(f.flag) {
 		return 0, fsutil.WrapPathErr("readat", f.path, syscall.EBADF)
 	}
 	n, err = f.file.ReadAt(p, off)
@@ -113,7 +114,7 @@ func (f *memFileHandle) Sync() error {
 }
 
 func (f *memFileHandle) Truncate(size int64) error {
-	if f.flag&os.O_RDWR == 0 && f.flag&os.O_WRONLY == 0 {
+	if !openflag.Writable(f.flag) {
 		return fsutil.WrapPathErr("truncate", f.path, syscall.EBADF)
 	}
 	err := f.file.Truncate(size)
@@ -124,7 +125,7 @@ func (f *memFileHandle) Truncate(size int64) error {
 }
 
 func (f *memFileHandle) Write(p []byte) (n int, err error) {
-	if f.flag&os.O_RDWR == 0 && f.flag&os.O_WRONLY == 0 {
+	if !openflag.Writable(f.flag) {
 		return 0, fsutil.WrapPathErr("write", f.path, syscall.EBADF)
 	}
 
@@ -146,7 +147,7 @@ func (f *memFileHandle) WriteAt(p []byte, off int64) (n int, err error) {
 	if f.flag&os.O_APPEND != 0 {
 		return 0, fsutil.WrapPathErr("writeat", f.path, syscall.EINVAL)
 	}
-	if f.flag&os.O_RDWR == 0 && f.flag&os.O_WRONLY == 0 {
+	if !openflag.Writable(f.flag) {
 		return 0, fsutil.WrapPathErr("writeat", f.path, syscall.EBADF)
 	}
 	n, err = f.file.WriteAt(p, off)
@@ -279,7 +280,6 @@ func (f *memFile) grow(growth int) {
 	if cap(f.content)-len(f.content) >= growth {
 		f.content = f.content[:len(f.content)+growth]
 	} else {
-		// TODO: prevent this over allocation?
 		f.content = append(f.content, make([]byte, growth)...)
 	}
 }

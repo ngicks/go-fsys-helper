@@ -10,6 +10,7 @@ import (
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
 func readonlyFsysErr(op, name string) error {
@@ -47,7 +48,7 @@ func newFsFileView(fsys fs.FS, path string) (*fsFileView, error) {
 }
 
 func (b *fsFileView) Open(flag int) (vroot.File, error) {
-	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
+	if openflag.WriteOp(flag) {
 		return nil, syscall.EROFS
 	}
 	f, err := b.fsys.Open(b.path)

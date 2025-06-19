@@ -15,6 +15,7 @@ import (
 	"github.com/ngicks/go-common/serr"
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
 var _ vroot.Rooted = (*Overlay)(nil)
@@ -259,7 +260,7 @@ func (o *Overlay) openMergedFileNoLock(name string, flag int, perm fs.FileMode, 
 
 // OpenFile opens a file with flags
 func (o *Overlay) openFileNoLock(name string, flag int, perm fs.FileMode) (f vroot.File, err error) {
-	isWriteOp := flag&(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE) != 0
+	isWriteOp := openflag.WriteOp(flag)
 
 	name = filepath.Clean(name)
 
@@ -357,7 +358,7 @@ func (o *Overlay) openFileNoLock(name string, flag int, perm fs.FileMode) (f vro
 }
 
 func (o *Overlay) OpenFile(name string, flag int, perm fs.FileMode) (f vroot.File, err error) {
-	isWriteOp := flag&(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE) != 0
+	isWriteOp := openflag.WriteOp(flag)
 
 	if isWriteOp {
 		o.rw.Lock()
