@@ -38,11 +38,11 @@ func (fsys *ioFsToRooted) Open(name string) (fs.File, error) {
 }
 
 func (fsys *ioFsToRooted) ReadDir(name string) ([]fs.DirEntry, error) {
-	return ReadDir(fsys.root, name)
+	return ReadDir(fsys.root, filepath.FromSlash(name))
 }
 
 func (fsys *ioFsToRooted) ReadFile(name string) ([]byte, error) {
-	return ReadFile(fsys.root, name)
+	return ReadFile(fsys.root, filepath.FromSlash(name))
 }
 
 func (fsys *ioFsToRooted) ReadLink(name string) (string, error) {
@@ -89,11 +89,11 @@ func (fsys *ioFsToUnrooted) Open(name string) (fs.File, error) {
 }
 
 func (fsys *ioFsToUnrooted) ReadDir(name string) ([]fs.DirEntry, error) {
-	return ReadDir(fsys.root, name)
+	return ReadDir(fsys.root, filepath.FromSlash(name))
 }
 
 func (fsys *ioFsToUnrooted) ReadFile(name string) ([]byte, error) {
-	return ReadFile(fsys.root, name)
+	return ReadFile(fsys.root, filepath.FromSlash(name))
 }
 
 func (fsys *ioFsToUnrooted) ReadLink(name string) (string, error) {
