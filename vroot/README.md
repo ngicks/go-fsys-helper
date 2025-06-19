@@ -331,7 +331,7 @@ layouts:
 ### Overlay Features
 
 - **Union Mount**: Files resolve from top layer down
-- **Copy-on-Write**: Lower layer files copied to top layer before modification
+- **Copy-on-Write**: Lower layer files copied to top layer before any write operation or **opening as writable**
 - **Whiteout Support**: Track file deletions across layers
 - **Metadata Tracking**: Persistent storage of overlay metadata
 
