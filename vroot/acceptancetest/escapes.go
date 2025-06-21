@@ -25,8 +25,9 @@ func followSymlinkFailsForEscapes(t *testing.T, rooted vroot.Rooted) {
 		expectedTarget := linkNameAndTarget[1]
 		t.Run(linkName, func(t *testing.T) {
 			// Test Open should fail with ErrPathEscapes
-			_, err := rooted.Open(linkName)
+			f, err := rooted.Open(linkName)
 			if err == nil {
+				f.Close()
 				t.Errorf("Open %q should have failed with path escape error", linkName)
 				return
 			}
@@ -45,8 +46,9 @@ func followSymlinkFailsForEscapes(t *testing.T, rooted vroot.Rooted) {
 			}
 
 			// Test OpenFile should fail with ErrPathEscapes
-			_, err = rooted.OpenFile(linkName, 0, 0)
+			f, err = rooted.OpenFile(linkName, 0, 0)
 			if err == nil {
+				f.Close()
 				t.Errorf("OpenFile %q should have failed with path escape error", linkName)
 				return
 			}
@@ -102,7 +104,10 @@ func followSymlinkAllowedForEscapes(t *testing.T, unrooted vroot.Unrooted, hasOu
 			// For unrooted, following symlinks that escape should be allowed
 			// Note: This might fail if the target doesn't actually exist
 			// In that case, we expect a "no such file" error, not ErrPathEscapes
-			_, err = unrooted.Open(linkName)
+			f, err := unrooted.Open(linkName)
+			if err == nil {
+				f.Close()
+			}
 			if hasOutside && err != nil {
 				t.Errorf("Open %q failed with %v", linkName, err)
 			} else if !hasOutside && !errors.Is(err, fs.ErrNotExist) {
@@ -135,8 +140,9 @@ func pathTraversalFails(t *testing.T, fsys vroot.Fs, isReadOnly bool) {
 	for _, path := range traversalPaths {
 		t.Run(path, func(t *testing.T) {
 			// Test Open
-			_, err := fsys.Open(path)
+			f, err := fsys.Open(path)
 			if err == nil {
+				f.Close()
 				t.Errorf("Open %q should have failed with path traversal error", path)
 				return
 			}

@@ -29,21 +29,29 @@ func subRootReadOnly(t *testing.T, fsys vroot.Fs) {
 	}
 
 	// Test that we can read files in the sub-root
-	_, err = subRoot.Open("nested_file.txt")
+	f, err := subRoot.Open("nested_file.txt")
 	if err != nil {
 		t.Errorf("Open nested_file.txt in sub-root failed: %v", err)
+	} else {
+		f.Close()
 	}
 
 	// Test that accessing parent directory fails (symlink_upward -> ../symlink_inner)
 	// This should now fail because ../symlink_inner is outside the sub-root
-	_, err = subRoot.Open("symlink_upward")
-	if !errors.Is(err, vroot.ErrPathEscapes) {
+	f, err = subRoot.Open("symlink_upward")
+	if err == nil {
+		f.Close()
+		t.Errorf("Open symlink_upward should have failed with ErrPathEscapes")
+	} else if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open symlink_upward failed with %v, expected ErrPathEscapes", err)
 	}
 
 	// Test path traversal from sub-root
-	_, err = subRoot.Open("..")
-	if !errors.Is(err, vroot.ErrPathEscapes) {
+	f, err = subRoot.Open("..")
+	if err == nil {
+		f.Close()
+		t.Errorf("Open .. should have failed with ErrPathEscapes")
+	} else if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open .. failed with %v, expected ErrPathEscapes", err)
 	}
 }
@@ -71,21 +79,29 @@ func subRootReadWrite(t *testing.T, fsys vroot.Fs) {
 	}
 
 	// Test that we can read files in the sub-root
-	_, err = subRoot.Open("nested_file.txt")
+	f2, err := subRoot.Open("nested_file.txt")
 	if err != nil {
 		t.Errorf("Open nested_file.txt in sub-root failed: %v", err)
+	} else {
+		f2.Close()
 	}
 
 	// Test that accessing parent directory fails (symlink_upward -> ../symlink_inner)
 	// This should now fail because ../symlink_inner is outside the sub-root
-	_, err = subRoot.Open("symlink_upward")
-	if !errors.Is(err, vroot.ErrPathEscapes) {
+	f3, err := subRoot.Open("symlink_upward")
+	if err == nil {
+		f3.Close()
+		t.Errorf("Open symlink_upward should have failed with ErrPathEscapes")
+	} else if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open symlink_upward failed with %v, expected ErrPathEscapes", err)
 	}
 
 	// Test path traversal from sub-root
-	_, err = subRoot.Open("..")
-	if !errors.Is(err, vroot.ErrPathEscapes) {
+	f4, err := subRoot.Open("..")
+	if err == nil {
+		f4.Close()
+		t.Errorf("Open .. should have failed with ErrPathEscapes")
+	} else if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open .. failed with %v, expected ErrPathEscapes", err)
 	}
 }
@@ -101,8 +117,9 @@ func subUnrootedReadOnly(t *testing.T, fsys vroot.Unrooted) {
 	defer subUnrooted.Close()
 
 	// Test that the sub-unrooted is still read-only
-	_, err = subUnrooted.Create("should_fail.txt")
+	f, err := subUnrooted.Create("should_fail.txt")
 	if err == nil {
+		f.Close()
 		t.Error("Create should have failed on read-only sub-unrooted")
 	}
 
@@ -112,21 +129,28 @@ func subUnrootedReadOnly(t *testing.T, fsys vroot.Unrooted) {
 	}
 
 	// Test that we can read files in the sub-unrooted
-	_, err = subUnrooted.Open("nested_file.txt")
+	f2, err := subUnrooted.Open("nested_file.txt")
 	if err != nil {
 		t.Errorf("Open nested_file.txt in sub-unrooted failed: %v", err)
+	} else {
+		f2.Close()
 	}
 
 	// Test that accessing parent directory works (because it's unrooted)
 	// symlink_upward -> ../symlink_inner should be allowed
-	_, err = subUnrooted.Open("symlink_upward")
+	f3, err := subUnrooted.Open("symlink_upward")
 	if err != nil {
 		t.Errorf("Open symlink_upward should not fail but got %v", err)
+	} else {
+		f3.Close()
 	}
 
 	// Test path traversal from sub-unrooted - should be allowed but might fail if target doesn't exist
-	_, err = subUnrooted.Open("..")
-	if !errors.Is(err, vroot.ErrPathEscapes) {
+	f4, err := subUnrooted.Open("..")
+	if err == nil {
+		f4.Close()
+		t.Errorf("Open .. should fail with ErrPathEscapes")
+	} else if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open .. should fail with ErrPathEscapes but got %v", err)
 	}
 }
@@ -161,21 +185,28 @@ func subUnrootedReadWrite(t *testing.T, fsys vroot.Fs) {
 	}
 
 	// Test that we can read files in the sub-unrooted
-	_, err = subUnrooted.Open("nested_file.txt")
+	f, err = subUnrooted.Open("nested_file.txt")
 	if err != nil {
 		t.Errorf("Open nested_file.txt in sub-unrooted failed: %v", err)
+	} else {
+		f.Close()
 	}
 
 	// Test that accessing parent directory works (because it's unrooted)
 	// symlink_upward -> ../symlink_inner should be allowed
-	_, err = subUnrooted.Open("symlink_upward")
+	f, err = subUnrooted.Open("symlink_upward")
 	if err != nil {
 		t.Errorf("Open symlink_upward should not fail in unrooted: %v", err)
+	} else {
+		f.Close()
 	}
 
 	// Test path traversal from sub-unrooted - should be allowed but might fail if target doesn't exist
-	_, err = subUnrooted.Open("..")
-	if !errors.Is(err, vroot.ErrPathEscapes) {
+	f, err = subUnrooted.Open("..")
+	if err == nil {
+		f.Close()
+		t.Errorf("Open .. should fail with ErrPathEscapes")
+	} else if !errors.Is(err, vroot.ErrPathEscapes) {
 		t.Errorf("Open .. should fail with ErrPathEscapes but got %v", err)
 	}
 }
