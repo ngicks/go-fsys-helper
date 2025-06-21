@@ -15,32 +15,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Single test with race detection**: Use `go test -race -timeout 2s -run TestName -v ./path/to/package` to run a specific test with race detection
 - **Formatting / Clean imports**: Use `goimports -w .` to clean imports. Everytime you add or remove lines, run this.
 - **Type checking**: Use `go vet ./...` to check for static analysis issues
+  - also `GOOS=windows go vet ./...` must be called.
 
 ## Architecture
 
-This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesystem helper utilities across multiple packages.
+This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesystem helper utilities across multiple independent modules. Each major package is its own Go module with isolated dependencies.
 
-### Packages
+### Active Packages
 
-**vroot/**: Virtual root filesystem with security constraints
+**vroot/**: Virtual root filesystem with security constraints (Go 1.25rc1)
 
+- **Primary package** with comprehensive filesystem abstraction
 - `Fs`: Core filesystem interface with OS-like operations (Chmod, Create, Open, etc.)
-- `Rooted`: Filesystem that prevents escaping root via path traversal or symlinks
-- `Unrooted`: Allows symlink escapes but still blocks path traversal
-- Path escape detection and symlink following with configurable root constraints
+- `Rooted`: Strict containment preventing path traversal and symlink escapes
+- `Unrooted`: Allows symlink escapes but blocks path traversal
+- Multiple implementations:
+  - `osfs/`: OS filesystem wrappers (Rooted and Unrooted)
+  - `synthfs/`: Synthetic filesystem combining different data sources
+  - `memfs/`: In-memory filesystem for testing
+  - `overlay/`: Union mount with copy-on-write semantics
+- Security models for different containment needs
+- Extensive acceptance testing framework
 
-**tarfs/**: TAR archive filesystem implementation
+**tarfs/**: TAR archive filesystem implementation (Go 1.24.0)
 
-- Provides filesystem interface for TAR archives
-- Read-only access to TAR file contents
+- Read-only filesystem interface for TAR archives
+- Implements `fs.FS` for TAR file contents
+- Handles sparse files, symlinks, and hardlinks
+- Files implement `io.ReaderAt` and `io.Seeker`
+- **Status**: Work-in-progress but functional
 
-**aferofs/**: Afero filesystem adapters
+**fsutil/**: Filesystem abstraction utilities (Go 1.24.0)
 
-- Forget about this. This is abondoned.
+- Interoperable utilities for filesystem abstraction libraries
+- Compatible with afero, go-billy, hackpadfs, and vroot
+- Interface definitions for filesystem operations
+- Utility functions for path operations and error handling
 
-**stream/**: Streaming utilities for filesystem operations
+**stream/**: Stream helpers (Go 1.22.0)
 
-**fsutil/**: Filesystem-abstraction-library interaoperable utilities.
+- Utilities for `io.Reader`/`io.Writer` operations
+- `NewCancellable`: Context-cancellable readers
+- `NewMultiReadAtSeekCloser`: Virtual concatenation of `io.ReaderAt`
+- `NewByteRepeater`: Infinite repeating byte reader
+- No external dependencies (pure stdlib)
+
+### Abandoned Packages
+
+**aferofs/**: Afero filesystem adapters (Go 1.23.0)
+
+- **Status**: FROZEN/ABANDONED - author is moving away from afero
+- Previously bridged between afero and other filesystem abstractions
+- Excluded from CI pipeline
 
 **Testing Strategy**:
 
