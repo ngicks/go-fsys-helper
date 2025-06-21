@@ -224,6 +224,7 @@ func (f *memFile) Truncate(size int64) error {
 		f.grow(int(diff))
 	}
 	f.content = f.content[:size:size] // release unused portion
+	f.modTime = f.clock.Now()
 	return nil
 }
 

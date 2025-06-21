@@ -62,6 +62,43 @@ func (b *fsFileView) Stat() (fs.FileInfo, error) {
 	return fs.Stat(b.fsys, b.path)
 }
 
+var _ FileView = (*vrootFsFileView)(nil)
+
+type vrootFsFileView struct {
+	fsys vroot.Fs
+	path string
+}
+
+func (v *vrootFsFileView) Close() error {
+	return nil
+}
+
+// NewVrootFsFileView builds FileView that points a file stored in vroot.Fs referred as path.
+func NewVrootFsFileView(fsys vroot.Fs, path string) (FileView, error) {
+	return newVrootFsFileView(fsys, path)
+}
+
+func newVrootFsFileView(fsys vroot.Fs, path string) (*vrootFsFileView, error) {
+	s, err := fsys.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if s.IsDir() {
+		return nil, &fs.PathError{Op: "NewVrootFsFileView", Path: path, Err: syscall.EISDIR}
+	}
+	if !s.Mode().IsRegular() {
+		return nil, &fs.PathError{Op: "NewVrootFsFileView", Path: path, Err: syscall.EBADF}
+	}
+	return &vrootFsFileView{fsys, path}, nil
+}
+
+func (v *vrootFsFileView) Open(flag int) (vroot.File, error) {
+	if openflag.WriteOp(flag) {
+		return nil, syscall.EROFS
+	}
+	return v.fsys.Open(v.path)
+}
+
 func NewRangedFsFileView(fsys fs.FS, path string, off, n int64) (FileView, error) {
 	fd, err := newFsFileView(fsys, path)
 	if err != nil {

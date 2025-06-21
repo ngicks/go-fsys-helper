@@ -15,6 +15,7 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/clock"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/paths"
 )
 
 // Option configures a synthetic filesystem.
@@ -70,6 +71,20 @@ type Rooted struct {
 // Rooted interface marker
 func (r *Rooted) Rooted() {}
 
+// AddFile adds a file view to the filesystem at the specified path.
+// If the parent directory doesn't exist, it will be created with the specified permissions.
+// The file will be added with the specified permissions in its metadata.
+func (r *Rooted) AddFile(name string, view FileView, dirPerm, filePerm fs.FileMode) error {
+	return r.fsys.AddFile(name, view, dirPerm, filePerm)
+}
+
+// AddFs adds all files from the given vroot.Fs to the filesystem under the specified root directory.
+// If the root directory doesn't exist, it will be created with the specified permissions.
+// All directories and files will be created with the specified permissions.
+func (r *Rooted) AddFs(root string, vrootFs vroot.Fs, perm fs.FileMode) error {
+	return r.fsys.AddFs(root, vrootFs, perm)
+}
+
 // Unrooted is unrooted version of [*Rooted]
 type Unrooted struct {
 	*fsys
@@ -77,6 +92,20 @@ type Unrooted struct {
 
 // Unrooted interface marker
 func (u *Unrooted) Unrooted() {}
+
+// AddFile adds a file view to the filesystem at the specified path.
+// If the parent directory doesn't exist, it will be created with the specified permissions.
+// The file will be added with the specified permissions in its metadata.
+func (u *Unrooted) AddFile(name string, view FileView, dirPerm, filePerm fs.FileMode) error {
+	return u.fsys.AddFile(name, view, dirPerm, filePerm)
+}
+
+// AddFs adds all files from the given vroot.Fs to the filesystem under the specified root directory.
+// If the root directory doesn't exist, it will be created with the specified permissions.
+// All directories and files will be created with the specified permissions.
+func (u *Unrooted) AddFs(root string, vrootFs vroot.Fs, perm fs.FileMode) error {
+	return u.fsys.AddFs(root, vrootFs, perm)
+}
 
 // OpenUnrooted opens an unrooted view of the filesystem
 func (u *Unrooted) OpenUnrooted(name string) (vroot.Unrooted, error) {
@@ -331,38 +360,16 @@ func (f *fsys) Mkdir(name string, perm fs.FileMode) error {
 }
 
 func (f *fsys) MkdirAll(name string, perm fs.FileMode) error {
-	name = toSlash(name)
-	cleanName := path.Clean(name)
-	if cleanName == "/" || cleanName == "." {
+	name = filepath.Clean(name)
+	if name == "." {
 		return nil
 	}
-
-	parts := strings.Split(cleanName, "/")
-	if parts[0] == "" {
-		parts = parts[1:]
-	}
-
-	currentPath := ""
-	for _, part := range parts {
-		if currentPath == "" {
-			currentPath = part
-		} else {
-			currentPath = path.Join(currentPath, part)
-		}
-
-		// Try to find the directory
-		dirent, err := f.root.findDirent(currentPath, false, f)
-		if err != nil {
-			// Directory doesn't exist, create it
-			if err := f.Mkdir(currentPath, perm); err != nil {
-				return err
-			}
-		} else if _, ok := dirent.(*dir); !ok {
-			// Path exists but is not a directory
-			return fsutil.WrapPathErr("mkdirall", currentPath, syscall.ENOTDIR)
+	for path := range paths.PathFromHead(name) {
+		err := f.Mkdir(path, perm)
+		if err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
 		}
 	}
-
 	return nil
 }
 
@@ -433,7 +440,7 @@ func (f *fsys) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, er
 
 	// Check permissions
 	info, _ := dirent.stat()
-	if !openflag.Writable(flag) {
+	if openflag.Writable(flag) {
 		if !info.(stat).isWritable() {
 			return nil, fsutil.WrapPathErr("open", name, syscall.EACCES)
 		}
@@ -478,7 +485,9 @@ func (f *fsys) ReadLink(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return dirent.readLink()
+	s, err := dirent.readLink()
+	s = filepath.FromSlash(s)
+	return s, err
 }
 
 func (f *fsys) Remove(name string) error {

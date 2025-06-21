@@ -44,7 +44,7 @@ func (f *file) open(flag int) (openDirentry, error) {
 	}
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	return newFileWrapper(v, f.s.name), nil
+	return newFileWrapper(v, f.s.name, &f.metadata), nil
 }
 
 func (f *file) readLink() (string, error) {
@@ -54,19 +54,71 @@ func (f *file) readLink() (string, error) {
 var _ vroot.File = (*fileWrapper)(nil)
 
 // fileWrapper wraps a vroot.File to return platform-specific paths in Name()
+// and updates the directory entry's mtime when writes occur
 type fileWrapper struct {
 	vroot.File
-	name string // stored with forward slashes
+	name     string    // stored with forward slashes
+	metadata *metadata // reference to directory entry's metadata
 }
 
-func newFileWrapper(f vroot.File, name string) vroot.File {
+func newFileWrapper(f vroot.File, name string, meta *metadata) vroot.File {
 	return &fileWrapper{
-		File: f,
-		name: name,
+		File:     f,
+		name:     name,
+		metadata: meta,
 	}
 }
 
 // Name returns the path with platform-specific separators
 func (f *fileWrapper) Name() string {
 	return filepath.FromSlash(f.name)
+}
+
+// syncMtimeFromView attempts to get the current mtime from the underlying view
+// and update the directory entry's metadata
+func (f *fileWrapper) syncMtimeFromView() {
+	if f.metadata == nil {
+		return
+	}
+
+	// Get current stat from the underlying file to get updated mtime
+	if info, err := f.File.Stat(); err == nil {
+		f.metadata.updateMtime(info.ModTime())
+	}
+}
+
+// Write wraps the underlying Write and updates mtime
+func (f *fileWrapper) Write(p []byte) (n int, err error) {
+	n, err = f.File.Write(p)
+	if err == nil && n > 0 {
+		f.syncMtimeFromView()
+	}
+	return n, err
+}
+
+// WriteAt wraps the underlying WriteAt and updates mtime
+func (f *fileWrapper) WriteAt(p []byte, off int64) (n int, err error) {
+	n, err = f.File.WriteAt(p, off)
+	if err == nil && n > 0 {
+		f.syncMtimeFromView()
+	}
+	return n, err
+}
+
+// WriteString wraps the underlying WriteString and updates mtime
+func (f *fileWrapper) WriteString(s string) (n int, err error) {
+	n, err = f.File.WriteString(s)
+	if err == nil && n > 0 {
+		f.syncMtimeFromView()
+	}
+	return n, err
+}
+
+// Truncate wraps the underlying Truncate and updates mtime
+func (f *fileWrapper) Truncate(size int64) error {
+	err := f.File.Truncate(size)
+	if err == nil {
+		f.syncMtimeFromView()
+	}
+	return err
 }

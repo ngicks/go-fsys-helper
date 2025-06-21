@@ -35,6 +35,12 @@ func (m *metadata) chtimes(atime time.Time, mtime time.Time) error {
 	return nil
 }
 
+func (m *metadata) updateMtime(mtime time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.s.modTime = mtime
+}
+
 func (m *metadata) rename(newname string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

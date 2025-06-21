@@ -2,6 +2,7 @@ package synthfs
 
 import (
 	"io/fs"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -28,11 +29,11 @@ func prep(fsys vroot.Fs) {
 		default:
 			continue
 		case prepare.LineKindMkdir:
-			must1(fsys.MkdirAll(l.Path, fs.ModePerm))
+			must1(fsys.MkdirAll(filepath.FromSlash(l.Path), fs.ModePerm))
 		case prepare.LineKindWriteFile:
-			must1(vroot.WriteFile(fsys, l.Path, l.Content, fs.ModePerm))
+			must1(vroot.WriteFile(fsys, filepath.FromSlash(l.Path), l.Content, fs.ModePerm))
 		case prepare.LineKindSymlink:
-			must1(fsys.Symlink(l.TargetPath, l.Path))
+			must1(fsys.Symlink(filepath.FromSlash(l.TargetPath), filepath.FromSlash(l.Path)))
 		}
 	}
 }
@@ -43,8 +44,9 @@ func TestRooted(t *testing.T) {
 	}
 	r := NewRooted("synth", NewMemFileAllocator(clock.RealWallClock()), opt)
 	prep(r)
-	rr, err := r.OpenRoot("root/writable")
+	rr, err := r.OpenRoot(filepath.FromSlash("root/writable"))
 	must1(err)
+	defer rr.Close()
 	acceptancetest.RootedReadWrite(t, rr)
 }
 
@@ -54,7 +56,7 @@ func TestUnrooted(t *testing.T) {
 	}
 	r := NewUnrooted("synth", NewMemFileAllocator(clock.RealWallClock()), opt)
 	prep(r)
-	rr, err := r.OpenUnrooted("root/writable")
+	rr, err := r.OpenUnrooted(filepath.FromSlash("root/writable"))
 	must1(err)
 	acceptancetest.UnrootedReadWrite(t, rr, false)
 }

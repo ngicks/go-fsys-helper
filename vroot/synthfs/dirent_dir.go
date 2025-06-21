@@ -49,7 +49,7 @@ func (d *dir) findDirent(name string, skipLastComponent bool, fsys *fsys) (diren
 		return nil, fsutil.WrapPathErr("open", originalName, fsutil.ErrPathEscapes)
 	}
 
-	name = filepath.FromSlash(name)
+	name = filepath.ToSlash(name)
 
 	const maxSymlinkResolution = 40
 	currentResolved := 0
