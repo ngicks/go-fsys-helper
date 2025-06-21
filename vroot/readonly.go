@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
 var _ Rooted = (*ReadOnlyRooted)(nil)
@@ -35,7 +36,7 @@ func (r *ReadOnlyRooted) Chtimes(name string, atime time.Time, mtime time.Time) 
 }
 
 func (r *ReadOnlyRooted) Close() error {
-	return nil
+	return r.rooted.Close()
 }
 
 func (r *ReadOnlyRooted) Create(name string) (File, error) {
@@ -134,7 +135,7 @@ func (r *ReadOnlyUnrooted) Chtimes(name string, atime time.Time, mtime time.Time
 }
 
 func (r *ReadOnlyUnrooted) Close() error {
-	return nil
+	return r.rooted.Close()
 }
 
 func (r *ReadOnlyUnrooted) Create(name string) (File, error) {
@@ -170,7 +171,7 @@ func (r *ReadOnlyUnrooted) Open(name string) (File, error) {
 }
 
 func (r *ReadOnlyUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
-	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
+	if openflag.WriteOp(flag) {
 		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 	}
 	return NewReadOnlyFile(r.Open(name))

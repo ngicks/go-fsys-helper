@@ -7,12 +7,18 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
+
+func cleanToSlash(s string) string {
+	s = filepath.ToSlash(filepath.Clean(s))
+	return strings.TrimPrefix(s, "./")
+}
 
 var (
 	_ Rooted   = (*ioFsFromRooted)(nil)
@@ -44,8 +50,20 @@ func FromIoFsRooted(fsys fs.ReadLinkFS, name string) Rooted {
 
 func (f *ioFsFromRooted) Rooted() {}
 
+type pathConverter struct {
+	fsys fs.ReadLinkFS
+}
+
+func (c pathConverter) ReadLink(name string) (string, error) {
+	return c.fsys.ReadLink(cleanToSlash(name))
+}
+
+func (c pathConverter) Lstat(name string) (fs.FileInfo, error) {
+	return c.fsys.Lstat(cleanToSlash(name))
+}
+
 func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string, error) {
-	return fsutil.ResolvePath(f.fsys, name, skipLastElement)
+	return fsutil.ResolvePath(pathConverter{f.fsys}, name, skipLastElement)
 }
 
 func (f *ioFsFromRooted) Chmod(name string, mode fs.FileMode) error {
@@ -194,7 +212,7 @@ func (f *ioFsFromUnrooted) resolvePath(name string) (string, error) {
 		return "", ErrPathEscapes
 	}
 
-	return filepath.ToSlash(name), nil
+	return cleanToSlash(name), nil
 }
 
 func (f *ioFsFromUnrooted) Chmod(name string, mode fs.FileMode) error {
@@ -261,7 +279,7 @@ func (f *ioFsFromUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (Fi
 	if openflag.WriteOp(flag) {
 		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
 	}
-	return f.Open(name)
+	return f.Open(filepath.ToSlash(name))
 }
 
 func (f *ioFsFromUnrooted) OpenRoot(name string) (Rooted, error) {

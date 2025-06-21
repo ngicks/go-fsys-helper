@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"iter"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/paths"
 )
 
 var _ CopyPolicy = (*CopyPolicyDotTmp)(nil)
@@ -123,7 +122,7 @@ func (c *CopyPolicyDotTmp) copyDir(from Layer, to vroot.Rooted, name string) err
 	// Find the first directory that doesn't exist
 	var firstNonExistent string
 	var firstNonExistentFound bool
-	for dir := range pathFromHead(name) {
+	for dir := range paths.PathFromHead(name) {
 		_, err := to.Stat(dir)
 		if errors.Is(err, fs.ErrNotExist) {
 			firstNonExistent = dir
@@ -136,7 +135,7 @@ func (c *CopyPolicyDotTmp) copyDir(from Layer, to vroot.Rooted, name string) err
 
 	// If all directories exist, just apply metadata
 	if !firstNonExistentFound {
-		for dir := range pathFromHead(name) {
+		for dir := range paths.PathFromHead(name) {
 			srcInfo, err := from.Lstat(dir)
 			if err != nil {
 				return fmt.Errorf("failed to stat source directory %s: %w", dir, err)
@@ -182,7 +181,7 @@ func (c *CopyPolicyDotTmp) copyDir(from Layer, to vroot.Rooted, name string) err
 	// Create remaining directories without .tmp suffix
 	// We need to create them inside the .tmp directory structure
 	var foundFirstNonExistent bool
-	for dir := range pathFromHead(name) {
+	for dir := range paths.PathFromHead(name) {
 		if !foundFirstNonExistent {
 			if dir == firstNonExistent {
 				foundFirstNonExistent = true
@@ -207,7 +206,7 @@ func (c *CopyPolicyDotTmp) copyDir(from Layer, to vroot.Rooted, name string) err
 
 	// Apply metadata to all directories (including the .tmp one)
 	foundFirstNonExistent = false
-	for dir := range pathFromHead(name) {
+	for dir := range paths.PathFromHead(name) {
 		var targetDir string
 		if !foundFirstNonExistent {
 			if dir == firstNonExistent {
@@ -261,44 +260,4 @@ func (c *CopyPolicyDotTmp) copySymlink(from Layer, to vroot.Rooted, name string)
 	}
 
 	return nil
-}
-
-func pathFromHead(name string) iter.Seq[string] {
-	return func(yield func(string) bool) {
-		cut := ""
-		name := filepath.Clean(name)
-		rest := name
-		for len(rest) > 0 {
-			i := strings.Index(rest, string(filepath.Separator))
-			if i < 0 {
-				yield(name)
-				return
-			}
-			cut = name[:len(cut)+i]
-			if !yield(cut) {
-				return
-			}
-			cut = name[:len(cut)+1] // include last sep
-			rest = rest[i+len(string(filepath.Separator)):]
-		}
-	}
-}
-
-func pathFromTail(name string) iter.Seq[string] {
-	return func(yield func(string) bool) {
-		if !yield(name) {
-			return
-		}
-		rest := name
-		for len(rest) > 0 {
-			i := strings.LastIndex(rest, string(filepath.Separator))
-			if i < 0 {
-				return
-			}
-			rest = rest[:i]
-			if !yield(rest) {
-				return
-			}
-		}
-	}
 }

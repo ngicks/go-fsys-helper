@@ -72,8 +72,9 @@ func TestOverlay_Rename(t *testing.T) {
 			tempDir := t.TempDir()
 			t.Logf("temp dir = %s", tempDir)
 
-			r := prepareLayers(tempDir)
+			r, closers := prepareLayers(tempDir)
 			defer r.Close()
+			defer closers(t)
 
 			// Create files/directories for new test cases based on path pattern
 			// Use r.top directly for more accurate testing of overlay logic
@@ -93,11 +94,10 @@ func TestOverlay_Rename(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to create file %s in top layer: %v", tc.from, err)
 				}
+				defer f.Close()
 				if _, err := f.Write([]byte("test content")); err != nil {
-					f.Close()
 					t.Fatalf("failed to write to file %s in top layer: %v", tc.from, err)
 				}
-				f.Close()
 			}
 
 			err := r.Rename(tc.from, tc.to)

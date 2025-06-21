@@ -88,7 +88,7 @@ func ParseLine(txt string) LineDirection {
 	case strings.HasSuffix(txt, "/"):
 		return LineDirection{
 			LineKind: LineKindMkdir,
-			Path:     filepath.FromSlash(txt),
+			Path:     txt,
 		}
 	case strings.Contains(txt, ": "):
 		idx := strings.Index(txt, ": ")
@@ -96,7 +96,7 @@ func ParseLine(txt string) LineDirection {
 		content := txt[idx+len(": "):]
 		return LineDirection{
 			LineKind: LineKindWriteFile,
-			Path:     filepath.FromSlash(path),
+			Path:     path,
 			Content:  []byte(content),
 		}
 	case strings.Contains(txt, " -> "):
@@ -105,23 +105,24 @@ func ParseLine(txt string) LineDirection {
 		target := txt[idx+len(" -> "):]
 		return LineDirection{
 			LineKind:   LineKindSymlink,
-			Path:       filepath.FromSlash(path),
-			TargetPath: filepath.FromSlash(target),
+			Path:       path,
+			TargetPath: target,
 		}
 	}
 	return LineDirection{}
 }
 
 func (l LineDirection) Execute(baseDir string) error {
+	baseDir = filepath.FromSlash(filepath.Clean(baseDir))
 	switch l.LineKind {
 	default:
 		return nil
 	case LineKindMkdir:
-		return os.MkdirAll(filepath.Join(baseDir, l.Path), fs.ModePerm)
+		return os.MkdirAll(filepath.Join(baseDir, filepath.FromSlash(l.Path)), fs.ModePerm)
 	case LineKindWriteFile:
-		return os.WriteFile(filepath.Join(baseDir, l.Path), l.Content, fs.ModePerm)
+		return os.WriteFile(filepath.Join(baseDir, filepath.FromSlash(l.Path)), l.Content, fs.ModePerm)
 	case LineKindSymlink:
-		return os.Symlink(l.TargetPath, filepath.Join(baseDir, l.Path))
+		return os.Symlink(filepath.FromSlash(l.TargetPath), filepath.Join(baseDir, filepath.FromSlash(l.Path)))
 	}
 }
 

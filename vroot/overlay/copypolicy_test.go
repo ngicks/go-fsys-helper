@@ -51,11 +51,13 @@ func TestCopyPolicyDotTmp_AllTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create source filesystem: %v", err)
 	}
+	defer srcFs.Close()
 
 	dstFs, err := osfs.NewRooted(dstDir)
 	if err != nil {
 		t.Fatalf("Failed to create destination filesystem: %v", err)
 	}
+	defer dstFs.Close()
 
 	// Create copy policy
 	copyPolicy := NewCopyPolicyDotTmp("*.tmp")

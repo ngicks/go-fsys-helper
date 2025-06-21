@@ -29,8 +29,9 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 			},
 			check: func(t *testing.T, r *Overlay, err error) {
 				// Try to create file with same name as directory
-				_, createErr := r.Create("root/readable/subdir")
+				f, createErr := r.Create("root/readable/subdir")
 				if createErr == nil {
+					f.Close()
 					t.Error("expected error when creating file over directory")
 				}
 				if !errors.Is(createErr, fs.ErrExist) {
@@ -177,8 +178,9 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 			tempDir := t.TempDir()
 			t.Logf("temp dir = %s", tempDir)
 
-			r := prepareLayers(tempDir)
+			r, closers := prepareLayers(tempDir)
 			defer r.Close()
+			defer closers(t)
 
 			tc.setup(t, r)
 			err := tc.operation(t, r)
@@ -191,8 +193,9 @@ func TestOverlay_CopyOnWriteConflicts(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 
-	r := prepareLayers(tempDir)
+	r, closers := prepareLayers(tempDir)
 	defer r.Close()
+	defer closers(t)
 
 	// Test copy-on-write with concurrent operations
 	t.Run("copy-on-write during file modification", func(t *testing.T) {
@@ -260,8 +263,9 @@ func TestOverlay_WhiteoutBehavior(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 
-	r := prepareLayers(tempDir)
+	r, closers := prepareLayers(tempDir)
 	defer r.Close()
+	defer closers(t)
 
 	t.Run("remove file from lower layer creates whiteout", func(t *testing.T) {
 		// File exists in lower layer

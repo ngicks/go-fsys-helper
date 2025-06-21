@@ -1,8 +1,11 @@
 package vroot_test
 
 import (
+	"cmp"
 	"errors"
+	"fmt"
 	"io/fs"
+	"iter"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,9 +21,74 @@ type pathSeen struct {
 	realPath string
 }
 
+func (s pathSeen) ToSlash() pathSeen {
+	return pathSeen{filepath.ToSlash(s.path), filepath.ToSlash(s.realPath)}
+}
+
+func (s pathSeen) Compare(s2 pathSeen) int {
+	return cmp.Compare(s.path, s2.path)
+}
+
+func mapIter[V1, V2 any](fn func(v1 V1) V2, seq iter.Seq[V1]) iter.Seq[V2] {
+	return func(yield func(V2) bool) {
+		for v := range seq {
+			if !yield(fn(v)) {
+				return
+			}
+		}
+	}
+}
+
+func collectString(prefix, suffix string, seq iter.Seq[string]) string {
+	var builder strings.Builder
+	for s := range seq {
+		builder.WriteString(prefix)
+		builder.WriteString(s)
+		builder.WriteString(suffix)
+	}
+	return builder.String()
+}
+
 func assertPathSeen(t *testing.T, expected, actual []pathSeen) {
-	if !slices.Equal(expected, actual) {
-		t.Fatalf("not equal:\nexpected: %#v\nactual  :%#v", expected, actual)
+	t.Helper()
+	convertedExpected := slices.SortedFunc(
+		mapIter(pathSeen.ToSlash, slices.Values(expected)),
+		pathSeen.Compare,
+	)
+	convertedActual := slices.SortedFunc(
+		mapIter(pathSeen.ToSlash, slices.Values(actual)),
+		pathSeen.Compare,
+	)
+	if !slices.Equal(
+		convertedExpected,
+		convertedActual,
+	) {
+		onlyInExpected := slices.DeleteFunc(slices.Clone(convertedExpected), func(p pathSeen) bool { return slices.Contains(convertedActual, p) })
+		onlyInActual := slices.DeleteFunc(slices.Clone(convertedActual), func(p pathSeen) bool { return slices.Contains(convertedExpected, p) })
+		t.Fatalf(
+			"not equal:\n"+
+				"expected: %#v\n"+
+				"actual  :%#v\n"+
+				"diff:(- exists only in expected, + exists only in actual)\n"+
+				"%s\n"+
+				"%s\n",
+			convertedExpected,
+			convertedActual,
+			collectString(
+				"- ", "\n",
+				mapIter(
+					func(p pathSeen) string { return fmt.Sprintf("%#v", p) },
+					slices.Values(onlyInExpected),
+				),
+			),
+			collectString(
+				"+ ", "\n",
+				mapIter(
+					func(p pathSeen) string { return fmt.Sprintf("%#v", p) },
+					slices.Values(onlyInActual),
+				),
+			),
+		)
 	}
 }
 
@@ -164,10 +232,10 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 				if err != nil {
 					if errors.Is(err, vroot.ErrPathEscapes) {
 						if !slices.Contains([]string{
-							"subdir/symlink_upward_escapes",
-							"symlink_inner_dir/symlink_upward_escapes",
-							"symlink_escapes",
-							"symlink_escapes_dir",
+							filepath.FromSlash("subdir/symlink_upward_escapes"),
+							filepath.FromSlash("symlink_inner_dir/symlink_upward_escapes"),
+							filepath.FromSlash("symlink_escapes"),
+							filepath.FromSlash("symlink_escapes_dir"),
 						}, path) {
 							t.Errorf("error for path %q is %v but path is not escaping", path, err)
 						}
@@ -217,6 +285,7 @@ func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	defer r.Close()
 	err = vroot.WalkDir(
 		r,
 		".",
@@ -340,6 +409,7 @@ func TestWalk_Rooted_loop(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
+			defer r.Close()
 			var seen []pathSeen
 			err = vroot.WalkDir(
 				r,
@@ -431,6 +501,7 @@ func TestWalk_Unrooted_loop(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
+			defer r.Close()
 			var seen []pathSeen
 			err = vroot.WalkDir(
 				r,

@@ -22,7 +22,9 @@ func must[V any](v V, err error) V {
 	return v
 }
 
-func prepareLayers(tempDir string) *Overlay {
+func prepareLayers(tempDir string) (*Overlay, func(t *testing.T)) {
+	var closers []func() error
+
 	var layers []Layer
 	for i, baseDir := range []string{
 		"top",
@@ -124,34 +126,43 @@ func prepareLayers(tempDir string) *Overlay {
 				),
 			)
 		}
+		meta := must(
+			osfs.NewRooted(
+				filepath.Join(tempDir, baseDir, "meta"),
+			),
+		)
+		closers = append(closers, meta.Close)
 		layers = append(
 			layers,
 			NewLayer(
-				NewMetadataStoreSimpleText(
-					must(
-						osfs.NewRooted(
-							filepath.Join(tempDir, baseDir, "meta"),
-						),
-					),
-				),
+				NewMetadataStoreSimpleText(meta),
 				rootedFs,
 			),
 		)
 	}
 
 	return NewOverlay(
-		layers[0],
-		layers[1:],
-		nil,
-	)
+			layers[0],
+			layers[1:],
+			nil,
+		), func(t *testing.T) {
+			t.Helper()
+			for _, c := range closers {
+				err := c()
+				if err != nil {
+					t.Errorf("meta close error: %v", err)
+				}
+			}
+		}
 }
 
 func TestRooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 
-	r := prepareLayers(tempDir)
+	r, closers := prepareLayers(tempDir)
 	defer r.Close()
+	defer closers(t)
 
 	rr, err := r.OpenRoot(filepath.FromSlash("root/readable"))
 	if err != nil {

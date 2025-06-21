@@ -5,8 +5,8 @@ import (
 	"syscall"
 )
 
-func fileIdentFromSys(fsys Fs, realPath string, _ fs.FileInfo) (fileIdent, bool) {
-	f, err := fsys.Open(realPath)
+func fileIdentFromSys(fsys Fs, virtualPath, _ string, _ fs.FileInfo) (fileIdent, bool) {
+	f, err := fsys.Open(virtualPath)
 	if err != nil {
 		return fileIdent{}, false
 	}

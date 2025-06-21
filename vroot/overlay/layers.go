@@ -31,10 +31,6 @@ func doInUpperLayer[V comparable](ll Layers, operation func(idx int, l Layer, na
 		if err == nil {
 			break
 		}
-		if errors.Is(err, syscall.ENOTDIR) || errors.Is(err, ErrWhitedOut) {
-			err = ErrWhitedOut
-			return
-		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return
 		}
@@ -84,7 +80,7 @@ func (ll Layers) ReadLink(name string) (string, error) {
 	)
 }
 
-func (ll Layers) Open(name string) (*layersFile, error) {
+func (ll Layers) Open(name string) (_ *layersFile, err error) {
 	if len(ll) == 0 {
 		return nil, fs.ErrNotExist
 	}
@@ -93,8 +89,17 @@ func (ll Layers) Open(name string) (*layersFile, error) {
 		files []vroot.File
 		isDir bool
 	)
+	defer func() {
+		if err != nil {
+			for _, f := range files {
+				_ = f.Close()
+			}
+		}
+	}()
+
 	for _, l := range slices.Backward(ll) {
-		info, err := l.Lstat(name)
+		var info fs.FileInfo
+		info, err = l.Lstat(name)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
@@ -107,7 +112,8 @@ func (ll Layers) Open(name string) (*layersFile, error) {
 		if info.Mode()&os.ModeSymlink != 0 {
 			break
 		}
-		f, err := l.Open(name)
+		var f vroot.File
+		f, err = l.Open(name)
 		if err != nil {
 			return nil, err
 		}

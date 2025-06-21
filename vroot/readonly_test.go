@@ -19,6 +19,7 @@ func TestReadOnlyRooted(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	defer r.Close()
 	readonly := vroot.NewReadOnlyRooted(r)
 	acceptancetest.RootedReadOnly(t, readonly)
 }
@@ -33,6 +34,7 @@ func TestReadOnlyUnrooted(t *testing.T) {
 			panic(err)
 		}
 		readonly := vroot.NewReadOnlyUnrooted(r)
+		defer readonly.Close()
 		acceptancetest.UnrootedReadOnly(t, readonly, true)
 	})
 	t.Run("without outside", func(t *testing.T) {
@@ -45,6 +47,7 @@ func TestReadOnlyUnrooted(t *testing.T) {
 			panic(err)
 		}
 		readonly := vroot.NewReadOnlyUnrooted(r)
+		defer readonly.Close()
 		acceptancetest.UnrootedReadOnly(t, readonly, false)
 	})
 }

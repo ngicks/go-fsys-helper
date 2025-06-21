@@ -220,8 +220,9 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 			tempDir := t.TempDir()
 			t.Logf("temp dir = %s", tempDir)
 
-			r := prepareLayers(tempDir)
+			r, closers := prepareLayers(tempDir)
 			defer r.Close()
+			defer closers(t)
 
 			// Setup the test scenario
 			f := tc.setup(t, r)
@@ -237,8 +238,9 @@ func TestOverlay_MultipleOpenFiles(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 
-	r := prepareLayers(tempDir)
+	r, closers := prepareLayers(tempDir)
 	defer r.Close()
+	defer closers(t)
 
 	// Create a file in top layer
 	if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {

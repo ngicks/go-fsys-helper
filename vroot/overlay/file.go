@@ -189,8 +189,22 @@ func (f *overlayFile) Close() error {
 
 	f.closed = true
 
-	errs := make([]serr.PrefixErr, len(f.layersFile.files))
+	leng := len(f.layersFile.files)
+	if f.top != nil {
+		leng++
+	}
+
+	errs := make([]serr.PrefixErr, leng)
+	if f.top != nil {
+		errs[0] = serr.PrefixErr{
+			P: "top file: ",
+			E: f.top.Close(),
+		}
+	}
 	for i, file := range f.layersFile.files {
+		if f.top != nil {
+			i++
+		}
 		errs[i] = serr.PrefixErr{
 			P: fmt.Sprintf("file %d: ", i),
 			E: file.Close(),

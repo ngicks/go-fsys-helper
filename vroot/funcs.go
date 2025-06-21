@@ -1,10 +1,11 @@
 package vroot
 
 import (
+	"cmp"
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
+	"slices"
 )
 
 type ReadDirFs interface {
@@ -17,12 +18,17 @@ func ReadDir(fsys Fs, name string) ([]fs.DirEntry, error) {
 		return readDirFsys.ReadDir(name)
 	}
 
-	f, err := fsys.Open(filepath.FromSlash(name))
+	f, err := fsys.Open(name)
 	if err != nil {
 		return []fs.DirEntry{}, err
 	}
 	defer f.Close()
-	return f.ReadDir(-1)
+	// fs.ReadDir does this thing.
+	dirents, err := f.ReadDir(-1)
+	if len(dirents) >= 2 {
+		slices.SortFunc(dirents, func(i, j fs.DirEntry) int { return cmp.Compare(i.Name(), j.Name()) })
+	}
+	return dirents, err
 }
 
 type ReadFileFs interface {
@@ -35,7 +41,7 @@ func ReadFile(fsys Fs, name string) ([]byte, error) {
 		return readFileFsys.ReadFile(name)
 	}
 
-	f, err := fsys.Open(filepath.FromSlash(name))
+	f, err := fsys.Open(name)
 	if err != nil {
 		return []byte{}, err
 	}

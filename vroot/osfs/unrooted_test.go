@@ -18,6 +18,7 @@ func TestUnrooted(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+		defer r.Close()
 		acceptancetest.UnrootedReadWrite(t, r, true)
 	})
 	t.Run("without outside", func(t *testing.T) {
@@ -29,6 +30,7 @@ func TestUnrooted(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+		defer r.Close()
 		acceptancetest.UnrootedReadWrite(t, r, false)
 	})
 }

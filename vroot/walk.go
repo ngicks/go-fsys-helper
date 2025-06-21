@@ -1,6 +1,7 @@
 package vroot
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -35,8 +36,13 @@ type walkState struct {
 	visitedInodes map[fileIdent]struct{}
 }
 
-func (s *walkState) recordVisited(fsys Fs, realPath string, info fs.FileInfo) (visited bool) {
-	ident, ok := fileIdentFromSys(fsys, realPath, info)
+var logUniqueness = false
+
+func (s *walkState) recordVisited(fsys Fs, virtualPath, realPath string, info fs.FileInfo) (visited bool) {
+	ident, ok := fileIdentFromSys(fsys, virtualPath, realPath, info)
+	if logUniqueness {
+		fmt.Printf("%q: %#v\n", realPath, ident)
+	}
 	if ok {
 		// Here it is trying to find loop by dev:inode.
 		// This is suppose to break file system loop by bind mounts.
@@ -67,8 +73,8 @@ func (s *walkState) recordVisited(fsys Fs, realPath string, info fs.FileInfo) (v
 	}
 }
 
-func (s *walkState) removeVisited(fsys Fs, realPath string, info fs.FileInfo) {
-	ident, ok := fileIdentFromSys(fsys, realPath, info)
+func (s *walkState) removeVisited(fsys Fs, virtualPath, realPath string, info fs.FileInfo) {
+	ident, ok := fileIdentFromSys(fsys, virtualPath, realPath, info)
 	if ok {
 		delete(s.visitedInodes, ident)
 	} else {
@@ -104,6 +110,8 @@ func walkDir(
 	opt *WalkOption,
 	fn WalkDirFunc,
 ) error {
+	path = filepath.Clean(path)
+
 	if opt.ResolveSymlink && info.Mode()&os.ModeSymlink != 0 {
 		var (
 			err       error
@@ -128,11 +136,11 @@ func walkDir(
 	}
 
 	if info.IsDir() {
-		if visited := state.recordVisited(fsys, realPath, info); visited {
+		if visited := state.recordVisited(fsys, path, realPath, info); visited {
 			// already visited; loop detected.
 			return nil
 		}
-		defer state.removeVisited(fsys, realPath, info)
+		defer state.removeVisited(fsys, path, realPath, info)
 	}
 
 	dirs, err := ReadDir(fsys, path)

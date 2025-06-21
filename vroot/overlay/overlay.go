@@ -16,6 +16,7 @@ import (
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
+	"github.com/ngicks/go-fsys-helper/vroot/internal/paths"
 )
 
 var _ vroot.Rooted = (*Overlay)(nil)
@@ -590,7 +591,7 @@ func (o *Overlay) mkdirAllNoLock(name string, perm fs.FileMode) error {
 	if name == "." {
 		return nil
 	}
-	for path := range pathFromHead(name) {
+	for path := range paths.PathFromHead(name) {
 		err := o.mkdirNoLock(path, perm)
 		if err != nil && !errors.Is(err, fs.ErrExist) {
 			return err

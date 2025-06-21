@@ -13,8 +13,9 @@ func TestOverlay_UnixSpecificBehavior(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 
-	r := prepareLayers(tempDir)
+	r, closers := prepareLayers(tempDir)
 	defer r.Close()
+	defer closers(t)
 
 	t.Run("opened file can be removed on unix", func(t *testing.T) {
 		// Create and open a file

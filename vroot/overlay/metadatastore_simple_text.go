@@ -310,31 +310,18 @@ func (m *MetadataStoreSimpleText) QueryWhiteout(name string) (has bool, err erro
 		return m.root.whited, nil
 	}
 
-	// Split path into parts
-	parts := strings.Split(name, "/")
 	current := m.root
-
-	// Walk through the path, checking if any parent is whited out
-	for _, part := range parts {
-		if part == "" || part == "." {
-			continue
-		}
-
-		// Check if current level is whited out (parent of remaining path)
+	for part := range strings.SplitSeq(name, "/") {
 		if current.whited {
 			return true, nil
 		}
 
-		// Move to next level
 		if current.children == nil || current.children[part] == nil {
-			// Path doesn't exist in tree, so not whited out
 			return false, nil
 		}
 
 		current = current.children[part]
 	}
-
-	// Check if the final path component itself is whited out
 	return current.whited, nil
 }
 

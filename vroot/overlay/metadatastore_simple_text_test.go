@@ -21,6 +21,7 @@ func must[V any](v V, err error) V {
 func TestMetadataStoreSimpleText(t *testing.T) {
 	tempDir := t.TempDir()
 	fsys := must(osfs.NewRooted(tempDir))
+	defer fsys.Close()
 
 	t.Run("interface_compliance", func(t *testing.T) {
 		// Run the interface acceptance tests with a factory function
