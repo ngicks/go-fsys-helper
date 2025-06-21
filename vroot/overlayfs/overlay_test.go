@@ -1,4 +1,4 @@
-package overlay
+package overlayfs
 
 import (
 	"io/fs"
@@ -22,7 +22,7 @@ func must[V any](v V, err error) V {
 	return v
 }
 
-func prepareLayers(tempDir string) (*Overlay, func(t *testing.T)) {
+func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 	var closers []func() error
 
 	var layers []Layer
@@ -141,7 +141,7 @@ func prepareLayers(tempDir string) (*Overlay, func(t *testing.T)) {
 		)
 	}
 
-	return NewOverlay(
+	return New(
 			layers[0],
 			layers[1:],
 			nil,

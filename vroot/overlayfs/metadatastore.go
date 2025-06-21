@@ -1,4 +1,4 @@
-package overlay
+package overlayfs
 
 import (
 	"path"

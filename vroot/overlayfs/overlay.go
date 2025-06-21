@@ -1,4 +1,4 @@
-package overlay
+package overlayfs
 
 import (
 	"cmp"
@@ -19,19 +19,19 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/internal/paths"
 )
 
-var _ vroot.Rooted = (*Overlay)(nil)
+var _ vroot.Rooted = (*Fs)(nil)
 
-type OverlayOption struct {
+type FsOption struct {
 	CopyPolicy CopyPolicy
 }
 
-func DefaultOverlayOption() *OverlayOption {
-	return &OverlayOption{
+func DefaultOverlayOption() *FsOption {
+	return &FsOption{
 		CopyPolicy: NewCopyPolicyDotTmp("*.tmp"),
 	}
 }
 
-// Overlay overlays multiple layers and provides virtually concatenated view.
+// Fs overlays multiple layers and provides virtually concatenated view.
 //
 // The overlay filesystem implements a union mount where a writable top layer
 // is overlaid on top of one or more read-only layers. Files and directories
@@ -41,19 +41,19 @@ func DefaultOverlayOption() *OverlayOption {
 // files that exist only in lower layers, they are automatically copied to
 // the top layer before modification. Deleted files are tracked using whiteout
 // metadata rather than actually removing files from lower layers.
-type Overlay struct {
+type Fs struct {
 	// rw shared between sub-roots.
 	// TOOD: use finer lock mechanism
 	rw      *sync.RWMutex
-	opts    *OverlayOption
+	opts    *FsOption
 	top     vroot.Rooted
 	topMeta MetadataStore
 	layers  Layers
 }
 
-// NewOverlay returns virtually concatenated view of layers as [vroot.Rooted].
+// New returns virtually concatenated view of layers as [vroot.Rooted].
 //
-// Overlay overlays layers left to right. A layer has higher priority than its left layers.
+// *Fs overlays layers left to right. A layer has higher priority than its left layers.
 // On top of them, top is placed.
 //
 // top is used as read-write layer while other layers are assumed to be static and read-only.
@@ -67,11 +67,11 @@ type Overlay struct {
 // whiteout metadata is created in the top layer to make the file appear deleted.
 //
 // opts is allowed to be nil. In that case [DefaultOverlayOption] is used.
-func NewOverlay(top Layer, layers []Layer, opts *OverlayOption) *Overlay {
+func New(top Layer, layers []Layer, opts *FsOption) *Fs {
 	if opts == nil {
 		opts = DefaultOverlayOption()
 	}
-	return &Overlay{
+	return &Fs{
 		rw:      new(sync.RWMutex),
 		opts:    opts,
 		top:     top.fsys,
@@ -80,13 +80,13 @@ func NewOverlay(top Layer, layers []Layer, opts *OverlayOption) *Overlay {
 	}
 }
 
-func (o *Overlay) Rooted() {}
+func (o *Fs) Rooted() {}
 
-func (o *Overlay) Name() string {
+func (o *Fs) Name() string {
 	return "overlay:" + o.top.Name()
 }
 
-func (o *Overlay) Close() error {
+func (o *Fs) Close() error {
 	errs := make([]serr.PrefixErr, 1+len(o.layers))
 	errs[0] = serr.PrefixErr{
 		P: cmp.Or(o.top.Name(), "top layer") + ": ",
@@ -137,7 +137,7 @@ func doInTopOrUpperLayer[V comparable](
 	return v, err
 }
 
-func (o *Overlay) lstatNoLock(name string) (fs.FileInfo, error) {
+func (o *Fs) lstatNoLock(name string) (fs.FileInfo, error) {
 	return doInTopOrUpperLayer(
 		o.top,
 		o.topMeta,
@@ -149,13 +149,13 @@ func (o *Overlay) lstatNoLock(name string) (fs.FileInfo, error) {
 	)
 }
 
-func (o *Overlay) Lstat(name string) (fs.FileInfo, error) {
+func (o *Fs) Lstat(name string) (fs.FileInfo, error) {
 	o.rw.RLock()
 	defer o.rw.RUnlock()
 	return o.lstatNoLock(name)
 }
 
-func (o *Overlay) readLinkNoLock(name string) (string, error) {
+func (o *Fs) readLinkNoLock(name string) (string, error) {
 	return doInTopOrUpperLayer(
 		o.top,
 		o.topMeta,
@@ -167,14 +167,14 @@ func (o *Overlay) readLinkNoLock(name string) (string, error) {
 	)
 }
 
-func (o *Overlay) ReadLink(name string) (string, error) {
+func (o *Fs) ReadLink(name string) (string, error) {
 	o.rw.RLock()
 	defer o.rw.RUnlock()
 	return o.readLinkNoLock(name)
 }
 
 type nolockOverlay struct {
-	o *Overlay
+	o *Fs
 }
 
 func (o *nolockOverlay) ReadLink(name string) (string, error) {
@@ -185,11 +185,11 @@ func (o *nolockOverlay) Lstat(name string) (fs.FileInfo, error) {
 	return o.o.lstatNoLock(name)
 }
 
-func (o *Overlay) resolvePath(name string, skipLastElement bool) (string, error) {
+func (o *Fs) resolvePath(name string, skipLastElement bool) (string, error) {
 	return fsutil.ResolvePath(&nolockOverlay{o}, name, skipLastElement)
 }
 
-func (o *Overlay) statNoLock(name string) (fs.FileInfo, error) {
+func (o *Fs) statNoLock(name string) (fs.FileInfo, error) {
 	resolved, err := o.resolvePath(name, false)
 	if err != nil {
 		return nil, err
@@ -207,18 +207,18 @@ func (o *Overlay) statNoLock(name string) (fs.FileInfo, error) {
 }
 
 // Stat returns file info, searching through layers and following symlinks
-func (o *Overlay) Stat(name string) (fs.FileInfo, error) {
+func (o *Fs) Stat(name string) (fs.FileInfo, error) {
 	o.rw.RLock()
 	defer o.rw.RUnlock()
 	return o.statNoLock(name)
 }
 
 // Open opens a file for reading, searching through layers
-func (o *Overlay) Open(name string) (vroot.File, error) {
+func (o *Fs) Open(name string) (vroot.File, error) {
 	return o.OpenFile(name, os.O_RDONLY, 0)
 }
 
-func (o *Overlay) openMergedFileNoLock(name string, flag int, perm fs.FileMode, checkLayers bool) (vroot.File, error) {
+func (o *Fs) openMergedFileNoLock(name string, flag int, perm fs.FileMode, checkLayers bool) (vroot.File, error) {
 	topFile, err := o.top.OpenFile(name, flag, perm)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
@@ -260,7 +260,7 @@ func (o *Overlay) openMergedFileNoLock(name string, flag int, perm fs.FileMode, 
 }
 
 // OpenFile opens a file with flags
-func (o *Overlay) openFileNoLock(name string, flag int, perm fs.FileMode) (f vroot.File, err error) {
+func (o *Fs) openFileNoLock(name string, flag int, perm fs.FileMode) (f vroot.File, err error) {
 	isWriteOp := openflag.WriteOp(flag)
 
 	name = filepath.Clean(name)
@@ -358,7 +358,7 @@ func (o *Overlay) openFileNoLock(name string, flag int, perm fs.FileMode) (f vro
 	return o.openMergedFileNoLock(resolved, flag, perm, !whited)
 }
 
-func (o *Overlay) OpenFile(name string, flag int, perm fs.FileMode) (f vroot.File, err error) {
+func (o *Fs) OpenFile(name string, flag int, perm fs.FileMode) (f vroot.File, err error) {
 	isWriteOp := openflag.WriteOp(flag)
 
 	if isWriteOp {
@@ -373,12 +373,12 @@ func (o *Overlay) OpenFile(name string, flag int, perm fs.FileMode) (f vroot.Fil
 }
 
 // Create creates a new file in the top layer
-func (o *Overlay) Create(name string) (vroot.File, error) {
+func (o *Fs) Create(name string) (vroot.File, error) {
 	return o.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o666)
 }
 
 // Remove removes a file
-func (o *Overlay) removeNoLock(name string) error {
+func (o *Fs) removeNoLock(name string) error {
 	name = filepath.Clean(name)
 
 	if name == "." || name == string(filepath.Separator) {
@@ -453,13 +453,13 @@ func (o *Overlay) removeNoLock(name string) error {
 	return nil
 }
 
-func (o *Overlay) Remove(name string) error {
+func (o *Fs) Remove(name string) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.removeNoLock(name)
 }
 
-func (o *Overlay) removeAllNoLock(name string) error {
+func (o *Fs) removeAllNoLock(name string) error {
 	name = filepath.Clean(name)
 
 	if name == "." || name == string(filepath.Separator) {
@@ -509,13 +509,13 @@ func (o *Overlay) removeAllNoLock(name string) error {
 }
 
 // RemoveAll removes a directory tree
-func (o *Overlay) RemoveAll(name string) error {
+func (o *Fs) RemoveAll(name string) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.removeAllNoLock(name)
 }
 
-func (o *Overlay) mkdirNoLock(name string, perm fs.FileMode) error {
+func (o *Fs) mkdirNoLock(name string, perm fs.FileMode) error {
 	name = filepath.Clean(name)
 
 	if name == "." {
@@ -580,13 +580,13 @@ func (o *Overlay) mkdirNoLock(name string, perm fs.FileMode) error {
 }
 
 // Mkdir creates a directory in the top layer
-func (o *Overlay) Mkdir(name string, perm fs.FileMode) error {
+func (o *Fs) Mkdir(name string, perm fs.FileMode) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.mkdirNoLock(name, perm)
 }
 
-func (o *Overlay) mkdirAllNoLock(name string, perm fs.FileMode) error {
+func (o *Fs) mkdirAllNoLock(name string, perm fs.FileMode) error {
 	name = filepath.Clean(name)
 	if name == "." {
 		return nil
@@ -600,13 +600,13 @@ func (o *Overlay) mkdirAllNoLock(name string, perm fs.FileMode) error {
 	return nil
 }
 
-func (o *Overlay) MkdirAll(name string, perm fs.FileMode) error {
+func (o *Fs) MkdirAll(name string, perm fs.FileMode) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.mkdirAllNoLock(name, perm)
 }
 
-func (o *Overlay) renameNoLock(oldname, newname string) error {
+func (o *Fs) renameNoLock(oldname, newname string) error {
 	// no path resolution: rename on link moves link itself.
 
 	// copy to on top first
@@ -651,13 +651,13 @@ func (o *Overlay) renameNoLock(oldname, newname string) error {
 	return nil
 }
 
-func (o *Overlay) Rename(oldname, newname string) error {
+func (o *Fs) Rename(oldname, newname string) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.renameNoLock(oldname, newname)
 }
 
-func (o *Overlay) linkNoLock(oldname, newname string) error {
+func (o *Fs) linkNoLock(oldname, newname string) error {
 	_, err := o.lstatNoLock(newname)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -672,13 +672,13 @@ func (o *Overlay) linkNoLock(oldname, newname string) error {
 }
 
 // Link creates a hard link in the top layer
-func (o *Overlay) Link(oldname, newname string) error {
+func (o *Fs) Link(oldname, newname string) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.linkNoLock(oldname, newname)
 }
 
-func (o *Overlay) symlinkNoLock(oldname, newname string) error {
+func (o *Fs) symlinkNoLock(oldname, newname string) error {
 	err := o.copyOnWriteNoLock(newname)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -687,40 +687,40 @@ func (o *Overlay) symlinkNoLock(oldname, newname string) error {
 }
 
 // Symlink creates a symbolic link in the top layer
-func (o *Overlay) Symlink(oldname, newname string) error {
+func (o *Fs) Symlink(oldname, newname string) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.symlinkNoLock(oldname, newname)
 }
 
 // Chmod changes file permissions
-func (o *Overlay) chmodNoLock(name string, mode fs.FileMode) error {
+func (o *Fs) chmodNoLock(name string, mode fs.FileMode) error {
 	if err := o.copyOnWriteNoLock(name); err != nil {
 		return err
 	}
 	return o.top.Chmod(name, mode)
 }
 
-func (o *Overlay) Chmod(name string, mode fs.FileMode) error {
+func (o *Fs) Chmod(name string, mode fs.FileMode) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.chmodNoLock(name, mode)
 }
 
-func (o *Overlay) chownNoLock(name string, uid, gid int) error {
+func (o *Fs) chownNoLock(name string, uid, gid int) error {
 	if err := o.copyOnWriteNoLock(name); err != nil {
 		return err
 	}
 	return o.top.Chown(name, uid, gid)
 }
 
-func (o *Overlay) Chown(name string, uid, gid int) error {
+func (o *Fs) Chown(name string, uid, gid int) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.chownNoLock(name, uid, gid)
 }
 
-func (o *Overlay) Lchown(name string, uid, gid int) error {
+func (o *Fs) Lchown(name string, uid, gid int) error {
 	resolved, err := o.resolvePath(name, true)
 	if err != nil {
 		return err
@@ -731,21 +731,21 @@ func (o *Overlay) Lchown(name string, uid, gid int) error {
 	return o.top.Lchown(resolved, uid, gid)
 }
 
-func (o *Overlay) chtimesNoLock(name string, atime, mtime time.Time) error {
+func (o *Fs) chtimesNoLock(name string, atime, mtime time.Time) error {
 	if err := o.copyOnWriteNoLock(name); err != nil {
 		return err
 	}
 	return o.top.Chtimes(name, atime, mtime)
 }
 
-func (o *Overlay) Chtimes(name string, atime, mtime time.Time) error {
+func (o *Fs) Chtimes(name string, atime, mtime time.Time) error {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 	return o.chtimesNoLock(name, atime, mtime)
 }
 
 // OpenRoot opens a subdirectory as a new rooted filesystem
-func (o *Overlay) OpenRoot(name string) (vroot.Rooted, error) {
+func (o *Fs) OpenRoot(name string) (vroot.Rooted, error) {
 	o.rw.Lock()
 	defer o.rw.Unlock()
 
@@ -783,7 +783,7 @@ func (o *Overlay) OpenRoot(name string) (vroot.Rooted, error) {
 	}
 
 	if whited {
-		return &Overlay{
+		return &Fs{
 			rw:      o.rw,
 			opts:    o.opts,
 			top:     topSubRoot,
@@ -820,7 +820,7 @@ func (o *Overlay) OpenRoot(name string) (vroot.Rooted, error) {
 
 	slices.Reverse(subLayers)
 
-	return &Overlay{
+	return &Fs{
 		rw:      o.rw,
 		opts:    o.opts,
 		top:     topSubRoot,

@@ -1,4 +1,4 @@
-package overlay
+package overlayfs
 
 import (
 	"errors"
@@ -11,9 +11,9 @@ import (
 func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 	type testCase struct {
 		name      func() string
-		setup     func(t *testing.T, r *Overlay)
-		operation func(t *testing.T, r *Overlay) error
-		check     func(t *testing.T, r *Overlay, err error)
+		setup     func(t *testing.T, r *Fs)
+		operation func(t *testing.T, r *Fs) error
+		check     func(t *testing.T, r *Fs, err error)
 	}
 
 	cases := []testCase{
@@ -21,13 +21,13 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 			name: func() string {
 				return "create file where directory exists in layer"
 			},
-			setup: func(t *testing.T, r *Overlay) {
+			setup: func(t *testing.T, r *Fs) {
 				// Directory exists in lower layer at root/readable/subdir
 			},
-			operation: func(t *testing.T, r *Overlay) error {
+			operation: func(t *testing.T, r *Fs) error {
 				return r.top.MkdirAll(filepath.Dir("root/readable/subdir"), fs.ModePerm)
 			},
-			check: func(t *testing.T, r *Overlay, err error) {
+			check: func(t *testing.T, r *Fs, err error) {
 				// Try to create file with same name as directory
 				f, createErr := r.Create("root/readable/subdir")
 				if createErr == nil {
@@ -43,13 +43,13 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 			name: func() string {
 				return "create directory where file exists in layer"
 			},
-			setup: func(t *testing.T, r *Overlay) {
+			setup: func(t *testing.T, r *Fs) {
 				// File exists in lower layer at root/readable/file1.txt
 			},
-			operation: func(t *testing.T, r *Overlay) error {
+			operation: func(t *testing.T, r *Fs) error {
 				return nil // No setup operation needed
 			},
-			check: func(t *testing.T, r *Overlay, err error) {
+			check: func(t *testing.T, r *Fs, err error) {
 				// Try to create directory with same name as file
 				mkdirErr := r.Mkdir("root/readable/file1.txt", fs.ModePerm)
 				if mkdirErr == nil {
@@ -62,16 +62,16 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 			name: func() string {
 				return "remove directory and create file with same name"
 			},
-			setup: func(t *testing.T, r *Overlay) {
+			setup: func(t *testing.T, r *Fs) {
 				// Create directory in top layer
 				if err := r.top.MkdirAll("root/writable/conflict", fs.ModePerm); err != nil {
 					t.Fatal(err)
 				}
 			},
-			operation: func(t *testing.T, r *Overlay) error {
+			operation: func(t *testing.T, r *Fs) error {
 				return r.RemoveAll("root/writable/conflict")
 			},
-			check: func(t *testing.T, r *Overlay, err error) {
+			check: func(t *testing.T, r *Fs, err error) {
 				if err != nil {
 					t.Errorf("failed to remove directory: %v", err)
 				}
@@ -97,7 +97,7 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 			name: func() string {
 				return "remove file and create directory with same name"
 			},
-			setup: func(t *testing.T, r *Overlay) {
+			setup: func(t *testing.T, r *Fs) {
 				// Create file in top layer
 				if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 					t.Fatal(err)
@@ -108,10 +108,10 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 				}
 				f.Close()
 			},
-			operation: func(t *testing.T, r *Overlay) error {
+			operation: func(t *testing.T, r *Fs) error {
 				return r.Remove("root/writable/conflict")
 			},
-			check: func(t *testing.T, r *Overlay, err error) {
+			check: func(t *testing.T, r *Fs, err error) {
 				if err != nil {
 					t.Errorf("failed to remove file: %v", err)
 				}
@@ -135,7 +135,7 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 			name: func() string {
 				return "symlink pointing to file replaced by directory"
 			},
-			setup: func(t *testing.T, r *Overlay) {
+			setup: func(t *testing.T, r *Fs) {
 				// Create target file and symlink in top layer
 				if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 					t.Fatal(err)
@@ -150,14 +150,14 @@ func TestOverlay_FileDirectoryConflicts(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			operation: func(t *testing.T, r *Overlay) error {
+			operation: func(t *testing.T, r *Fs) error {
 				// Remove target and replace with directory
 				if err := r.Remove("root/writable/target"); err != nil {
 					return err
 				}
 				return r.Mkdir("root/writable/target", fs.ModePerm)
 			},
-			check: func(t *testing.T, r *Overlay, err error) {
+			check: func(t *testing.T, r *Fs, err error) {
 				if err != nil {
 					t.Errorf("failed operation: %v", err)
 				}

@@ -1,4 +1,4 @@
-package overlay_test
+package overlayfs_test
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
-	"github.com/ngicks/go-fsys-helper/vroot/overlay"
+	"github.com/ngicks/go-fsys-helper/vroot/overlayfs"
 )
 
 func must1(err error) {
@@ -94,22 +94,22 @@ func Example_overlay_symlink() {
 			}
 		}
 	}()
-	composeLayer := func(i int) overlay.Layer {
+	composeLayer := func(i int) overlayfs.Layer {
 		metaFsys := must2(
 			osfs.NewRooted(filepath.Join(tempDir, "layer"+strconv.FormatInt(int64(i), 10), "meta")),
 		)
 		closer = append(closer, metaFsys.Close)
 
-		meta := overlay.NewMetadataStoreSimpleText(metaFsys)
+		meta := overlayfs.NewMetadataStoreSimpleText(metaFsys)
 		data := must2(
 			osfs.NewRooted(filepath.Join(tempDir, "layer"+strconv.FormatInt(int64(i), 10), "data")),
 		)
-		return overlay.NewLayer(meta, data)
+		return overlayfs.NewLayer(meta, data)
 	}
 
-	fsys := overlay.NewOverlay(
+	fsys := overlayfs.New(
 		composeLayer(0),
-		[]overlay.Layer{composeLayer(1), composeLayer(2), composeLayer(3)},
+		[]overlayfs.Layer{composeLayer(1), composeLayer(2), composeLayer(3)},
 		nil,
 	)
 

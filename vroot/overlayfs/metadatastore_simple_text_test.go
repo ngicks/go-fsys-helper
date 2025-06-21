@@ -1,4 +1,4 @@
-package overlay_test
+package overlayfs_test
 
 import (
 	"os"
@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
-	"github.com/ngicks/go-fsys-helper/vroot/overlay"
-	"github.com/ngicks/go-fsys-helper/vroot/overlay/acceptancetest"
+	"github.com/ngicks/go-fsys-helper/vroot/overlayfs"
+	"github.com/ngicks/go-fsys-helper/vroot/overlayfs/acceptancetest"
 )
 
 func must[V any](v V, err error) V {
@@ -25,19 +25,19 @@ func TestMetadataStoreSimpleText(t *testing.T) {
 
 	t.Run("interface_compliance", func(t *testing.T) {
 		// Run the interface acceptance tests with a factory function
-		acceptancetest.MetadataStore(t, func() overlay.MetadataStore {
+		acceptancetest.MetadataStore(t, func() overlayfs.MetadataStore {
 			// Clear any existing whiteouts by removing the whiteout file
-			fsys.Remove(overlay.MetadataStoreSimpleTextWhiteout)
-			return overlay.NewMetadataStoreSimpleText(fsys)
+			fsys.Remove(overlayfs.MetadataStoreSimpleTextWhiteout)
+			return overlayfs.NewMetadataStoreSimpleText(fsys)
 		})
 	})
 
 	t.Run("persistence", func(t *testing.T) {
 		// Clear any existing whiteouts by removing the whiteout file
-		fsys.Remove(overlay.MetadataStoreSimpleTextWhiteout)
+		fsys.Remove(overlayfs.MetadataStoreSimpleTextWhiteout)
 
 		// Create a new store and add some whiteouts
-		store1 := overlay.NewMetadataStoreSimpleText(fsys)
+		store1 := overlayfs.NewMetadataStoreSimpleText(fsys)
 
 		paths := []string{
 			"persistent/file1.txt",
@@ -53,7 +53,7 @@ func TestMetadataStoreSimpleText(t *testing.T) {
 		}
 
 		// Create a new store instance (simulating restart)
-		store2 := overlay.NewMetadataStoreSimpleText(fsys)
+		store2 := overlayfs.NewMetadataStoreSimpleText(fsys)
 
 		// Check that the whiteouts are still there
 		for _, path := range paths {
@@ -79,8 +79,8 @@ func TestMetadataStoreSimpleText(t *testing.T) {
 
 	t.Run("file_format", func(t *testing.T) {
 		// Clear any existing whiteouts by removing the whiteout file
-		fsys.Remove(overlay.MetadataStoreSimpleTextWhiteout)
-		store := overlay.NewMetadataStoreSimpleText(fsys)
+		fsys.Remove(overlayfs.MetadataStoreSimpleTextWhiteout)
+		store := overlayfs.NewMetadataStoreSimpleText(fsys)
 
 		// Add some whiteouts with special characters that need quoting
 		paths := []string{
@@ -98,7 +98,7 @@ func TestMetadataStoreSimpleText(t *testing.T) {
 		}
 
 		// Check that the whiteout file exists and contains quoted paths
-		whiteoutPath := filepath.Join(tempDir, overlay.MetadataStoreSimpleTextWhiteout)
+		whiteoutPath := filepath.Join(tempDir, overlayfs.MetadataStoreSimpleTextWhiteout)
 		if _, err := os.Stat(whiteoutPath); err != nil {
 			t.Errorf("Whiteout file should exist: %v", err)
 		}
@@ -125,7 +125,7 @@ func TestMetadataStoreSimpleText(t *testing.T) {
 		}
 
 		// Create a new store and verify it can read the persisted data
-		store2 := overlay.NewMetadataStoreSimpleText(fsys)
+		store2 := overlayfs.NewMetadataStoreSimpleText(fsys)
 		for _, path := range paths {
 			has, err := store2.QueryWhiteout(path)
 			if err != nil {
@@ -140,8 +140,8 @@ func TestMetadataStoreSimpleText(t *testing.T) {
 
 	t.Run("tree_structure_optimization", func(t *testing.T) {
 		// Clear any existing whiteouts by removing the whiteout file
-		fsys.Remove(overlay.MetadataStoreSimpleTextWhiteout)
-		store := overlay.NewMetadataStoreSimpleText(fsys)
+		fsys.Remove(overlayfs.MetadataStoreSimpleTextWhiteout)
+		store := overlayfs.NewMetadataStoreSimpleText(fsys)
 
 		// Test that the tree structure properly handles removal and cleanup
 		err := store.RecordWhiteout("deep/nested/path/file.txt")
@@ -195,8 +195,8 @@ func TestMetadataStoreSimpleText(t *testing.T) {
 	t.Run("concurrent_safety", func(t *testing.T) {
 		// This test ensures that the mutex locking works correctly
 		// by testing operations that could potentially race
-		fsys.Remove(overlay.MetadataStoreSimpleTextWhiteout)
-		store := overlay.NewMetadataStoreSimpleText(fsys)
+		fsys.Remove(overlayfs.MetadataStoreSimpleTextWhiteout)
+		store := overlayfs.NewMetadataStoreSimpleText(fsys)
 
 		// Add some initial whiteouts
 		paths := []string{

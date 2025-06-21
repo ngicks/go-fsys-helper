@@ -1,4 +1,4 @@
-package overlay
+package overlayfs
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ func TestLayerReturnsErrWhitedOut(t *testing.T) {
 
 	// Create a test file
 	testFile := "test.txt"
-	if err := os.WriteFile(tempDir+"/"+testFile, []byte("test content"), 0644); err != nil {
+	if err := os.WriteFile(tempDir+"/"+testFile, []byte("test content"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

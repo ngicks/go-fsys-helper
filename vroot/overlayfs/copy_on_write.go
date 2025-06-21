@@ -1,4 +1,4 @@
-package overlay
+package overlayfs
 
 import (
 	"errors"
@@ -7,11 +7,11 @@ import (
 	"syscall"
 )
 
-func (o *Overlay) topAsLayer() *Layer {
+func (o *Fs) topAsLayer() *Layer {
 	return &Layer{o.topMeta, o.top}
 }
 
-func (o *Overlay) copyOnWriteNoLock(name string) error {
+func (o *Fs) copyOnWriteNoLock(name string) error {
 	name = filepath.Clean(name)
 
 	_, err := o.topAsLayer().Lstat(name)

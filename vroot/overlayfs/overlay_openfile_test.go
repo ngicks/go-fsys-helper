@@ -1,4 +1,4 @@
-package overlay
+package overlayfs
 
 import (
 	"io"
@@ -13,8 +13,8 @@ import (
 func TestOverlay_OpenFileScenarios(t *testing.T) {
 	type testCase struct {
 		name        func() string
-		setup       func(t *testing.T, r *Overlay) vroot.File
-		operation   func(t *testing.T, r *Overlay, f vroot.File)
+		setup       func(t *testing.T, r *Fs) vroot.File
+		operation   func(t *testing.T, r *Fs, f vroot.File)
 		expectError bool
 	}
 
@@ -23,7 +23,7 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 			name: func() string {
 				return "opened file is removed - file should remain accessible"
 			},
-			setup: func(t *testing.T, r *Overlay) vroot.File {
+			setup: func(t *testing.T, r *Fs) vroot.File {
 				// Create file in top layer
 				if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 					t.Fatal(err)
@@ -45,7 +45,7 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 				}
 				return openedFile
 			},
-			operation: func(t *testing.T, r *Overlay, f vroot.File) {
+			operation: func(t *testing.T, r *Fs, f vroot.File) {
 				// Verify file exists before removal
 				_, err := r.Lstat("root/writable/test.txt")
 				if err != nil {
@@ -83,7 +83,7 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 			name: func() string {
 				return "opened file parent directory is removed"
 			},
-			setup: func(t *testing.T, r *Overlay) vroot.File {
+			setup: func(t *testing.T, r *Fs) vroot.File {
 				// Create file in top layer
 				if err := r.top.MkdirAll("root/writable/subdir", fs.ModePerm); err != nil {
 					t.Fatal(err)
@@ -105,7 +105,7 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 				}
 				return openedFile
 			},
-			operation: func(t *testing.T, r *Overlay, f vroot.File) {
+			operation: func(t *testing.T, r *Fs, f vroot.File) {
 				// Remove parent directory while file is open
 				if err := r.RemoveAll("root/writable/subdir"); err != nil {
 					t.Fatalf("failed to remove directory: %v", err)
@@ -124,7 +124,7 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 			name: func() string {
 				return "create directory where opened file exists"
 			},
-			setup: func(t *testing.T, r *Overlay) vroot.File {
+			setup: func(t *testing.T, r *Fs) vroot.File {
 				// Create file in top layer
 				if err := r.top.MkdirAll("root/writable", fs.ModePerm); err != nil {
 					t.Fatal(err)
@@ -146,7 +146,7 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 				}
 				return openedFile
 			},
-			operation: func(t *testing.T, r *Overlay, f vroot.File) {
+			operation: func(t *testing.T, r *Fs, f vroot.File) {
 				// Remove file first
 				if err := r.Remove("root/writable/conflict"); err != nil {
 					t.Errorf("failed to remove file: %v", err)
@@ -172,7 +172,7 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 			name: func() string {
 				return "opened file from lower layer is overwritten"
 			},
-			setup: func(t *testing.T, r *Overlay) vroot.File {
+			setup: func(t *testing.T, r *Fs) vroot.File {
 				// File should exist in lower layers from prepareLayers
 				openedFile, err := r.OpenFile("root/readable/file1.txt", os.O_RDONLY, 0)
 				if err != nil {
@@ -180,7 +180,7 @@ func TestOverlay_OpenFileScenarios(t *testing.T) {
 				}
 				return openedFile
 			},
-			operation: func(t *testing.T, r *Overlay, f vroot.File) {
+			operation: func(t *testing.T, r *Fs, f vroot.File) {
 				// Ensure parent directories exist in top layer for overlay creation
 				if err := r.top.MkdirAll("root/readable", fs.ModePerm); err != nil {
 					t.Fatalf("failed to create parent directories: %v", err)

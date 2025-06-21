@@ -4,13 +4,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ngicks/go-fsys-helper/vroot/overlay"
+	"github.com/ngicks/go-fsys-helper/vroot/overlayfs"
 )
 
 // MetadataStore runs acceptance tests for any MetadataStore implementation.
 // It tests the interface contract without depending on implementation details.
 // The store should be clean/empty when passed to this function.
-func MetadataStore(t *testing.T, newStore func() overlay.MetadataStore) {
+func MetadataStore(t *testing.T, newStore func() overlayfs.MetadataStore) {
 	t.Run("basic_operations", func(t *testing.T) {
 		store := newStore()
 

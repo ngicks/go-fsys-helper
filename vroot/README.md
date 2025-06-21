@@ -292,7 +292,7 @@ The overlay package provides sophisticated union mount capabilities with copy-on
 ### Basic Overlay Setup
 
 ```go
-import "github.com/ngicks/go-fsys-helper/vroot/overlay"
+import "github.com/ngicks/go-fsys-helper/vroot/overlayfs"
 
 // Create writable top layer
 top, err := osfs.NewRooted("top/data")
@@ -301,7 +301,7 @@ if err != nil {
 }
 topMetaFsys, err := osfs.NewRooted("top/meta")
 // Setup metadata store for tracking changes
-topMeta := overlay.NewMetadataStoreSimpleText(topMetaFsys)
+topMeta := overlayfs.NewMetadataStoreSimpleText(topMetaFsys)
 
 // Create read-only lower layers
 Layer1Data, err := osfs.NewRooted("layer1/data")
@@ -309,7 +309,7 @@ Layer1MetaFsys, err := osfs.NewRooted("layer1/meta")
 ...
 
 // Create overlay filesystem
-overlayFs, err := overlay.New(
+overlayFs, err := overlayfs.New(
     // Writable layer
     NewLayer(NewMetadataStoreSimpleText(topMeta), top),
     // Read-only lower layers
@@ -454,11 +454,11 @@ func setupDevEnvironment() (vroot.Rooted, error) {
     }
 
     // Create overlay for development
-    return overlay.New(
+    return overlayfs.New(
         userLayer,
-        overlay.NewLayers(vroot.ReadOnlyRooted(systemLayer)),
-        overlay.NewMetadataStoreSimpleText(),
-        overlay.CopyPolicy{},
+        overlayfs.NewLayers(vroot.ReadOnlyRooted(systemLayer)),
+        overlayfs.NewMetadataStoreSimpleText(),
+        overlayfs.CopyPolicy{},
     )
 }
 ```
@@ -577,7 +577,7 @@ go test ./...
 
 # Run specific implementation tests
 go test ./osfs/
-go test ./overlay/
+go test ./overlayfs/
 go test ./synthfs/
 go test ./memfs/
 ```

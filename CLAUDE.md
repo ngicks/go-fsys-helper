@@ -33,7 +33,7 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
   - `osfs/`: OS filesystem wrappers (Rooted and Unrooted)
   - `synthfs/`: Synthetic filesystem combining different data sources
   - `memfs/`: In-memory filesystem for testing
-  - `overlay/`: Union mount with copy-on-write semantics
+  - `overlayfs/`: Union mount with copy-on-write semantics
 - Security models for different containment needs
 - Extensive acceptance testing framework
 

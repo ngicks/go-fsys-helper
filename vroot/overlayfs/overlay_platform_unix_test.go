@@ -1,6 +1,6 @@
 //go:build unix
 
-package overlay
+package overlayfs
 
 import (
 	"io/fs"
@@ -193,7 +193,7 @@ func TestOverlay_UnixSpecificBehavior(t *testing.T) {
 	})
 }
 
-func readFileContent(r *Overlay, path string) (string, error) {
+func readFileContent(r *Fs, path string) (string, error) {
 	f, err := r.Open(path)
 	if err != nil {
 		return "", err
