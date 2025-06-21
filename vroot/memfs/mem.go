@@ -6,9 +6,9 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/synthfs"
 )
 
-func NewRooted() vroot.Rooted {
+func NewRooted(name string) vroot.Rooted {
 	return synthfs.NewRooted(
-		"mem:///",
+		name,
 		synthfs.NewMemFileAllocator(clock.RealWallClock()),
 		synthfs.Option{
 			Clock: clock.RealWallClock(),
@@ -16,9 +16,9 @@ func NewRooted() vroot.Rooted {
 	)
 }
 
-func NewUnrooted() vroot.Unrooted {
+func NewUnrooted(name string) vroot.Unrooted {
 	return synthfs.NewUnrooted(
-		"mem:///",
+		name,
 		synthfs.NewMemFileAllocator(clock.RealWallClock()),
 		synthfs.Option{
 			Clock: clock.RealWallClock(),
