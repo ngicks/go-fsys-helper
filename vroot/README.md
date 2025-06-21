@@ -212,9 +212,12 @@ rooted := synthfs.NewRooted("synth://", allocator, synthfs.Option{
 // New files use the allocator (memory-backed in this case)
 file, err := rooted.Create("dynamic.txt")
 
-// Can also add file views from other sources (when AddFile is implemented)
-// fsView, _ := synthfs.NewFsFileView(embedFS, "static/data.txt")
-// rooted.AddFile("resources/data.txt", fsView)
+// Add file views from other sources
+fsView, _ := synthfs.NewFsFileView(embedFS, "static/data.txt")
+rooted.AddFile("resources/data.txt", fsView, 0o755, 0o644)
+
+// Add entire vroot filesystem
+rooted.AddFs("imported", anotherVrootFs, 0o755)
 ```
 
 #### Use Cases
