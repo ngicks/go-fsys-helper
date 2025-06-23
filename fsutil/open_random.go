@@ -24,7 +24,7 @@ func OpenFileRandom[FS OpenFileFs[File], File any](fsys FS, dir string, pattern 
 		pattern,
 		perm,
 		func(fsys FS, name string, perm fs.FileMode) (File, error) {
-			return fsys.OpenFile(filepath.FromSlash(name), os.O_RDWR|os.O_CREATE|os.O_EXCL, perm|0o200) // at least writable
+			return fsys.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, perm|0o200) // at least writable
 		},
 	)
 }

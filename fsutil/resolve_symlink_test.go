@@ -13,18 +13,6 @@ import (
 	"testing"
 )
 
-type osfsLite struct {
-	base string
-}
-
-func (fsys osfsLite) ReadLink(name string) (string, error) {
-	return os.Readlink(filepath.Join(fsys.base, name))
-}
-
-func (fsys osfsLite) Lstat(name string) (fs.FileInfo, error) {
-	return os.Lstat(filepath.Join(fsys.base, name))
-}
-
 type toAndFro struct {
 	to, from string
 }
