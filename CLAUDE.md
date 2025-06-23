@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Important Rules
+## Mandatory
 
 - If I say "Explain"(case insensitive) I am just needing explanation. DO NOT FIX at this point.
 
@@ -82,6 +82,15 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
 - Use `must(osfs.NewRooted(path))` pattern instead of error handling for test setup that should always succeed
 - Define named `testCase` struct types instead of anonymous struct literals in test tables
 - Panic on fundamental test setup failures rather than using `t.Fatalf`
+
+## Path handling
+
+- Wrap every path with `fileapth.FromSlash` when passing paths to functions.
+- Wrap every path with `filepath.ToSlash` when using as test results(including `// Output:` comment in Example tests).
+
+## Opened things handling
+
+- Close every opened thing right after becoming unsed.
 
 ## After you think you are done
 
