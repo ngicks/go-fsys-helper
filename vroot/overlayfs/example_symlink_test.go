@@ -76,11 +76,11 @@ func Example_overlay_symlink() {
 	//                    +------+
 
 	must1(os.MkdirAll(filepath.Join(tempDir, "layer3", "data", filepath.FromSlash("a/b/")), fs.ModePerm))
-	must1(os.Symlink("../link3", filepath.Join(tempDir, "layer3", "data", filepath.FromSlash("a/b/link2"))))
+	must1(os.Symlink(filepath.FromSlash("../link3"), filepath.Join(tempDir, "layer3", "data", filepath.FromSlash("a/b/link2"))))
 
 	must1(os.MkdirAll(filepath.Join(tempDir, "layer2", "data", filepath.FromSlash("a/b/c")), fs.ModePerm))
-	must1(os.Symlink("../link2", filepath.Join(tempDir, "layer2", "data", filepath.FromSlash("a/b/c/link1"))))
-	must1(os.Symlink("./b/file", filepath.Join(tempDir, "layer2", "data", filepath.FromSlash("a/link3"))))
+	must1(os.Symlink(filepath.FromSlash("../link2"), filepath.Join(tempDir, "layer2", "data", filepath.FromSlash("a/b/c/link1"))))
+	must1(os.Symlink(filepath.FromSlash("./b/file"), filepath.Join(tempDir, "layer2", "data", filepath.FromSlash("a/link3"))))
 
 	must1(os.MkdirAll(filepath.Join(tempDir, "layer1", "data", filepath.FromSlash("a/b/")), fs.ModePerm))
 	must1(os.WriteFile(filepath.Join(tempDir, "layer1", "data", filepath.FromSlash("a/b/file")), []byte("foobar"), fs.ModePerm))

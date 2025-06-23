@@ -16,6 +16,9 @@ import (
 )
 
 func cleanToSlash(s string) string {
+	if s == "" {
+		return ""
+	}
 	s = filepath.ToSlash(filepath.Clean(s))
 	return strings.TrimPrefix(s, "./")
 }
@@ -63,7 +66,8 @@ func (c pathConverter) Lstat(name string) (fs.FileInfo, error) {
 }
 
 func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string, error) {
-	return fsutil.ResolvePath(pathConverter{f.fsys}, name, skipLastElement)
+	s, err := fsutil.ResolvePath(pathConverter{f.fsys}, name, skipLastElement)
+	return cleanToSlash(s), err
 }
 
 func (f *ioFsFromRooted) Chmod(name string, mode fs.FileMode) error {
@@ -149,7 +153,7 @@ func (f *ioFsFromRooted) OpenRoot(name string) (Rooted, error) {
 		return nil, fmt.Errorf("*ioFsFromRooted.OpenRoot: sub fsys does not implement fs.ReadLinkFS")
 	}
 
-	return FromIoFsRooted(readLinkFsys, path.Join(f.name, name)), nil
+	return FromIoFsRooted(readLinkFsys, path.Join(f.name, cleanToSlash(name))), nil
 }
 
 func (f *ioFsFromRooted) ReadLink(name string) (string, error) {
