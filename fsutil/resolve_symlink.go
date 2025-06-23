@@ -9,6 +9,9 @@ import (
 	"syscall"
 )
 
+// following linux's maxium: https://man7.org/linux/man-pages/man7/path_resolution.7.html
+const maxSymlinkResolutionCount = 40
+
 // ErrPathEscapes is retuned when evaluating the path reuslts to out of root
 // (a path starts with ".." or an absolute path.)
 var ErrPathEscapes = errors.New("path escapes from parent")
@@ -24,7 +27,8 @@ var ErrPathEscapes = errors.New("path escapes from parent")
 // with the path concatenated from the intermediate resolution result and remaining unresolved components.
 //
 // ResolvePath is still vulnerable to attack using TOCTOU(Time Of Check Time Of Use) race;
-// unlike [*os.Root] which leverages openat and lstatat, ResolvePath is just a sequence of Lstat and ReadLink.
+// unlike [*os.Root] which leverages APIs that open paths relative from open file handle (e.g. openat(2) and fstatat(2)),
+// ResolvePath is just a sequence of Lstat and ReadLink.
 func ResolvePath(
 	fsys interface {
 		ReadLinkFs
@@ -43,6 +47,7 @@ func ResolvePath(
 		return "", ErrPathEscapes
 	}
 
+	nameWihoutLastPart := name
 	var lastPart string
 	if skipLastElement {
 		// Use strings.LastIndex to find the last separator and extract the last part
@@ -52,35 +57,45 @@ func ResolvePath(
 			return name, nil
 		}
 		lastPart = name[idx+1:]
-		name = name[:idx]
+		nameWihoutLastPart = name[:idx]
 	}
 
+	currentSymlinkResolutionCount := 0
+
 	var pathBuilder strings.Builder
-	i := 0
-	off := 0
-	for part := range strings.SplitSeq(name, string(filepath.Separator)) {
+	for i, part := range splitPathSeq(nameWihoutLastPart) {
 		if i > 0 {
 			pathBuilder.WriteByte(filepath.Separator)
 		}
 
-		off += len(part)
-		i++
-
-		pathBuilder.WriteString(part)
+		pathBuilder.WriteString(part.component)
 		currentPath := pathBuilder.String()
 
 		info, err := fsys.Lstat(currentPath)
 		if err != nil {
-			return currentPath + name[off+i-1:], err
+			rest := name[min(len(name), part.offsetEnd):]
+			if len(rest) > 0 {
+				return currentPath + string(filepath.Separator) + rest, err
+			}
+			return currentPath, err
 		}
 
 		if info.Mode()&fs.ModeSymlink == 0 {
 			continue
 		}
 
-		resolved, err := ResolveSymlink(fsys, currentPath)
+		resolved, numSymlink, err := ResolveSymlink(
+			fsys,
+			currentPath,
+			maxSymlinkResolutionCount-currentSymlinkResolutionCount,
+		)
 		if err != nil {
 			return "", err
+		}
+
+		currentSymlinkResolutionCount += numSymlink
+		if currentSymlinkResolutionCount >= maxSymlinkResolutionCount {
+			return "", WrapPathErr("stat", name, syscall.ELOOP)
 		}
 
 		if resolved == "" || !filepath.IsLocal(resolved) {
@@ -105,10 +120,10 @@ func ResolvePath(
 		pathBuilder.WriteString(lastPart)
 	}
 
-	return filepath.ToSlash(pathBuilder.String()), nil
+	return pathBuilder.String(), nil
 }
 
-// ResolveSymlink resolves a symlink.
+// ResolveSymlink retruns resoluition result with numbers of symlink resolved.
 //
 // linkRealPath must be a real path for a link.
 // Otherwise it might return an error that satisfies errors.Ie(err, fs.ErrNotExist),
@@ -117,23 +132,26 @@ func ResolvePath(
 // If linkRealPath is a link to another link, ResolvePath resolves that link until it finds
 // a file other than a symlink.
 //
-// In case linkRealPath is a link to other link and that link targets to the file pointed by linkRealPath,
-// then ResolveSymlink returns an error that satisfies error.Is(err, syscall.ELOOP).
+// If symlink is resolved more times than maxResolution,
+// it would return an error that satisfies errors.Is(err, syscall.ELOOP)
 func ResolveSymlink(
 	fsys interface {
 		ReadLinkFs
 		LstatFs
 	},
 	linkRealPath string,
-) (string, error) {
+	maxResolution int,
+) (resolved string, numSymlink int, err error) {
 	if linkRealPath == "" || linkRealPath == "." {
-		return "", nil
+		return "", 0, nil
 	}
-	resolved := filepath.Clean(linkRealPath)
-	for range 40 { // following linux's maxium: https://man7.org/linux/man-pages/man7/path_resolution.7.html
+
+	resolved = filepath.Clean(linkRealPath)
+	var i int
+	for i = 0; i < maxResolution; i++ {
 		target, err := fsys.ReadLink(resolved)
 		if err != nil {
-			return "", err
+			return "", i, err
 		}
 
 		target = filepath.Clean(target)
@@ -141,7 +159,7 @@ func ResolveSymlink(
 		if filepath.IsAbs(target) {
 			// can't tell whether this target is non-symlnk or not,
 			// just return ""
-			return "", nil
+			return "", i + 1, nil
 		}
 
 		resolved = filepath.Join(filepath.Dir(resolved), target)
@@ -149,17 +167,17 @@ func ResolveSymlink(
 		if !filepath.IsLocal(resolved) {
 			// same as absolute path,
 			// return just ""
-			return "", nil
+			return "", i + 1, nil
 		}
 
 		info, err := fsys.Lstat(resolved)
 		if err != nil {
-			return "", err
+			return "", i, err
 		}
 		if info.Mode()&os.ModeSymlink == 0 {
-			return resolved, nil
+			return resolved, i + 1, nil
 		}
 	}
 
-	return "", WrapPathErr("stat", linkRealPath, syscall.ELOOP)
+	return "", i, WrapPathErr("stat", linkRealPath, syscall.ELOOP)
 }
