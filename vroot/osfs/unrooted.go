@@ -230,6 +230,10 @@ func (u *Unrooted) RemoveAll(name string) error {
 	if err != nil {
 		return fsutil.WrapPathErr("RemoveAll", name, err)
 	}
+	if path == u.root {
+		// consistency to os.RemoveAll and *os.Root.RemoveAll
+		return fsutil.WrapPathErr("RemoveAll", ".", fs.ErrInvalid)
+	}
 	return os.RemoveAll(path)
 }
 
