@@ -34,6 +34,8 @@ type walkState struct {
 	// visitedInodes tracks visited inodes to avoid revisiting bind mounts
 	// key is "device:inode"
 	visitedInodes map[fileIdent]struct{}
+	// remaning number of symlink resolution allowed.
+	symlinkResolveRemaining int
 }
 
 var logUniqueness = false
@@ -83,7 +85,9 @@ func (s *walkState) removeVisited(fsys Fs, virtualPath, realPath string, info fs
 }
 
 func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
-	state := &walkState{}
+	state := &walkState{
+		symlinkResolveRemaining: 40, // following linux's recent max
+	}
 	if opt == nil {
 		opt = &WalkOption{}
 	}
@@ -119,7 +123,9 @@ func walkDir(
 		)
 		info, err = fsys.Stat(path)
 		if err == nil {
-			realPath_, err = fsutil.ResolveSymlink(fsys, realPath)
+			var numResolved int
+			realPath_, numResolved, err = fsutil.ResolveSymlink(fsys, realPath, state.symlinkResolveRemaining)
+			state.symlinkResolveRemaining -= numResolved
 		}
 		if err != nil {
 			return fn(path, realPath, info, err)
