@@ -1,3 +1,4 @@
+// Package fsutil defines filesystem abstraction library agnostic helpers
 package fsutil
 
 import (
