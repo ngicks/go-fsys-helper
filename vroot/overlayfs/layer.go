@@ -11,10 +11,8 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
-var (
-	ErrOpenSymlink = errors.New("open symlink")
-	ErrWhitedOut   = errors.New("whited out")
-)
+var ErrWhitedOut = errors.New("whited out")
+
 var _ vroot.Rooted = (*Layer)(nil)
 
 // Layer is read-only [vroot.Rooted] but

@@ -128,7 +128,7 @@ func (f *ioFsFromRooted) Open(name string) (File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewFsFile(file, path), nil
+	return ExpandFsFile(file, path), nil
 }
 
 func (f *ioFsFromRooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
@@ -277,7 +277,7 @@ func (f *ioFsFromUnrooted) Open(name string) (File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewFsFile(file, path), nil
+	return ExpandFsFile(file, path), nil
 }
 
 func (f *ioFsFromUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
@@ -357,60 +357,60 @@ func (f *ioFsFromUnrooted) OpenUnrooted(name string) (Unrooted, error) {
 	return FromIoFsUnrooted(readLinkFsys, path.Join(f.name, name)), nil
 }
 
-var _ File = (*FsFile)(nil)
+var _ File = (*expandedFile)(nil)
 
-type FsFile struct {
+type expandedFile struct {
 	file fs.File
 	name string
 }
 
-func NewFsFile(file fs.File, name string) *FsFile {
-	return &FsFile{file: file, name: name}
+func ExpandFsFile(file fs.File, name string) File {
+	return &expandedFile{file: file, name: name}
 }
 
-func (f *FsFile) pathErr(op string) error {
+func (f *expandedFile) pathErr(op string) error {
 	return fsutil.WrapPathErr(op, f.name, syscall.EPERM)
 }
 
-func (f *FsFile) Chmod(mode fs.FileMode) error {
+func (f *expandedFile) Chmod(mode fs.FileMode) error {
 	return f.pathErr("chmod")
 }
 
-func (f *FsFile) Chown(uid int, gid int) error {
+func (f *expandedFile) Chown(uid int, gid int) error {
 	return f.pathErr("chown")
 }
 
-func (f *FsFile) Close() error {
+func (f *expandedFile) Close() error {
 	return f.file.Close()
 }
 
-func (f *FsFile) Name() string {
+func (f *expandedFile) Name() string {
 	return f.name
 }
 
-func (f *FsFile) Fd() uintptr {
+func (f *expandedFile) Fd() uintptr {
 	return Fd(f.file)
 }
 
-func (f *FsFile) Read(b []byte) (n int, err error) {
+func (f *expandedFile) Read(b []byte) (n int, err error) {
 	return f.file.Read(b)
 }
 
-func (f *FsFile) ReadAt(b []byte, off int64) (n int, err error) {
+func (f *expandedFile) ReadAt(b []byte, off int64) (n int, err error) {
 	if ra, ok := f.file.(io.ReaderAt); ok {
 		return ra.ReadAt(b, off)
 	}
 	return 0, fsutil.WrapPathErr("readat", f.name, ErrOpNotSupported)
 }
 
-func (f *FsFile) ReadDir(n int) ([]fs.DirEntry, error) {
+func (f *expandedFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	if readDirFile, ok := f.file.(fs.ReadDirFile); ok {
 		return readDirFile.ReadDir(n)
 	}
 	return nil, fsutil.WrapPathErr("readdir", f.name, errors.New("not implemented"))
 }
 
-func (f *FsFile) Readdir(n int) ([]fs.FileInfo, error) {
+func (f *expandedFile) Readdir(n int) ([]fs.FileInfo, error) {
 	entries, err := f.ReadDir(n)
 	if err != nil {
 		return nil, err
@@ -419,7 +419,8 @@ func (f *FsFile) Readdir(n int) ([]fs.FileInfo, error) {
 	infos := make([]fs.FileInfo, len(entries))
 	for i, entry := range entries {
 		info, err := entry.Info()
-		if err != nil {
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			// Info is equivalent of os.Ltat. It may disappear between ReadDir and Lstat.
 			return nil, err
 		}
 		infos[i] = info
@@ -427,7 +428,7 @@ func (f *FsFile) Readdir(n int) ([]fs.FileInfo, error) {
 	return infos, nil
 }
 
-func (f *FsFile) Readdirnames(n int) (names []string, err error) {
+func (f *expandedFile) Readdirnames(n int) (names []string, err error) {
 	entries, err := f.ReadDir(n)
 	if err != nil {
 		return nil, err
@@ -440,33 +441,33 @@ func (f *FsFile) Readdirnames(n int) (names []string, err error) {
 	return names, nil
 }
 
-func (f *FsFile) Seek(offset int64, whence int) (ret int64, err error) {
+func (f *expandedFile) Seek(offset int64, whence int) (ret int64, err error) {
 	if s, ok := f.file.(io.Seeker); ok {
 		return s.Seek(offset, whence)
 	}
 	return 0, fsutil.WrapPathErr("seek", f.name, ErrOpNotSupported)
 }
 
-func (f *FsFile) Stat() (fs.FileInfo, error) {
+func (f *expandedFile) Stat() (fs.FileInfo, error) {
 	return f.file.Stat()
 }
 
-func (f *FsFile) Sync() error {
+func (f *expandedFile) Sync() error {
 	return f.pathErr("sync")
 }
 
-func (f *FsFile) Truncate(size int64) error {
+func (f *expandedFile) Truncate(size int64) error {
 	return f.pathErr("truncate")
 }
 
-func (f *FsFile) Write(b []byte) (n int, err error) {
+func (f *expandedFile) Write(b []byte) (n int, err error) {
 	return 0, f.pathErr("write")
 }
 
-func (f *FsFile) WriteAt(b []byte, off int64) (n int, err error) {
+func (f *expandedFile) WriteAt(b []byte, off int64) (n int, err error) {
 	return 0, f.pathErr("write")
 }
 
-func (f *FsFile) WriteString(s string) (n int, err error) {
+func (f *expandedFile) WriteString(s string) (n int, err error) {
 	return 0, f.pathErr("write")
 }

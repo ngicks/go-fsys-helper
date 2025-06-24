@@ -56,7 +56,7 @@ func (b *fsFileView) Open(flag int) (vroot.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vroot.NewFsFile(f, b.path), nil
+	return vroot.ExpandFsFile(f, b.path), nil
 }
 
 func (b *fsFileView) Stat() (fs.FileInfo, error) {
