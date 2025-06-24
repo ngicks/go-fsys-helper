@@ -10,7 +10,6 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 	"github.com/ngicks/go-fsys-helper/vroot/clock"
-	"github.com/ngicks/go-fsys-helper/vroot/internal/prepare"
 )
 
 func must1(err error) {
@@ -21,18 +20,18 @@ func must1(err error) {
 
 func prep(fsys vroot.Fs) {
 	// Create all content under root/, not just writable
-	for l := range prepare.FilterLineDirection(
-		func(l prepare.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
-		slices.Values(prepare.RootFsysDirections),
+	for l := range acceptancetest.FilterLineDirection(
+		func(l acceptancetest.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
+		slices.Values(acceptancetest.RootFsysDirections),
 	) {
 		switch l.LineKind {
 		default:
 			continue
-		case prepare.LineKindMkdir:
+		case acceptancetest.LineKindMkdir:
 			must1(fsys.MkdirAll(filepath.FromSlash(l.Path), fs.ModePerm))
-		case prepare.LineKindWriteFile:
+		case acceptancetest.LineKindWriteFile:
 			must1(vroot.WriteFile(fsys, filepath.FromSlash(l.Path), l.Content, fs.ModePerm))
-		case prepare.LineKindSymlink:
+		case acceptancetest.LineKindSymlink:
 			must1(fsys.Symlink(filepath.FromSlash(l.TargetPath), filepath.FromSlash(l.Path)))
 		}
 	}

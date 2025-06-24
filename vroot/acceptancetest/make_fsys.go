@@ -1,4 +1,4 @@
-package prepare
+package acceptancetest
 
 import (
 	"fmt"
@@ -6,15 +6,14 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
-
-	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 )
 
 var RootFsysDirections = []LineDirection{}
 
 func init() {
-	for _, l := range acceptancetest.RootFsys {
+	for _, l := range RootFsys {
 		RootFsysDirections = append(RootFsysDirections, ParseLine(l))
 	}
 }
@@ -22,7 +21,7 @@ func init() {
 var RootFsysReadableFiles []string
 
 func init() {
-	for _, txt := range acceptancetest.RootFsys {
+	for _, txt := range RootFsys {
 		if !strings.HasPrefix(txt, "root/readable") {
 			continue
 		}
@@ -36,7 +35,7 @@ func init() {
 }
 
 func MakeFsys(tempDir string, readable, writable bool) {
-	for _, txt := range acceptancetest.RootFsys {
+	for _, txt := range RootFsys {
 		if !readable && strings.HasPrefix(txt, "root/readable") {
 			continue
 		}
@@ -122,6 +121,9 @@ func (l LineDirection) Execute(baseDir string) error {
 	case LineKindWriteFile:
 		return os.WriteFile(filepath.Join(baseDir, filepath.FromSlash(l.Path)), l.Content, fs.ModePerm)
 	case LineKindSymlink:
+		if runtime.GOOS == "plan9" {
+			return nil
+		}
 		return os.Symlink(filepath.FromSlash(l.TargetPath), filepath.Join(baseDir, filepath.FromSlash(l.Path)))
 	}
 }

@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
-	"github.com/ngicks/go-fsys-helper/vroot/internal/prepare"
+	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
 
@@ -95,7 +95,7 @@ func assertPathSeen(t *testing.T, expected, actual []pathSeen) {
 func TestWalk_Unrooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	prepare.MakeFsys(tempDir, true, false)
+	acceptancetest.MakeFsys(tempDir, true, false)
 	r, err := osfs.NewUnrooted(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
@@ -181,7 +181,7 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 func TestWalk_Rooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	prepare.MakeFsys(tempDir, true, false)
+	acceptancetest.MakeFsys(tempDir, true, false)
 	r, err := osfs.NewRooted(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
@@ -272,7 +272,7 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 
 func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
 	tempDir := t.TempDir()
-	err := prepare.ExecuteLines(
+	err := acceptancetest.ExecuteLines(
 		tempDir,
 		"root/",
 		"root/a -> b",
@@ -398,7 +398,7 @@ func TestWalk_Rooted_loop(t *testing.T) {
 	for _, tc := range walkTestCases {
 		t.Run(tc.name(), func(t *testing.T) {
 			tempDir := t.TempDir()
-			err := prepare.ExecuteLines(
+			err := acceptancetest.ExecuteLines(
 				tempDir,
 				tc.fsysStructure...,
 			)
@@ -490,7 +490,7 @@ func TestWalk_Unrooted_loop(t *testing.T) {
 	for _, tc := range slices.Concat(walkTestCases, outsideCases) {
 		t.Run(tc.name(), func(t *testing.T) {
 			tempDir := t.TempDir()
-			err := prepare.ExecuteLines(
+			err := acceptancetest.ExecuteLines(
 				tempDir,
 				tc.fsysStructure...,
 			)

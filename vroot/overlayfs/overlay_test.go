@@ -11,7 +11,6 @@ import (
 
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
-	"github.com/ngicks/go-fsys-helper/vroot/internal/prepare"
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
 
@@ -43,14 +42,14 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 		switch i {
 		case 1:
 			// only regular files under root/readable/
-			for d := range prepare.FilterLineDirection(
-				func(l prepare.LineDirection) bool {
-					return (l.LineKind == prepare.LineKindMkdir) ||
-						(l.LineKind == prepare.LineKindWriteFile &&
+			for d := range acceptancetest.FilterLineDirection(
+				func(l acceptancetest.LineDirection) bool {
+					return (l.LineKind == acceptancetest.LineKindMkdir) ||
+						(l.LineKind == acceptancetest.LineKindWriteFile &&
 							strings.HasPrefix(l.Path, filepath.FromSlash("root/readable/")) &&
 							strings.Count(l.Path, string(filepath.Separator)) == 2)
 				},
-				slices.Values(prepare.RootFsysDirections),
+				slices.Values(acceptancetest.RootFsysDirections),
 			) {
 				d.MustExecute(dir)
 			}
@@ -60,14 +59,14 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 			}
 		case 2:
 			// only regular files under root/readable/
-			for d := range prepare.FilterLineDirection(
-				func(l prepare.LineDirection) bool {
-					return (l.LineKind == prepare.LineKindMkdir) ||
-						(l.LineKind == prepare.LineKindSymlink &&
+			for d := range acceptancetest.FilterLineDirection(
+				func(l acceptancetest.LineDirection) bool {
+					return (l.LineKind == acceptancetest.LineKindMkdir) ||
+						(l.LineKind == acceptancetest.LineKindSymlink &&
 							strings.HasPrefix(l.Path, filepath.FromSlash("root/readable/")) &&
 							strings.Count(l.Path, string(filepath.Separator)) == 2)
 				},
-				slices.Values(prepare.RootFsysDirections),
+				slices.Values(acceptancetest.RootFsysDirections),
 			) {
 				d.MustExecute(dir)
 			}
@@ -77,14 +76,14 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 			}
 		case 3:
 			// only content under "root/readable/subdir"
-			for d := range prepare.FilterLineDirection(
-				func(l prepare.LineDirection) bool {
-					return (l.LineKind == prepare.LineKindMkdir) ||
-						((l.LineKind == prepare.LineKindWriteFile || l.LineKind == prepare.LineKindSymlink) &&
+			for d := range acceptancetest.FilterLineDirection(
+				func(l acceptancetest.LineDirection) bool {
+					return (l.LineKind == acceptancetest.LineKindMkdir) ||
+						((l.LineKind == acceptancetest.LineKindWriteFile || l.LineKind == acceptancetest.LineKindSymlink) &&
 							strings.HasPrefix(l.Path, filepath.FromSlash("root/readable/")) &&
 							strings.Count(l.Path, string(filepath.Separator)) == 3)
 				},
-				slices.Values(prepare.RootFsysDirections),
+				slices.Values(acceptancetest.RootFsysDirections),
 			) {
 				d.MustExecute(dir)
 			}
@@ -94,19 +93,19 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 			}
 		case 4:
 			// only content under "root/readable/subdir"
-			for d := range prepare.FilterLineDirection(
-				func(l prepare.LineDirection) bool {
-					return (l.LineKind == prepare.LineKindMkdir) ||
-						((l.LineKind == prepare.LineKindWriteFile || l.LineKind == prepare.LineKindSymlink) &&
+			for d := range acceptancetest.FilterLineDirection(
+				func(l acceptancetest.LineDirection) bool {
+					return (l.LineKind == acceptancetest.LineKindMkdir) ||
+						((l.LineKind == acceptancetest.LineKindWriteFile || l.LineKind == acceptancetest.LineKindSymlink) &&
 							strings.HasPrefix(l.Path, filepath.FromSlash("root/readable/")) &&
 							strings.Count(l.Path, string(filepath.Separator)) == 4)
 				},
-				slices.Values(prepare.RootFsysDirections),
+				slices.Values(acceptancetest.RootFsysDirections),
 			) {
 				d.MustExecute(dir)
 			}
 			// for this layer, place also writable side.
-			prepare.MakeFsys(dir, true, true)
+			acceptancetest.MakeFsys(dir, true, true)
 		}
 		var rootedFs vroot.Rooted
 		if i == 0 {
@@ -180,6 +179,6 @@ func TestRooted(t *testing.T) {
 		acceptancetest.RootedReadWrite(t, rw)
 	})
 	t.Run("as-io-fs", func(t *testing.T) {
-		fstest.TestFS(vroot.ToIoFsRooted(rr), prepare.RootFsysReadableFiles...)
+		fstest.TestFS(vroot.ToIoFsRooted(rr), acceptancetest.RootFsysReadableFiles...)
 	})
 }

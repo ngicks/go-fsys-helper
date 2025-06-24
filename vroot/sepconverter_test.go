@@ -7,14 +7,13 @@ import (
 
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
-	"github.com/ngicks/go-fsys-helper/vroot/internal/prepare"
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
 
 func TestSepConverter(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	prepare.MakeFsys(tempDir, true, true)
+	acceptancetest.MakeFsys(tempDir, true, true)
 
 	t.Run("acceptancetest", func(t *testing.T) {
 		r, err := osfs.NewRooted(filepath.Join(tempDir, "root", "writable"))

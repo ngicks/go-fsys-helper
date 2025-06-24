@@ -212,6 +212,7 @@ func (u *Unrooted) ReadLink(name string) (string, error) {
 		return "", fsutil.WrapPathErr("link", name, err)
 	}
 	if u.root == path {
+		// behave as if root is always already resolved.
 		return "", fsutil.WrapPathErr("readlink", path, syscall.EINVAL)
 	}
 	return os.Readlink(path)
