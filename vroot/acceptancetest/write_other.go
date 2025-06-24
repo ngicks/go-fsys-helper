@@ -1,4 +1,4 @@
-//go:build unix || (js && wasm) || wasip1
+//go:build unix || (js && wasm) || wasip1 || plan9
 
 package acceptancetest
 
