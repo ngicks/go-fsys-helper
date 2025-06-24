@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -118,7 +119,7 @@ func (d *dir) findDirent(name string, skipLastComponent bool, fsys *fsys) (diren
 			// Need to potentially resolve symlinks
 			if symlink, ok := entry.(*symlink); ok {
 				if currentResolved >= maxSymlinkResolution {
-					return nil, fsutil.WrapPathErr("open", name, syscall.ELOOP)
+					return nil, fsutil.WrapPathErr("open", name, errdef.ELOOP)
 				}
 				currentResolved++
 

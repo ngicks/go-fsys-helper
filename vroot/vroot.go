@@ -1,3 +1,4 @@
+// Package vroot defines *os.Root based file system abstraction interface
 package vroot
 
 import (

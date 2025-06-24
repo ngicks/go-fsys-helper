@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -171,7 +172,7 @@ func pathTraversalFails(t *testing.T, fsys vroot.Fs, isReadOnly bool) {
 			if err == nil {
 				t.Errorf("Mkdir %q should have failed with path traversal error", path)
 			} else if !errors.Is(err, vroot.ErrPathEscapes) {
-				if isReadOnly && (errors.Is(err, syscall.EROFS) || errors.Is(err, syscall.EPERM)) {
+				if isReadOnly && (errors.Is(err, errdef.EROFS) || errors.Is(err, syscall.EPERM)) {
 					// Accept EROFS/EPERM for read-only implementations
 				} else {
 					t.Errorf("Mkdir %q failed with %v, expected ErrPathEscapes", path, err)
@@ -182,7 +183,7 @@ func pathTraversalFails(t *testing.T, fsys vroot.Fs, isReadOnly bool) {
 			if err == nil {
 				t.Errorf("Remove %q should have failed with path traversal error", path)
 			} else if !errors.Is(err, vroot.ErrPathEscapes) {
-				if isReadOnly && (errors.Is(err, syscall.EROFS) || errors.Is(err, syscall.EPERM)) {
+				if isReadOnly && (errors.Is(err, errdef.EROFS) || errors.Is(err, syscall.EPERM)) {
 					// Accept EROFS/EPERM for read-only implementations
 				} else {
 					t.Errorf("Remove %q failed with %v, expected ErrPathEscapes", path, err)

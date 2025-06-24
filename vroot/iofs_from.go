@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
@@ -38,7 +39,7 @@ type ioFsFromRooted struct {
 //
 // The returned [Rooted] provides read-only access and
 // write methods, e.g. Chmod, Chtimes and Write on [File],
-// return an error that satisfies, for methods on [Fs], errors.Is(err, syscall.EROFS)
+// return an error that satisfies, for methods on [Fs], errors.Is(err, errdef.EROFS or syscall.EPERM)
 // and for methods on [File], errors.Is(err, syscall.EPERM).
 //
 // Although it is "Rooted", it is still vulnerable to TOCTOU(Time-of-Check-Time-of-Use) race:
@@ -71,15 +72,15 @@ func (f *ioFsFromRooted) resolvePath(name string, skipLastElement bool) (string,
 }
 
 func (f *ioFsFromRooted) Chmod(name string, mode fs.FileMode) error {
-	return fsutil.WrapPathErr("chmod", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chmod", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Chown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("chown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chown", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return fsutil.WrapPathErr("chtimes", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chtimes", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Close() error {
@@ -87,15 +88,15 @@ func (f *ioFsFromRooted) Close() error {
 }
 
 func (f *ioFsFromRooted) Create(name string) (File, error) {
-	return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
+	return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Lchown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("lchown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("lchown", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Link(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("link", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("link", oldname, newname, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Lstat(name string) (fs.FileInfo, error) {
@@ -107,11 +108,11 @@ func (f *ioFsFromRooted) Lstat(name string) (fs.FileInfo, error) {
 }
 
 func (f *ioFsFromRooted) Mkdir(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) MkdirAll(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Name() string {
@@ -132,7 +133,7 @@ func (f *ioFsFromRooted) Open(name string) (File, error) {
 
 func (f *ioFsFromRooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	if openflag.WriteOp(flag) {
-		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
+		return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 	}
 	return f.Open(name)
 }
@@ -165,15 +166,15 @@ func (f *ioFsFromRooted) ReadLink(name string) (string, error) {
 }
 
 func (f *ioFsFromRooted) Remove(name string) error {
-	return fsutil.WrapPathErr("remove", name, syscall.EROFS)
+	return fsutil.WrapPathErr("remove", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) RemoveAll(name string) error {
-	return fsutil.WrapPathErr("RemoveAll", name, syscall.EROFS)
+	return fsutil.WrapPathErr("RemoveAll", name, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Rename(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("rename", oldname, newname, errdef.EROFS)
 }
 
 func (f *ioFsFromRooted) Stat(name string) (fs.FileInfo, error) {
@@ -185,7 +186,7 @@ func (f *ioFsFromRooted) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (f *ioFsFromRooted) Symlink(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("symlink", oldname, newname, errdef.EROFS)
 }
 
 type ioFsFromUnrooted struct {
@@ -198,7 +199,7 @@ type ioFsFromUnrooted struct {
 //
 // The returned [Unrooted] provides read-only access and
 // write methods, e.g. Chmod, Chtimes and Write on [File],
-// return an error that satisfies, for methods on [Fs], errors.Is(err, syscall.EROFS)
+// return an error that satisfies, for methods on [Fs], errors.Is(err, errdef.EROFS)
 // and for methods on [File], errors.Is(err, syscall.EPERM).
 func FromIoFsUnrooted(fsys fs.ReadLinkFS, name string) Unrooted {
 	return &ioFsFromUnrooted{
@@ -220,15 +221,15 @@ func (f *ioFsFromUnrooted) resolvePath(name string) (string, error) {
 }
 
 func (f *ioFsFromUnrooted) Chmod(name string, mode fs.FileMode) error {
-	return fsutil.WrapPathErr("chmod", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chmod", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Chown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("chown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chown", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return fsutil.WrapPathErr("chtimes", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chtimes", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Close() error {
@@ -236,15 +237,15 @@ func (f *ioFsFromUnrooted) Close() error {
 }
 
 func (f *ioFsFromUnrooted) Create(name string) (File, error) {
-	return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
+	return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Lchown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("lchown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("lchown", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Link(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("link", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("link", oldname, newname, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Lstat(name string) (fs.FileInfo, error) {
@@ -256,11 +257,11 @@ func (f *ioFsFromUnrooted) Lstat(name string) (fs.FileInfo, error) {
 }
 
 func (f *ioFsFromUnrooted) Mkdir(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) MkdirAll(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Name() string {
@@ -281,7 +282,7 @@ func (f *ioFsFromUnrooted) Open(name string) (File, error) {
 
 func (f *ioFsFromUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	if openflag.WriteOp(flag) {
-		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
+		return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 	}
 	return f.Open(filepath.ToSlash(name))
 }
@@ -314,15 +315,15 @@ func (f *ioFsFromUnrooted) ReadLink(name string) (string, error) {
 }
 
 func (f *ioFsFromUnrooted) Remove(name string) error {
-	return fsutil.WrapPathErr("remove", name, syscall.EROFS)
+	return fsutil.WrapPathErr("remove", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) RemoveAll(name string) error {
-	return fsutil.WrapPathErr("RemoveAll", name, syscall.EROFS)
+	return fsutil.WrapPathErr("RemoveAll", name, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Rename(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("rename", oldname, newname, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) Stat(name string) (fs.FileInfo, error) {
@@ -334,7 +335,7 @@ func (f *ioFsFromUnrooted) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (f *ioFsFromUnrooted) Symlink(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("symlink", oldname, newname, errdef.EROFS)
 }
 
 func (f *ioFsFromUnrooted) OpenUnrooted(name string) (Unrooted, error) {

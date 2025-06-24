@@ -14,6 +14,7 @@ import (
 
 	"github.com/ngicks/go-common/serr"
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/paths"
@@ -402,7 +403,7 @@ func (o *Fs) removeNoLock(name string) error {
 			return fsutil.WrapPathErr("remove", name, err)
 		}
 		if len(dirents) > 0 {
-			return fsutil.WrapPathErr("remove", name, syscall.ENOTEMPTY)
+			return fsutil.WrapPathErr("remove", name, errdef.ENOTEMPTY)
 		}
 		// It is possible that lower directories have file and only top dir is empty.
 		// Handle that case later but it's ok to remove top dir.

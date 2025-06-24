@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
@@ -24,15 +25,15 @@ func (r *ReadOnlyRooted) Rooted() {
 }
 
 func (r *ReadOnlyRooted) Chmod(name string, mode fs.FileMode) error {
-	return fsutil.WrapPathErr("chmod", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chmod", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Chown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("chown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chown", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return fsutil.WrapPathErr("chtimes", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chtimes", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Close() error {
@@ -40,15 +41,15 @@ func (r *ReadOnlyRooted) Close() error {
 }
 
 func (r *ReadOnlyRooted) Create(name string) (File, error) {
-	return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
+	return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Lchown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("lchown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("lchown", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Link(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("link", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("link", oldname, newname, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Lstat(name string) (fs.FileInfo, error) {
@@ -56,11 +57,11 @@ func (r *ReadOnlyRooted) Lstat(name string) (fs.FileInfo, error) {
 }
 
 func (r *ReadOnlyRooted) Mkdir(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) MkdirAll(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Name() string {
@@ -73,7 +74,7 @@ func (r *ReadOnlyRooted) Open(name string) (File, error) {
 
 func (r *ReadOnlyRooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
-		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
+		return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 	}
 	return NewReadOnlyFile(r.Open(name))
 }
@@ -91,15 +92,15 @@ func (r *ReadOnlyRooted) ReadLink(name string) (string, error) {
 }
 
 func (r *ReadOnlyRooted) Remove(name string) error {
-	return fsutil.WrapPathErr("remove", name, syscall.EROFS)
+	return fsutil.WrapPathErr("remove", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) RemoveAll(name string) error {
-	return fsutil.WrapPathErr("RemoveAll", name, syscall.EROFS)
+	return fsutil.WrapPathErr("RemoveAll", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Rename(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("rename", oldname, newname, errdef.EROFS)
 }
 
 func (r *ReadOnlyRooted) Stat(name string) (fs.FileInfo, error) {
@@ -107,7 +108,7 @@ func (r *ReadOnlyRooted) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (r *ReadOnlyRooted) Symlink(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("symlink", oldname, newname, errdef.EROFS)
 }
 
 var _ Unrooted = (*ReadOnlyUnrooted)(nil)
@@ -123,15 +124,15 @@ func NewReadOnlyUnrooted(rooted Unrooted) *ReadOnlyUnrooted {
 func (r *ReadOnlyUnrooted) Unrooted() {}
 
 func (r *ReadOnlyUnrooted) Chmod(name string, mode fs.FileMode) error {
-	return fsutil.WrapPathErr("chmod", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chmod", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Chown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("chown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chown", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return fsutil.WrapPathErr("chtimes", name, syscall.EROFS)
+	return fsutil.WrapPathErr("chtimes", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Close() error {
@@ -139,15 +140,15 @@ func (r *ReadOnlyUnrooted) Close() error {
 }
 
 func (r *ReadOnlyUnrooted) Create(name string) (File, error) {
-	return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
+	return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Lchown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("lchown", name, syscall.EROFS)
+	return fsutil.WrapPathErr("lchown", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Link(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("link", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("link", oldname, newname, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Lstat(name string) (fs.FileInfo, error) {
@@ -155,11 +156,11 @@ func (r *ReadOnlyUnrooted) Lstat(name string) (fs.FileInfo, error) {
 }
 
 func (r *ReadOnlyUnrooted) Mkdir(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) MkdirAll(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, syscall.EROFS)
+	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Name() string {
@@ -172,7 +173,7 @@ func (r *ReadOnlyUnrooted) Open(name string) (File, error) {
 
 func (r *ReadOnlyUnrooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	if openflag.WriteOp(flag) {
-		return nil, fsutil.WrapPathErr("open", name, syscall.EROFS)
+		return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 	}
 	return NewReadOnlyFile(r.Open(name))
 }
@@ -198,15 +199,15 @@ func (r *ReadOnlyUnrooted) ReadLink(name string) (string, error) {
 }
 
 func (r *ReadOnlyUnrooted) Remove(name string) error {
-	return fsutil.WrapPathErr("remove", name, syscall.EROFS)
+	return fsutil.WrapPathErr("remove", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) RemoveAll(name string) error {
-	return fsutil.WrapPathErr("RemoveAll", name, syscall.EROFS)
+	return fsutil.WrapPathErr("RemoveAll", name, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Rename(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("rename", oldname, newname, errdef.EROFS)
 }
 
 func (r *ReadOnlyUnrooted) Stat(name string) (fs.FileInfo, error) {
@@ -214,7 +215,7 @@ func (r *ReadOnlyUnrooted) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (r *ReadOnlyUnrooted) Symlink(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.EROFS)
+	return fsutil.WrapLinkErr("symlink", oldname, newname, errdef.EROFS)
 }
 
 var _ File = (*ReadOnlyFile)(nil)

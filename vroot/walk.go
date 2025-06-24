@@ -20,11 +20,8 @@ type WalkOption struct {
 	ResolveSymlink bool
 }
 
-// fileIdent is combination of device number and inode of the file for unix systems.
-// VolumeSerialNumber and FileIndex for windows system.
-type fileIdent struct {
-	dev   uint64
-	inode uint64
+func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
+	return walkDir(fsys, root, opt, fn)
 }
 
 type walkState struct {
@@ -84,7 +81,7 @@ func (s *walkState) removeVisited(fsys Fs, virtualPath, realPath string, info fs
 	}
 }
 
-func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
+func walkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
 	state := &walkState{
 		symlinkResolveRemaining: 40, // following linux's recent max
 	}
@@ -97,7 +94,7 @@ func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
 	if err != nil {
 		err = fn(root, root, nil, err)
 	} else {
-		err = walkDir(fsys, root, root, info, state, opt, fn)
+		err = walkDir_(fsys, root, root, info, state, opt, fn)
 	}
 	if err == SkipDir || err == SkipAll {
 		return nil
@@ -105,7 +102,7 @@ func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
 	return err
 }
 
-func walkDir(
+func walkDir_(
 	fsys Fs,
 	path string,
 	realPath string,
@@ -126,6 +123,9 @@ func walkDir(
 			var numResolved int
 			realPath_, numResolved, err = fsutil.ResolveSymlink(fsys, realPath, state.symlinkResolveRemaining)
 			state.symlinkResolveRemaining -= numResolved
+			defer func() {
+				state.symlinkResolveRemaining += numResolved
+			}()
 		}
 		if err != nil {
 			return fn(path, realPath, info, err)
@@ -174,7 +174,7 @@ func walkDir(
 			}
 			return err
 		}
-		err = walkDir(fsys, childPath, childRealPath, info, state, opt, fn)
+		err = walkDir_(fsys, childPath, childRealPath, info, state, opt, fn)
 		if err != nil {
 			if err == SkipDir {
 				break

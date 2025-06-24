@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/clock"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
@@ -524,7 +525,7 @@ func (f *fsys) Remove(name string) error {
 	// Check if it's a non-empty directory
 	if dir, ok := elem.Value.(*dir); ok {
 		if dir.ordered.Len() > 0 {
-			return fsutil.WrapPathErr("remove", name, syscall.ENOTEMPTY)
+			return fsutil.WrapPathErr("remove", name, errdef.ENOTEMPTY)
 		}
 	}
 

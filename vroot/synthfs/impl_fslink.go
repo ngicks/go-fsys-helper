@@ -9,12 +9,13 @@ import (
 	"syscall"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
 )
 
 func readonlyFsysErr(op, name string) error {
-	return &fs.PathError{Op: op, Path: name, Err: syscall.EROFS}
+	return &fs.PathError{Op: op, Path: name, Err: errdef.EROFS}
 }
 
 var _ FileView = (*fsFileView)(nil)
@@ -42,14 +43,14 @@ func newFsFileView(fsys fs.FS, path string) (*fsFileView, error) {
 		return nil, &fs.PathError{Op: "NewFsLinkFileData", Path: path, Err: syscall.EISDIR}
 	}
 	if !s.Mode().IsRegular() {
-		return nil, &fs.PathError{Op: "NewFsLinkFileData", Path: path, Err: syscall.EBADF}
+		return nil, &fs.PathError{Op: "NewFsLinkFileData", Path: path, Err: errdef.EBADF}
 	}
 	return &fsFileView{fsys, path}, nil
 }
 
 func (b *fsFileView) Open(flag int) (vroot.File, error) {
 	if openflag.WriteOp(flag) {
-		return nil, syscall.EROFS
+		return nil, errdef.EROFS
 	}
 	f, err := b.fsys.Open(b.path)
 	if err != nil {
@@ -87,14 +88,14 @@ func newVrootFsFileView(fsys vroot.Fs, path string) (*vrootFsFileView, error) {
 		return nil, &fs.PathError{Op: "NewVrootFsFileView", Path: path, Err: syscall.EISDIR}
 	}
 	if !s.Mode().IsRegular() {
-		return nil, &fs.PathError{Op: "NewVrootFsFileView", Path: path, Err: syscall.EBADF}
+		return nil, &fs.PathError{Op: "NewVrootFsFileView", Path: path, Err: errdef.EBADF}
 	}
 	return &vrootFsFileView{fsys, path}, nil
 }
 
 func (v *vrootFsFileView) Open(flag int) (vroot.File, error) {
 	if openflag.WriteOp(flag) {
-		return nil, syscall.EROFS
+		return nil, errdef.EROFS
 	}
 	return v.fsys.Open(v.path)
 }

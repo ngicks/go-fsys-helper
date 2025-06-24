@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/clock"
 	"github.com/ngicks/go-fsys-helper/vroot/internal/openflag"
@@ -46,7 +47,7 @@ func (f *memFileHandle) Name() string {
 
 func (f *memFileHandle) Read(p []byte) (n int, err error) {
 	if !openflag.Readable(f.flag) {
-		return 0, fsutil.WrapPathErr("read", f.path, syscall.EBADF)
+		return 0, fsutil.WrapPathErr("read", f.path, errdef.EBADF)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -60,7 +61,7 @@ func (f *memFileHandle) Read(p []byte) (n int, err error) {
 
 func (f *memFileHandle) ReadAt(p []byte, off int64) (n int, err error) {
 	if !openflag.Readable(f.flag) {
-		return 0, fsutil.WrapPathErr("readat", f.path, syscall.EBADF)
+		return 0, fsutil.WrapPathErr("readat", f.path, errdef.EBADF)
 	}
 	n, err = f.file.ReadAt(p, off)
 	if err != nil && err != io.EOF {
@@ -115,7 +116,7 @@ func (f *memFileHandle) Sync() error {
 
 func (f *memFileHandle) Truncate(size int64) error {
 	if !openflag.Writable(f.flag) {
-		return fsutil.WrapPathErr("truncate", f.path, syscall.EBADF)
+		return fsutil.WrapPathErr("truncate", f.path, errdef.EBADF)
 	}
 	err := f.file.Truncate(size)
 	if err != nil {
@@ -126,7 +127,7 @@ func (f *memFileHandle) Truncate(size int64) error {
 
 func (f *memFileHandle) Write(p []byte) (n int, err error) {
 	if !openflag.Writable(f.flag) {
-		return 0, fsutil.WrapPathErr("write", f.path, syscall.EBADF)
+		return 0, fsutil.WrapPathErr("write", f.path, errdef.EBADF)
 	}
 
 	f.mu.Lock()
@@ -148,7 +149,7 @@ func (f *memFileHandle) WriteAt(p []byte, off int64) (n int, err error) {
 		return 0, fsutil.WrapPathErr("writeat", f.path, syscall.EINVAL)
 	}
 	if !openflag.Writable(f.flag) {
-		return 0, fsutil.WrapPathErr("writeat", f.path, syscall.EBADF)
+		return 0, fsutil.WrapPathErr("writeat", f.path, errdef.EBADF)
 	}
 	n, err = f.file.WriteAt(p, off)
 	if err != nil {

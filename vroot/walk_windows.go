@@ -5,6 +5,13 @@ import (
 	"syscall"
 )
 
+// fileIdent is combination of device number and inode of the file for unix systems.
+// VolumeSerialNumber and FileIndex for windows system.
+type fileIdent struct {
+	VolumeSerialNumber          uint32
+	FileIndexHigh, FileIndexLow uint32
+}
+
 func fileIdentFromSys(fsys Fs, virtualPath, _ string, _ fs.FileInfo) (fileIdent, bool) {
 	f, err := fsys.Open(virtualPath)
 	if err != nil {
@@ -23,7 +30,8 @@ func fileIdentFromSys(fsys Fs, virtualPath, _ string, _ fs.FileInfo) (fileIdent,
 		return fileIdent{}, false
 	}
 	return fileIdent{
-		dev:   uint64(info.VolumeSerialNumber),
-		inode: (uint64(info.FileIndexHigh) << 32) | uint64(info.FileIndexLow),
+		info.VolumeSerialNumber,
+		info.FileIndexHigh,
+		info.FileIndexLow,
 	}, true
 }

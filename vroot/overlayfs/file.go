@@ -10,6 +10,7 @@ import (
 
 	"github.com/ngicks/go-common/serr"
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -223,7 +224,7 @@ func (f *overlayFile) writeErr(op string) error {
 	}
 
 	if f.isDir {
-		return &fs.PathError{Op: op, Path: f.name, Err: syscall.EBADF}
+		return &fs.PathError{Op: op, Path: f.name, Err: errdef.EBADF}
 	}
 	return &fs.PathError{Op: op, Path: f.name, Err: syscall.EPERM}
 }
