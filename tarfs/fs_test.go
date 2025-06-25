@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"runtime"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -75,6 +76,12 @@ func compareStat(t *testing.T, expected, actual fs.FS, path string) (expectedSta
 		es := fs.FormatFileInfo(expectedStat)
 		as := fs.FormatFileInfo(actualStat)
 		if es != as {
+			// override mode for windows.
+			if runtime.GOOS == "windows" {
+				expectedStat = &modeMaskFileInfo{expectedStat}
+				actualStat = &modeMaskFileInfo{actualStat}
+			}
+
 			if expectedStat.IsDir() && actualStat.IsDir() {
 				// tar returns dir as size 0, while usual linux filesystem returns it as 4KiB.
 				expectedStat = &sizeMaskFileInfo{expectedStat}
@@ -118,6 +125,22 @@ type timeMaskFileInfo struct {
 
 func (t *timeMaskFileInfo) ModTime() time.Time {
 	return time.Time{} // Return zero time to mask timestamp differences
+}
+
+type modeMaskFileInfo struct {
+	fs.FileInfo
+}
+
+func (m *modeMaskFileInfo) Mode() fs.FileMode {
+	// mode is basically emulated on windows.
+	// Forget about detail.
+	// Just let it pass.
+	// For more detailed testing fs_link_test should be used (wait until go 1.25rc1).
+	mode := m.FileInfo.Mode()
+	if mode.IsDir() {
+		return (mode &^ fs.ModePerm) | (mode & 0o700) | 0o055
+	}
+	return (mode & 0o700) | 0o044
 }
 
 func compareContent(t *testing.T, expected, actual fs.FS, path string) {
