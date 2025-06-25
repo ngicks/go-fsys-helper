@@ -7,100 +7,100 @@ import (
 	"time"
 )
 
-// toValidPathFs converts input path to [fs.FS] compliant form.
-type toValidPathFs[Fsys Fs] struct {
+// toFsValidPathFs converts input path to [fs.FS] compliant form.
+type toFsValidPathFs[Fsys Fs] struct {
 	underlying Fsys
 }
 
-func (fsys *toValidPathFs[Fsys]) convertPath(p string) string {
+func (fsys *toFsValidPathFs[Fsys]) convertPath(p string) string {
 	p = filepath.ToSlash(filepath.Clean(p))
 	return strings.TrimPrefix(p, "./")
 }
 
 // Fs interface methods for toValidPathFs
 
-func (fsys *toValidPathFs[Fsys]) Chmod(name string, mode fs.FileMode) error {
+func (fsys *toFsValidPathFs[Fsys]) Chmod(name string, mode fs.FileMode) error {
 	return fsys.underlying.Chmod(fsys.convertPath(name), mode)
 }
 
-func (fsys *toValidPathFs[Fsys]) Chown(name string, uid int, gid int) error {
+func (fsys *toFsValidPathFs[Fsys]) Chown(name string, uid int, gid int) error {
 	return fsys.underlying.Chown(fsys.convertPath(name), uid, gid)
 }
 
-func (fsys *toValidPathFs[Fsys]) Chtimes(name string, atime time.Time, mtime time.Time) error {
+func (fsys *toFsValidPathFs[Fsys]) Chtimes(name string, atime time.Time, mtime time.Time) error {
 	return fsys.underlying.Chtimes(fsys.convertPath(name), atime, mtime)
 }
 
-func (fsys *toValidPathFs[Fsys]) Close() error {
+func (fsys *toFsValidPathFs[Fsys]) Close() error {
 	return fsys.underlying.Close()
 }
 
-func (fsys *toValidPathFs[Fsys]) Create(name string) (File, error) {
+func (fsys *toFsValidPathFs[Fsys]) Create(name string) (File, error) {
 	return fsys.underlying.Create(fsys.convertPath(name))
 }
 
-func (fsys *toValidPathFs[Fsys]) Lchown(name string, uid int, gid int) error {
+func (fsys *toFsValidPathFs[Fsys]) Lchown(name string, uid int, gid int) error {
 	return fsys.underlying.Lchown(fsys.convertPath(name), uid, gid)
 }
 
-func (fsys *toValidPathFs[Fsys]) Link(oldname string, newname string) error {
+func (fsys *toFsValidPathFs[Fsys]) Link(oldname string, newname string) error {
 	return fsys.underlying.Link(fsys.convertPath(oldname), fsys.convertPath(newname))
 }
 
-func (fsys *toValidPathFs[Fsys]) Lstat(name string) (fs.FileInfo, error) {
+func (fsys *toFsValidPathFs[Fsys]) Lstat(name string) (fs.FileInfo, error) {
 	return fsys.underlying.Lstat(fsys.convertPath(name))
 }
 
-func (fsys *toValidPathFs[Fsys]) Mkdir(name string, perm fs.FileMode) error {
+func (fsys *toFsValidPathFs[Fsys]) Mkdir(name string, perm fs.FileMode) error {
 	return fsys.underlying.Mkdir(fsys.convertPath(name), perm)
 }
 
-func (fsys *toValidPathFs[Fsys]) MkdirAll(name string, perm fs.FileMode) error {
+func (fsys *toFsValidPathFs[Fsys]) MkdirAll(name string, perm fs.FileMode) error {
 	return fsys.underlying.MkdirAll(fsys.convertPath(name), perm)
 }
 
-func (fsys *toValidPathFs[Fsys]) Name() string {
+func (fsys *toFsValidPathFs[Fsys]) Name() string {
 	return fsys.underlying.Name()
 }
 
-func (fsys *toValidPathFs[Fsys]) Open(name string) (File, error) {
+func (fsys *toFsValidPathFs[Fsys]) Open(name string) (File, error) {
 	return fsys.underlying.Open(fsys.convertPath(name))
 }
 
-func (fsys *toValidPathFs[Fsys]) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
+func (fsys *toFsValidPathFs[Fsys]) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	return fsys.underlying.OpenFile(fsys.convertPath(name), flag, perm)
 }
 
-func (fsys *toValidPathFs[Fsys]) OpenRoot(name string) (Rooted, error) {
+func (fsys *toFsValidPathFs[Fsys]) OpenRoot(name string) (Rooted, error) {
 	return fsys.underlying.OpenRoot(fsys.convertPath(name))
 }
 
-func (fsys *toValidPathFs[Fsys]) ReadLink(name string) (string, error) {
+func (fsys *toFsValidPathFs[Fsys]) ReadLink(name string) (string, error) {
 	return fsys.underlying.ReadLink(fsys.convertPath(name))
 }
 
-func (fsys *toValidPathFs[Fsys]) Remove(name string) error {
+func (fsys *toFsValidPathFs[Fsys]) Remove(name string) error {
 	return fsys.underlying.Remove(fsys.convertPath(name))
 }
 
-func (fsys *toValidPathFs[Fsys]) RemoveAll(name string) error {
+func (fsys *toFsValidPathFs[Fsys]) RemoveAll(name string) error {
 	return fsys.underlying.RemoveAll(fsys.convertPath(name))
 }
 
-func (fsys *toValidPathFs[Fsys]) Rename(oldname string, newname string) error {
+func (fsys *toFsValidPathFs[Fsys]) Rename(oldname string, newname string) error {
 	return fsys.underlying.Rename(fsys.convertPath(oldname), fsys.convertPath(newname))
 }
 
-func (fsys *toValidPathFs[Fsys]) Stat(name string) (fs.FileInfo, error) {
+func (fsys *toFsValidPathFs[Fsys]) Stat(name string) (fs.FileInfo, error) {
 	return fsys.underlying.Stat(fsys.convertPath(name))
 }
 
-func (fsys *toValidPathFs[Fsys]) Symlink(oldname string, newname string) error {
+func (fsys *toFsValidPathFs[Fsys]) Symlink(oldname string, newname string) error {
 	return fsys.underlying.Symlink(oldname, fsys.convertPath(newname))
 }
 
 type toValidPathFsRooted[Fsys Rooted] struct {
-	*toValidPathFs[Fsys]
+	*toFsValidPathFs[Fsys]
 }
 
 func (fsys *toValidPathFsRooted[Fsys]) Rooted() {}
@@ -110,11 +110,11 @@ func (fsys *toValidPathFsRooted[Fsys]) OpenRoot(name string) (Rooted, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &toValidPathFsRooted[Rooted]{&toValidPathFs[Rooted]{underlying: rooted}}, nil
+	return &toValidPathFsRooted[Rooted]{&toFsValidPathFs[Rooted]{underlying: rooted}}, nil
 }
 
 type toValidPathFsUnrooted[Fsys Unrooted] struct {
-	*toValidPathFs[Fsys]
+	*toFsValidPathFs[Fsys]
 }
 
 func (fsys *toValidPathFsUnrooted[Fsys]) Unrooted() {}
@@ -124,7 +124,7 @@ func (fsys *toValidPathFsUnrooted[Fsys]) OpenUnrooted(name string) (Unrooted, er
 	if err != nil {
 		return nil, err
 	}
-	return &toValidPathFsUnrooted[Unrooted]{&toValidPathFs[Unrooted]{underlying: unrooted}}, nil
+	return &toValidPathFsUnrooted[Unrooted]{&toFsValidPathFs[Unrooted]{underlying: unrooted}}, nil
 }
 
 func (fsys *toValidPathFsUnrooted[Fsys]) OpenRoot(name string) (Rooted, error) {
@@ -132,7 +132,7 @@ func (fsys *toValidPathFsUnrooted[Fsys]) OpenRoot(name string) (Rooted, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &toValidPathFsRooted[Rooted]{&toValidPathFs[Rooted]{underlying: rooted}}, nil
+	return &toValidPathFsRooted[Rooted]{&toFsValidPathFs[Rooted]{underlying: rooted}}, nil
 }
 
 // toOsPathFs converts fs.ValidPath to platform-specific format.
@@ -265,22 +265,22 @@ func (fsys *toOsPathFsUnrooted[Fsys]) OpenRoot(name string) (Rooted, error) {
 
 // Constructor functions
 
-// ToValidPath creates a filesystem wrapper that converts platform-specific paths
-// to fs.ValidPath compatible format (forward slash separated) before operations.
-func ToValidPath[Fsys Fs](fsys Fsys) Fs {
-	return &toValidPathFs[Fsys]{underlying: fsys}
+// ToFsValidPath creates a filesystem wrapper that converts platform-specific paths
+// to [fs.ValidPath] compatible format (forward slash separated) before operations.
+func ToFsValidPath[Fsys Fs](fsys Fsys) Fs {
+	return &toFsValidPathFs[Fsys]{underlying: fsys}
 }
 
-// ToValidPathRooted creates a Rooted filesystem wrapper that converts platform-specific paths
-// to fs.ValidPath compatible format before operations.
-func ToValidPathRooted[Fsys Rooted](fsys Fsys) Rooted {
-	return &toValidPathFsRooted[Fsys]{&toValidPathFs[Fsys]{underlying: fsys}}
+// ToFsValidPathRooted creates a Rooted filesystem wrapper that converts platform-specific paths
+// to [fs.ValidPath] compatible format before operations.
+func ToFsValidPathRooted[Fsys Rooted](fsys Fsys) Rooted {
+	return &toValidPathFsRooted[Fsys]{&toFsValidPathFs[Fsys]{underlying: fsys}}
 }
 
-// ToValidPathUnrooted creates an Unrooted filesystem wrapper that converts platform-specific paths
-// to fs.ValidPath compatible format before operations.
-func ToValidPathUnrooted[Fsys Unrooted](fsys Fsys) Unrooted {
-	return &toValidPathFsUnrooted[Fsys]{&toValidPathFs[Fsys]{underlying: fsys}}
+// ToFsValidPathUnrooted creates an Unrooted filesystem wrapper that converts platform-specific paths
+// to [fs.ValidPath] compatible format before operations.
+func ToFsValidPathUnrooted[Fsys Unrooted](fsys Fsys) Unrooted {
+	return &toValidPathFsUnrooted[Fsys]{&toFsValidPathFs[Fsys]{underlying: fsys}}
 }
 
 // ToOsPath creates a filesystem wrapper that converts fs.ValidPath format paths
@@ -303,7 +303,7 @@ func ToOsPathUnrooted[Fsys Unrooted](fsys Fsys) Unrooted {
 
 // Verify interface compliance
 var (
-	_ Fs       = (*toValidPathFs[Fs])(nil)
+	_ Fs       = (*toFsValidPathFs[Fs])(nil)
 	_ Rooted   = (*toValidPathFsRooted[Rooted])(nil)
 	_ Unrooted = (*toValidPathFsUnrooted[Unrooted])(nil)
 	_ Fs       = (*toOsPathFs[Fs])(nil)
