@@ -92,6 +92,10 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
 
 - Close every opened thing right after becoming unsed.
 
+## Dependency Management
+
+- Run `go mod tidy` after calling `go get` or removing dependency entries entirely from the module.
+
 ## After you think you are done
 
 - Run test for an entire module to check implementation is ok.
@@ -99,3 +103,11 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
 - Run `go vet ./...` to check for static analysis issues and type checking problems
 - If test fails and it is by the code you've made, fix the code
 - If failure is happening from user-written code, alert user about that and receive further instruction.
+
+## Runtime and System Interaction
+
+- Never use `runtime.GOROOT`. Instead, call `go env GOROOT` via `exec.CommandContext`
+
+## Error Handling
+
+- Never use `os.IsNotExist` or similar functions. Instead, use `errors.Is(err, fs.ErrorNotExist)` or with similar fs errors.
