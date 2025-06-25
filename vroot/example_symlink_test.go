@@ -1,4 +1,4 @@
-package overlayfs_test
+package vroot_test
 
 import (
 	"fmt"
@@ -52,7 +52,9 @@ func tree(fsys vroot.Fs) error {
 	)
 }
 
-func Example_overlay_symlink() {
+// Example_overlay_symlink_behavior demostrates complex symlink
+// resolution behavior.
+func Example_overlay_symlink_behavior() {
 	tempDir := must2(os.MkdirTemp("", ""))
 
 	for i := range 4 {

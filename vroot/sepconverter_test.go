@@ -13,7 +13,7 @@ import (
 func TestSepConverter(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeFsys(tempDir, true, true)
+	acceptancetest.MakeOsFsys(tempDir, true, true)
 
 	t.Run("acceptancetest", func(t *testing.T) {
 		r, err := osfs.NewRooted(filepath.Join(tempDir, "root", "writable"))

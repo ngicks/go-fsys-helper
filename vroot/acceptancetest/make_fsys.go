@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
 var RootFsysDirections = []LineDirection{}
@@ -18,6 +20,8 @@ func init() {
 	}
 }
 
+// RootFsysReadableFiles is a list of paths that should exist under "root/readable".
+// All paths are "root/readable" prefix trimmed.
 var RootFsysReadableFiles []string
 
 func init() {
@@ -34,7 +38,7 @@ func init() {
 	}
 }
 
-func MakeFsys(tempDir string, readable, writable bool) {
+func MakeOsFsys(tempDir string, readable, writable bool) {
 	for _, txt := range RootFsys {
 		if !readable && strings.HasPrefix(txt, "root/readable") {
 			continue
@@ -43,7 +47,7 @@ func MakeFsys(tempDir string, readable, writable bool) {
 			continue
 		}
 
-		if err := ExecuteLine(tempDir, txt); err != nil {
+		if err := ExecuteLineOs(tempDir, txt); err != nil {
 			panic(err)
 		}
 	}
@@ -51,7 +55,7 @@ func MakeFsys(tempDir string, readable, writable bool) {
 
 func ExecuteLines(baseDir string, lines ...string) error {
 	for _, line := range lines {
-		err := ExecuteLine(baseDir, line)
+		err := ExecuteLineOs(baseDir, line)
 		if err != nil {
 			return err
 		}
@@ -59,12 +63,12 @@ func ExecuteLines(baseDir string, lines ...string) error {
 	return nil
 }
 
-func ExecuteLine(baseDir, txt string) error {
+func ExecuteLineOs(baseDir, txt string) error {
 	l := ParseLine(txt)
 	if l.LineKind == "" {
 		return fmt.Errorf("unknown line %q", txt)
 	}
-	return l.Execute(baseDir)
+	return l.ExecuteOs(baseDir)
 }
 
 type LineKind string
@@ -111,7 +115,7 @@ func ParseLine(txt string) LineDirection {
 	return LineDirection{}
 }
 
-func (l LineDirection) Execute(baseDir string) error {
+func (l LineDirection) ExecuteOs(baseDir string) error {
 	baseDir = filepath.FromSlash(filepath.Clean(baseDir))
 	switch l.LineKind {
 	default:
@@ -128,8 +132,21 @@ func (l LineDirection) Execute(baseDir string) error {
 	}
 }
 
-func (l LineDirection) MustExecute(baseDir string) {
-	err := l.Execute(baseDir)
+func (l LineDirection) Execute(fsys vroot.Fs) error {
+	switch l.LineKind {
+	default:
+		return nil
+	case LineKindMkdir:
+		return fsys.MkdirAll(filepath.FromSlash(l.Path), fs.ModePerm)
+	case LineKindWriteFile:
+		return vroot.WriteFile(fsys, filepath.FromSlash(l.Path), l.Content, fs.ModePerm)
+	case LineKindSymlink:
+		return fsys.Symlink(filepath.FromSlash(l.TargetPath), filepath.FromSlash(l.Path))
+	}
+}
+
+func (l LineDirection) MustExecuteOs(baseDir string) {
+	err := l.ExecuteOs(baseDir)
 	if err != nil {
 		panic(err)
 	}
@@ -143,4 +160,14 @@ func FilterLineDirection(fn func(l LineDirection) bool, seq iter.Seq[LineDirecti
 			}
 		}
 	}
+}
+
+func ExecuteAllLineDirection(fsys vroot.Fs, seq iter.Seq[LineDirection]) error {
+	for d := range seq {
+		err := d.Execute(fsys)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

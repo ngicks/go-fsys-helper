@@ -10,7 +10,7 @@ import (
 func TestRooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeFsys(tempDir, false, true)
+	acceptancetest.MakeOsFsys(tempDir, false, true)
 	r, err := NewRooted(filepath.Join(tempDir, "root", "writable"))
 	if err != nil {
 		panic(err)

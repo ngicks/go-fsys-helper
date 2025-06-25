@@ -51,7 +51,7 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 				},
 				slices.Values(acceptancetest.RootFsysDirections),
 			) {
-				d.MustExecute(dir)
+				d.MustExecuteOs(dir)
 			}
 			err := os.RemoveAll(filepath.Join(dir, filepath.FromSlash("root/readable/subdir")))
 			if err != nil {
@@ -68,7 +68,7 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 				},
 				slices.Values(acceptancetest.RootFsysDirections),
 			) {
-				d.MustExecute(dir)
+				d.MustExecuteOs(dir)
 			}
 			err := os.RemoveAll(filepath.Join(dir, filepath.FromSlash("root/readable/subdir")))
 			if err != nil {
@@ -85,7 +85,7 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 				},
 				slices.Values(acceptancetest.RootFsysDirections),
 			) {
-				d.MustExecute(dir)
+				d.MustExecuteOs(dir)
 			}
 			err := os.RemoveAll(filepath.Join(dir, filepath.FromSlash("root/readable/subdir/double_nested/")))
 			if err != nil {
@@ -102,10 +102,10 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 				},
 				slices.Values(acceptancetest.RootFsysDirections),
 			) {
-				d.MustExecute(dir)
+				d.MustExecuteOs(dir)
 			}
 			// for this layer, place also writable side.
-			acceptancetest.MakeFsys(dir, true, true)
+			acceptancetest.MakeOsFsys(dir, true, true)
 		}
 		var rootedFs vroot.Rooted
 		if i == 0 {

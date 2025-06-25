@@ -1,8 +1,9 @@
 # go-fsys-helper
 
-A collection of go modules that implement useful functions around fs.FS, io.Reader/Writer, ~~afero.Fs~~ and etc
+A collection of go modules that implement useful functions around fs.FS, io.Reader/Writer, ~~afero.Fs~~(I'm moving away from `afero`) and etc
 
-All modules do not support `GOOS=plan9`.
+All modules should compile on every platform except GOOS=ios and GOOS=android.
+But only tested for `linux/amd64`, `linux/arch64`, `darwin/amd64`, `darwin/arch64` and `windows/amd64` (see ./.github).
 
 ## vroot
 

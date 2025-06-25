@@ -13,7 +13,7 @@ import (
 func TestToIoFsRooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeFsys(tempDir, true, false)
+	acceptancetest.MakeOsFsys(tempDir, true, false)
 	r, err := osfs.NewRooted(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
@@ -26,7 +26,7 @@ func TestToIoFsRooted(t *testing.T) {
 func TestToIoFsUnrooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeFsys(tempDir, true, false)
+	acceptancetest.MakeOsFsys(tempDir, true, false)
 	r, err := osfs.NewUnrooted(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)

@@ -95,7 +95,7 @@ func assertPathSeen(t *testing.T, expected, actual []pathSeen) {
 func TestWalk_Unrooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeFsys(tempDir, true, false)
+	acceptancetest.MakeOsFsys(tempDir, true, false)
 	r, err := osfs.NewUnrooted(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
@@ -181,7 +181,7 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 func TestWalk_Rooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeFsys(tempDir, true, false)
+	acceptancetest.MakeOsFsys(tempDir, true, false)
 	r, err := osfs.NewRooted(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)

@@ -16,16 +16,7 @@ The `vroot` package provides a filesystem abstraction layer that builds upon Go'
 
 ## 📋 Table of Contents
 
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Core Concepts](#core-concepts)
-- [Security Models](#security-models)
-- [Implementation Types](#implementation-types)
-- [Overlay Filesystem](#overlay-filesystem)
-- [API Reference](#api-reference)
-- [Examples](#examples)
-- [Security Considerations](#security-considerations)
-- [Testing](#testing)
+// Update here
 
 ## 📦 Installation
 
@@ -99,6 +90,10 @@ readOnlyFs := vroot.ReadOnlyRooted(rootedFs)
 _, err := readOnlyFs.Create("readonly.txt") // Error: read-only file system
 ```
 
+### Covert to/from fs.FS
+
+// Update here
+
 ## 🧠 Core Concepts
 
 ### Interfaces
@@ -121,6 +116,8 @@ type Fs interface {
     // ... and more
 }
 ```
+
+One important change: `ReadLink` instead of `Readlink`. This is changed to align with `fs.ReadLinkFS`.
 
 #### `Rooted` Interface
 
@@ -346,227 +343,6 @@ file, err := overlayFs.Open("config.yaml")
 err = overlayFs.Remove("system-file.txt") // Creates whiteout entry
 ```
 
-## 📖 API Reference
-
-### Core Operations
-
-```go
-// File operations
-file, err := fs.Create("newfile.txt")
-file, err := fs.Open("existing.txt")
-file, err := fs.OpenFile("file.txt", os.O_RDWR, 0644)
-
-// Directory operations
-err := fs.Mkdir("newdir", 0755)
-err := fs.Remove("file-or-dir")
-entries, err := fs.ReadDir("directory")
-
-// Metadata operations
-info, err := fs.Stat("file.txt")      // Follow symlinks
-info, err := fs.Lstat("symlink.txt")  // Don't follow symlinks
-err := fs.Chmod("file.txt", 0644)
-err := fs.Chtimes("file.txt", atime, mtime)
-
-// Symlink operations
-err := fs.Symlink("target", "linkname")
-target, err := fs.Readlink("symlink")
-```
-
-### File Interface
-
-```go
-// Reading and writing
-n, err := file.Read(buffer)
-n, err := file.Write(data)
-n, err := file.ReadAt(buffer, offset)
-n, err := file.WriteAt(data, offset)
-
-// Navigation and metadata
-offset, err := file.Seek(0, io.SeekStart)
-info, err := file.Stat()
-entries, err := file.ReadDir(-1) // For directories
-
-// Resource management
-err := file.Close()
-```
-
-## 💡 Examples
-
-### Web Server with Virtual Root
-
-```go
-func setupWebServer() http.Handler {
-    // Create virtual root for document serving
-    docRoot, err := osfs.NewRooted("/var/www/html")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // Serve files from virtual root - path traversal naturally contained
-        file, err := docRoot.Open(r.URL.Path)
-        if err != nil {
-            http.NotFound(w, r)
-            return
-        }
-        defer file.Close()
-
-        // Serve file...
-    })
-}
-```
-
-### Build Environment with Different Roots
-
-```go
-func createBuildEnvironment(srcPath, outputPath string) error {
-    // Source code with relaxed containment (follows external symlinks)
-    src, err := osfs.NewUnrooted(srcPath)
-    if err != nil {
-        return err
-    }
-
-    // Output directory with strict containment
-    output, err := osfs.NewRooted(outputPath)
-    if err != nil {
-        return err
-    }
-
-    // Build process operates within defined roots
-    return runBuild(src, output)
-}
-```
-
-### Development Overlay
-
-```go
-func setupDevEnvironment() (vroot.Rooted, error) {
-    // System base layer (read-only)
-    systemLayer, err := osfs.NewRooted("/usr/share/myapp")
-    if err != nil {
-        return nil, err
-    }
-
-    // User modifications layer (writable)
-    userLayer, err := osfs.NewRooted("/home/user/.myapp")
-    if err != nil {
-        return nil, err
-    }
-
-    // Create overlay for development
-    return overlayfs.New(
-        userLayer,
-        overlayfs.NewLayers(vroot.ReadOnlyRooted(systemLayer)),
-        overlayfs.NewMetadataStoreSimpleText(),
-        overlayfs.CopyPolicy{},
-    )
-}
-```
-
-### In-Memory Testing
-
-```go
-import "github.com/ngicks/go-fsys-helper/vroot/memfs"
-
-func TestFileProcessor(t *testing.T) {
-    // Create isolated in-memory filesystem for test
-    fs := memfs.NewRooted()
-
-    // Setup test data
-    err := fs.Mkdir("input", 0755)
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    // Create test file
-    file, err := fs.Create("input/data.txt")
-    if err != nil {
-        t.Fatal(err)
-    }
-    file.Write([]byte("test data"))
-    file.Close()
-
-    // Run processor with in-memory filesystem
-    err = processFiles(fs)
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    // Verify output
-    output, err := fs.ReadFile("output/result.txt")
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    // Assert results without any disk I/O
-    if string(output) != expectedResult {
-        t.Errorf("got %q, want %q", output, expectedResult)
-    }
-}
-```
-
-### Synthetic Filesystem with Mixed Sources
-
-```go
-import (
-    "embed"
-    "github.com/ngicks/go-fsys-helper/vroot/synthfs"
-)
-
-//go:embed static/*
-var staticFiles embed.FS
-
-func createHybridFilesystem() vroot.Rooted {
-    // Create filesystem that uses memory for new files
-    allocator := synthfs.NewMemFileAllocator(clock.RealWallClock())
-    fs := synthfs.NewRooted("hybrid://", allocator, synthfs.Option{})
-
-    // Future: Add static files from embedded filesystem
-    // When AddFile is implemented, you could do:
-    // staticView, _ := synthfs.NewFsFileView(staticFiles, "static/template.html")
-    // fs.AddFile("templates/default.html", staticView)
-
-    // Future: Add views from other sources
-    // dbView := NewDatabaseFileView(db, "config_table")
-    // fs.AddFile("config/settings.json", dbView)
-
-    // New files created with Create() will use memory allocator
-    // Static files remain read-only from their original source
-    // Database-backed files could be read-write through custom FileView
-
-    return fs
-}
-```
-
-## 📝 Implementation Notes
-
-### Path Handling
-
-- All implementations validate paths using `filepath.IsLocal()`
-- `../` sequences are handled according to the containment model
-- Absolute paths are resolved relative to the virtual root
-
-### Symlink Behavior
-
-- **Rooted**: Symlinks are resolved and must stay within the root
-- **Unrooted**: Symlinks can point outside the root but path traversal is still prevented
-- Loop detection prevents infinite symlink cycles (max 40 iterations)
-
-### Platform Differences
-
-Some implementation details vary by platform:
-
-- `osfs.Rooted` uses `*os.Root` where available (Unix-like systems)
-- `osfs.Unrooted` uses custom path validation on all platforms
-- `FromIoFsRooted` provides compatibility with `io/fs` interfaces
-- js/wasm platform has limited `*os.Root` support
-
-### Error Handling
-
-- `ErrPathEscapes`: Returned when paths escape the virtual root
-- Standard `fs.ErrNotExist`, `fs.ErrPermission` for compatibility
-- Error messages follow Go conventions for path operations
-
 ## 🧪 Testing
 
 The package includes comprehensive acceptance tests in the `acceptancetest/` directory:
@@ -582,40 +358,63 @@ go test ./synthfs/
 go test ./memfs/
 ```
 
-### Test Structure
+### Test Your Imlementation
 
+```go
+package osfs
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
+)
+
+func TestRooted(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Logf("temp dir = %s", tempDir)
+    // For os-backed fsys
+	acceptancetest.MakeOsFsys(tempDir, false, true)
+    // For readonly testing
+    {
+	    r, err := NewRooted(filepath.Join(tempDir, "root", "readable"))
+	    if err != nil {
+		    panic(err)
+	    }
+	    defer r.Close()
+	    acceptancetest.RootedReadOnly(t, r)
+    }
+    // For read-write testing
+    {
+	    r, err := NewRooted(filepath.Join(tempDir, "root", "writable"))
+	    if err != nil {
+		    panic(err)
+	    }
+	    defer r.Close()
+	    acceptancetest.RootedReadWrite(t, r)
+    }
+    // For more stricter reader-side, use fstest.TestFS
+    {
+        r, err := NewRooted(filepath.Join(tempDir, "root", "readable"))
+	    if err != nil {
+		    panic(err)
+	    }
+	    defer r.Close()
+	    fsys := vroot.ToIoFsRooted(r)
+	    fstest.TestFS(fsys, acceptancetest.RootFsysReadableFiles...)
+    }
+
+    // Use Unrooted* equivalent to test Unrooted imlementations.
+}
 ```
-outside/                  # Files outside root (should be inaccessible)
-root/
-├── readable/            # Read-only test files
-│   ├── file1.txt
-│   └── subdir/
-└── writable/           # Read-write test files
-    ├── file2.txt
-    └── newdir/
-```
-
-Tests cover:
-
-- Path escape prevention
-- Symlink resolution and security
-- File and directory operations
-- Error conditions and edge cases
-- Cross-platform compatibility
 
 ## 🤝 Contributing
 
 Contributions are welcome! Please ensure:
 
-1. All tests pass: `go test ./...`
-2. Security model is maintained
-3. Cross-platform compatibility
-4. Comprehensive test coverage for new features
+1. Sign all commits.
+1. All tests pass: `go test ./...` and with -race flag `go test -race ./...`
 
-## 📄 License
+Currently nothing has timing related tests(except for `fstest.TestFS`) but maybe I'll add ones later
 
-This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
-
----
-
-**Note**: This package provides a consistent abstraction over filesystem roots, building upon Go's `*os.Root` concept. Choose the containment model (`Rooted` vs `Unrooted`) that best fits your use case.
+(Maybe I'll expand this section later...)

@@ -20,21 +20,11 @@ func must1(err error) {
 
 func prep(fsys vroot.Fs) {
 	// Create all content under root/, not just writable
-	for l := range acceptancetest.FilterLineDirection(
-		func(l acceptancetest.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
-		slices.Values(acceptancetest.RootFsysDirections),
-	) {
-		switch l.LineKind {
-		default:
-			continue
-		case acceptancetest.LineKindMkdir:
-			must1(fsys.MkdirAll(filepath.FromSlash(l.Path), fs.ModePerm))
-		case acceptancetest.LineKindWriteFile:
-			must1(vroot.WriteFile(fsys, filepath.FromSlash(l.Path), l.Content, fs.ModePerm))
-		case acceptancetest.LineKindSymlink:
-			must1(fsys.Symlink(filepath.FromSlash(l.TargetPath), filepath.FromSlash(l.Path)))
-		}
-	}
+	must1(
+		acceptancetest.ExecuteAllLineDirection(fsys, acceptancetest.FilterLineDirection(
+			func(l acceptancetest.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
+			slices.Values(acceptancetest.RootFsysDirections),
+		)))
 }
 
 func TestRooted(t *testing.T) {

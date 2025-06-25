@@ -9,6 +9,7 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
 
+// Example_basic_usage demonstrates basic usage of osfs.
 func Example_basic_usage() {
 	tempDir, err := os.MkdirTemp("", "")
 	if err != nil {
@@ -45,7 +46,11 @@ func Example_basic_usage() {
 	}
 
 	_ = file.Close()
-	bin, err := root.ReadFile("example.txt")
+
+	// vroo.ReadFile is equivalent of fs.ReadFile
+	// *osfs.Rooted transparently implents ReadFile,
+	// *os.Root.ReadFile does exactly same optimization as os.ReadFile does
+	bin, err := vroot.ReadFile(root, "example.txt")
 	if err != nil {
 		panic(err)
 	}
