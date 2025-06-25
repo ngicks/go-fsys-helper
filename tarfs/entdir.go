@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -162,8 +161,6 @@ func (d *dir) openChildResolve(name string, skipLastComponent bool, fsys *Fs) (d
 				if strings.HasPrefix(target, "/") {
 					return nil, pathErr("open", name, fsutil.ErrPathEscapes)
 				}
-
-				target = path.Clean(target)
 
 				rest = target + "/" + rest
 

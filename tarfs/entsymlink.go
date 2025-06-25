@@ -2,6 +2,7 @@ package tarfs
 
 import (
 	"io"
+	"path"
 )
 
 type symlink struct {
@@ -18,5 +19,5 @@ func (s *symlink) open(r io.ReaderAt, path string) openDirentry {
 }
 
 func (s *symlink) readLink() (string, error) {
-	return s.h.h.Linkname, nil
+	return path.Clean(s.h.h.Linkname), nil
 }
