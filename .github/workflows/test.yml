@@ -168,7 +168,7 @@ jobs:
           go mod verify         
           # Run tests as recommended in CLAUDE.md
           echo "Running tests with 5min timeout"
-          go test -v -timeout 5m ./...
+          go test -timeout 5m ./...
           # Run tests with race detection as recommended in CLAUDE.md
           if [ "${{ runner.os }}" = "Linux" ] && [ "${{ matrix.arch }}" = "linux/arm64" ]; then
             # ARM64 on Linux with emulation - skip race tests due to "go: -race requires cgo" error
