@@ -57,7 +57,7 @@ func Test_iterHeaders_makeReader(t *testing.T) {
 		}
 
 		t.Run(filepath.Base(name), func(t *testing.T) {
-			read, err := collectContents(name)
+			read, err := collectContents(t, name)
 			if err != nil {
 				panic(err)
 			}
@@ -127,13 +127,17 @@ func tryOpeningTar(t *testing.T, name string) error {
 	return nil
 }
 
-func collectContents(name string) (map[string][]byte, error) {
+func collectContents(t *testing.T, name string) (map[string][]byte, error) {
+	t.Logf("opening %q", name)
 	f, err := os.Open(name)
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
-	s, _ := f.Stat()
+	s, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
 	// use section reader for easier offset checking
 	sr := io.NewSectionReader(f, 0, s.Size())
 	ret := make(map[string][]byte)
@@ -146,6 +150,7 @@ func collectContents(name string) (map[string][]byte, error) {
 			}
 			return ret, err
 		}
+		t.Logf("    entry = %q", h.Name)
 
 		bin, err := io.ReadAll(tr)
 		if err != nil {
