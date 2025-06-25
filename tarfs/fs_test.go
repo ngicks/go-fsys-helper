@@ -148,6 +148,10 @@ func compareContent(t *testing.T, expected, actual fs.FS, path string) {
 	if err != nil {
 		panic(err)
 	}
+	if runtime.GOOS == "windows" {
+		// file is cursed with "\r\n"
+		binExpected = bytes.ReplaceAll(binExpected, []byte("\r\n"), []byte("\n"))
+	}
 	binActual, err := fs.ReadFile(actual, path)
 	if err != nil {
 		panic(err)
