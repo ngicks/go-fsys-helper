@@ -35,7 +35,7 @@ func isKnownTypeflag(b byte) bool {
 	return slices.Contains(knownTypeflags, b)
 }
 
-// collects files under $(go${VERSION_DESCRIBED_IN_go.mod} env GOROOT)/src/archive/tar/testdata
+// collects files under $(go env GOROOT)/src/archive/tar/testdata
 // reads all files' content through [tar.Reader.Read], then compares what readers made by collectHeaders and makeReader read.
 func Test_iterHeaders_makeReader(t *testing.T) {
 	names, err := testTars()
