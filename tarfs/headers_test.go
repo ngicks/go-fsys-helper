@@ -43,6 +43,8 @@ func Test_iterHeaders_makeReader(t *testing.T) {
 		panic(err)
 	}
 
+	t.Logf("names = %#v", names)
+
 	for _, name := range names {
 		// Some of them takes too long time.
 		// skip them.
