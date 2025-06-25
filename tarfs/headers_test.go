@@ -46,12 +46,13 @@ func Test_iterHeaders_makeReader(t *testing.T) {
 	for _, name := range names {
 		// Some of them takes too long time.
 		// skip them.
-		if err := tryOpeningTar(name); err != nil {
-			t.Logf("skipped %q: was unable to open with std archive/tar: %v", filepath.Base(name), err)
-			continue
-		}
 		if slices.Contains([]string{"gnu-sparse-big.tar", "pax-sparse-big.tar"}, filepath.Base(name)) {
 			t.Logf("skipped %q: too long", filepath.Base(name))
+			continue
+		}
+
+		if err := tryOpeningTar(t, name); err != nil {
+			t.Logf("skipped %q: was unable to open with std archive/tar: %v", filepath.Base(name), err)
 			continue
 		}
 
@@ -105,21 +106,23 @@ header = %#v
 	}
 }
 
-func tryOpeningTar(name string) error {
+func tryOpeningTar(t *testing.T, name string) error {
 	f, err := os.Open(name)
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
+	t.Logf("reading = %q", name)
 	tr := tar.NewReader(f)
 	for i := 0; ; i++ {
-		_, err := tr.Next()
+		h, err := tr.Next()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return fmt.Errorf("*tar.Reader.Next at index %d: %w", i, err)
 		}
+		t.Logf("    entry = %q", h.Name)
 	}
 	return nil
 }
