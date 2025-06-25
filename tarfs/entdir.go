@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 )
 
 type dir struct {
@@ -151,7 +152,7 @@ func (d *dir) openChildResolve(name string, skipLastComponent bool, fsys *Fs) (d
 			// Need to potentially resolve symlinks
 			if symlink, ok := currentDirent.(*symlink); ok {
 				if currentResolved >= maxSymlinkResolution {
-					return nil, pathErr("open", name, syscall.ELOOP)
+					return nil, pathErr("open", name, errdef.ELOOP)
 				}
 				currentResolved++
 
