@@ -8,9 +8,20 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"time"
+	_ "time/tzdata"
 
 	"github.com/ngicks/go-fsys-helper/tarfs"
 )
+
+func must[V any](v V, err error) V {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+var asiaTokyo = must(time.LoadLocation("Asia/Tokyo"))
 
 var treeTarGzBase64 = `H4sIAAAAAAAAA+2YTW7DIBBGWecUPoENZAbOg622yyg/VquevkNRlLRSf1gMScT3Nkg2EkjPD1mM` +
 	`k1HHCpE5jy6yvR7PGEcxeLcN7OS5s+y9GVh/a8asx1M6DIN5Taf08vTzvL/ePyjjNM+z8jdQ5Z+9` +
@@ -86,7 +97,7 @@ func Example_simple_usage() {
 			}
 		}
 
-		fmt.Printf("%q: %v", path, s)
+		fmt.Printf("%q: %s %d %s", path, s.Mode(), s.Size(), s.ModTime().In(asiaTokyo))
 		if !s.IsDir() {
 			fmt.Printf(" %q", string(content))
 		}
@@ -99,13 +110,13 @@ func Example_simple_usage() {
 	}
 
 	// Output:
-	// ".": drwxr-xr-x 0 2025-03-06 06:08:24 ./
-	// "aaa": drwxr-xr-x 0 2025-03-06 06:08:53 aaa/
-	// "aaa/foo": -rw-r--r-- 4 2025-03-06 06:08:53 foo "foo\n"
-	// "bbb": drwxr-xr-x 0 2025-03-06 06:08:58 bbb/
-	// "bbb/bar": -rw-r--r-- 4 2025-03-06 06:08:54 bar "bar\n"
-	// "bbb/baz": -rw-r--r-- 4 2025-03-06 06:11:13 baz "baz\n"
-	// "bbb/ccc": drwxr-xr-x 0 2025-03-06 06:09:12 ccc/
-	// "bbb/ccc/quux": -rw-r--r-- 5 2025-03-06 06:09:12 quux "quux\n"
-	// "bbb/ccc/qux": -rw-r--r-- 4 2025-03-06 06:09:09 qux "qux\n"
+	// ".": drwxr-xr-x 0 2025-03-06 06:08:24 +0900 JST
+	// "aaa": drwxr-xr-x 0 2025-03-06 06:08:53 +0900 JST
+	// "aaa/foo": -rw-r--r-- 4 2025-03-06 06:08:53 +0900 JST "foo\n"
+	// "bbb": drwxr-xr-x 0 2025-03-06 06:08:58 +0900 JST
+	// "bbb/bar": -rw-r--r-- 4 2025-03-06 06:08:54 +0900 JST "bar\n"
+	// "bbb/baz": -rw-r--r-- 4 2025-03-06 06:11:13 +0900 JST "baz\n"
+	// "bbb/ccc": drwxr-xr-x 0 2025-03-06 06:09:12 +0900 JST
+	// "bbb/ccc/quux": -rw-r--r-- 5 2025-03-06 06:09:12 +0900 JST "quux\n"
+	// "bbb/ccc/qux": -rw-r--r-- 4 2025-03-06 06:09:09 +0900 JST "qux\n"
 }
