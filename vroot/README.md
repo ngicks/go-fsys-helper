@@ -238,6 +238,8 @@ Example:
   - place files from 2-3 different `fs.FS` instances into a directory.
   - Take hashsums to expose it as virtual in-memory file in the same directory.
 
+The main purpose of `synthfs` is to let modified content be passed to functions like [tar.Writer.AddFS](https://pkg.go.dev/archive/tar#Writer.AddFS), [zip.Writer.AddFS](https://pkg.go.dev/archive/zip@go1.24.4#Writer.AddFS) without writing contents to a temporary directory.
+
 #### Basic Usage
 
 ```go
