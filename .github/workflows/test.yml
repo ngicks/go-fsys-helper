@@ -171,14 +171,17 @@ jobs:
           go test -timeout 15s ./... 
           # Run tests with race detection as recommended in CLAUDE.md
           if [ "${{ runner.os }}" = "Linux" ] && [ "${{ matrix.arch }}" = "linux/arm64" ]; then
-            # ARM64 on Linux - run with emulation, might be slower
-            echo "Running ARM64 race tests with emulation (longer timeout)"
-            go test -race -timeout 60s ./...
+            # ARM64 on Linux with emulation - skip race tests due to "go: -race requires cgo" error
+            echo "Skipping race tests on ARM64 emulation (cgo not available)"
           else
             # Native execution
             echo "Running race detection tests"
             go test -race -timeout 30s ./...
           fi
+          
+          # Run go vet as recommended in CLAUDE.md
+          echo "Running go vet"
+          go vet ./...
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
