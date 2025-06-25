@@ -96,7 +96,7 @@ func compareStat(t *testing.T, expected, actual fs.FS, path string) (expectedSta
 			if runtime.GOOS == "windows" {
 				// checking out files on windows curses file with "\r\n"
 				// negate effect assuming it only contains single new line.
-				actualStat = &sizeMinusOneFileInfo{actualStat}
+				expectedStat = &sizeMinusOneFileInfo{expectedStat}
 			}
 
 			// Git doesn't preserve mtime on fresh clone, so mask timestamps for comparison
