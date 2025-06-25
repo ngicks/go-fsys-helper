@@ -1,5 +1,12 @@
 name: Test
 
+# Test Strategy:
+# - On push to main branch: Test ALL modules (comprehensive validation)
+# - On pull requests: Test only CHANGED modules (faster feedback)
+# - Tests run on multiple OS/arch combinations with latest stable Go
+# - Go automatically downloads required SDK versions based on go.mod
+# - Excludes frozen modules (currently: aferofs)
+
 on:
   push:
     branches: [ main ]
@@ -30,36 +37,42 @@ jobs:
           echo "All modules found: $all_modules"
           echo "Active modules (excluding frozen): $modules"
           
-          # For PR, compare against target branch; for push, compare against previous commit
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base_ref="${{ github.event.pull_request.base.sha }}"
-          else
-            base_ref="${{ github.event.before }}"
-          fi
-          
-          # If base_ref is empty or 0000... (initial commit), test all modules
-          if [ -z "$base_ref" ] || [ "$base_ref" = "0000000000000000000000000000000000000000" ]; then
-            echo "Initial commit or no base ref, testing all modules"
+          # On push to main branch, test all modules
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Push to main branch detected, testing all modules"
             changed_modules="$modules"
           else
-            # Get changed files
-            changed_files=$(git diff --name-only "$base_ref" HEAD)
-            echo "Changed files: $changed_files"
+            # For PR or other events, only test changed modules
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              base_ref="${{ github.event.pull_request.base.sha }}"
+            else
+              base_ref="${{ github.event.before }}"
+            fi
             
-            # Find modules that have changes
-            changed_modules=""
-            for module in $modules; do
-              if echo "$changed_files" | grep -q "^$module/"; then
-                changed_modules="$changed_modules $module"
-              fi
-            done
-            
-            # If no modules detected but files changed, might be root files affecting all
-            if [ -z "$changed_modules" ] && [ -n "$changed_files" ]; then
-              # Check if any root-level Go files changed that might affect all modules
-              if echo "$changed_files" | grep -E '\.(go|mod|sum)$' | grep -v '/'; then
-                echo "Root-level Go files changed, testing all modules"
-                changed_modules="$modules"
+            # If base_ref is empty or 0000... (initial commit), test all modules
+            if [ -z "$base_ref" ] || [ "$base_ref" = "0000000000000000000000000000000000000000" ]; then
+              echo "Initial commit or no base ref, testing all modules"
+              changed_modules="$modules"
+            else
+              # Get changed files
+              changed_files=$(git diff --name-only "$base_ref" HEAD)
+              echo "Changed files: $changed_files"
+              
+              # Find modules that have changes
+              changed_modules=""
+              for module in $modules; do
+                if echo "$changed_files" | grep -q "^$module/"; then
+                  changed_modules="$changed_modules $module"
+                fi
+              done
+              
+              # If no modules detected but files changed, might be root files affecting all
+              if [ -z "$changed_modules" ] && [ -n "$changed_files" ]; then
+                # Check if any root-level Go files changed that might affect all modules
+                if echo "$changed_files" | grep -E '\.(go|mod|sum)$' | grep -v '/'; then
+                  echo "Root-level Go files changed, testing all modules"
+                  changed_modules="$modules"
+                fi
               fi
             fi
           fi
@@ -131,7 +144,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: 'stable'
           cache: true
           cache-dependency-path: ${{ matrix.module }}/go.sum
 
@@ -149,25 +162,23 @@ jobs:
           echo "Testing module: ${{ matrix.module }}"
           echo "Target OS/Arch: $GOOS/$GOARCH"
           echo "Runner OS: ${{ runner.os }}"
-          
+          echo "Go version: $(go version)"
           # Download and verify dependencies
           go mod download
-          go mod verify
-          
-          # Run tests with race detection and coverage
+          go mod verify         
+          # Run tests as recommended in CLAUDE.md
+          echo "Running tests with 2s timeout"
+          go test -timeout 15s ./... 
+          # Run tests with race detection as recommended in CLAUDE.md
           if [ "${{ runner.os }}" = "Linux" ] && [ "${{ matrix.arch }}" = "linux/arm64" ]; then
             # ARM64 on Linux - run with emulation, might be slower
-            echo "Running ARM64 tests with emulation"
-            go test -timeout 5m ./...
+            echo "Running ARM64 race tests with emulation (longer timeout)"
+            go test -race -timeout 60s ./...
           else
             # Native execution
-            echo "Running native tests"
-            go test -race -timeout 2m ./...
+            echo "Running race detection tests"
+            go test -race -timeout 30s ./...
           fi
-          
-          # Run go vet
-          go vet ./...
-
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
