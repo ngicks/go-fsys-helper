@@ -2,7 +2,6 @@ package vroot
 
 import (
 	"io/fs"
-	"os"
 	"syscall"
 	"time"
 
@@ -73,7 +72,7 @@ func (r *ReadOnlyRooted) Open(name string) (File, error) {
 }
 
 func (r *ReadOnlyRooted) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
-	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
+	if openflag.WriteOp(flag) {
 		return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 	}
 	return NewReadOnlyFile(r.Open(name))
