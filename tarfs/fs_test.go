@@ -92,6 +92,14 @@ func compareStat(t *testing.T, expected, actual fs.FS, path string) (expectedSta
 					return
 				}
 			}
+
+			if runtime.GOOS == "windows" {
+				// checking out files on windows curses file with "\r\n"
+				// negate effect assuming it only contains single new line.
+				expectedStat = &sizeMinusOneFileInfo{expectedStat}
+				actualStat = &sizeMinusOneFileInfo{actualStat}
+			}
+
 			// Git doesn't preserve mtime on fresh clone, so mask timestamps for comparison
 			expectedStat = &timeMaskFileInfo{expectedStat}
 			actualStat = &timeMaskFileInfo{actualStat}
@@ -115,6 +123,14 @@ type sizeMaskFileInfo struct {
 
 func (s *sizeMaskFileInfo) Size() int64 {
 	return 0
+}
+
+type sizeMinusOneFileInfo struct {
+	fs.FileInfo
+}
+
+func (s *sizeMinusOneFileInfo) Size() int64 {
+	return s.FileInfo.Size() - 1
 }
 
 var _ fs.FileInfo = (*timeMaskFileInfo)(nil)
