@@ -96,7 +96,6 @@ func compareStat(t *testing.T, expected, actual fs.FS, path string) (expectedSta
 			if runtime.GOOS == "windows" {
 				// checking out files on windows curses file with "\r\n"
 				// negate effect assuming it only contains single new line.
-				expectedStat = &sizeMinusOneFileInfo{expectedStat}
 				actualStat = &sizeMinusOneFileInfo{actualStat}
 			}
 
