@@ -167,7 +167,7 @@ jobs:
           go mod download
           go mod verify         
           # Run tests as recommended in CLAUDE.md
-          echo "Running tests with 2s timeout"
+          echo "Running tests with 15s timeout"
           go test -timeout 15s ./... 
           # Run tests with race detection as recommended in CLAUDE.md
           if [ "${{ runner.os }}" = "Linux" ] && [ "${{ matrix.arch }}" = "linux/arm64" ]; then
