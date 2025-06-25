@@ -16,7 +16,29 @@ The `vroot` package provides a filesystem abstraction layer that builds upon Go'
 
 ## 📋 Table of Contents
 
-// Update here
+- [📦 Installation](#-installation)
+- [🚀 Quick Start](#-quick-start)
+  - [Basic Usage with OS Filesystem](#basic-usage-with-os-filesystem)
+  - [Read-Only Filesystem](#read-only-filesystem)
+  - [Convert to/from fs.FS](#convert-tofrom-fsfs)
+- [🧠 Core Concepts](#-core-concepts)
+  - [Interfaces](#interfaces)
+  - [Fs Interface](#fs-interface)
+  - [Rooted Interface](#rooted-interface)
+  - [Unrooted Interface](#unrooted-interface)
+- [❓ Why Unrooted?](#-why-unrooted)
+- [📂 Implementation Types](#-implementation-types)
+  - [1. OS Filesystem (osfs/)](#1-os-filesystem-osfs)
+  - [2. Synthetic Filesystem (synthfs/)](#2-synthetic-filesystem-synthfs)
+  - [3. Memory Filesystem (memfs/)](#3-memory-filesystem-memfs)
+  - [4. Read-Only Wrappers](#4-read-only-wrappers)
+  - [5. io/fs Adapters](#5-iofs-adapters)
+- [🔄 Overlay Filesystem](#-overlay-filesystem)
+  - [Basic Overlay Setup](#basic-overlay-setup)
+  - [Overlay Features](#overlay-features)
+- [🧪 Testing](#-testing)
+  - [Test Your Implementation](#test-your-implementation)
+- [🤝 Contributing](#-contributing)
 
 ## 📦 Installation
 
@@ -90,9 +112,32 @@ readOnlyFs := vroot.ReadOnlyRooted(rootedFs)
 _, err := readOnlyFs.Create("readonly.txt") // Error: read-only file system
 ```
 
-### Covert to/from fs.FS
+### Convert to/from fs.FS
 
-// Update here
+```go
+import (
+    "embed"
+    "os"
+    "path/filepath"
+    "testing/fstest"
+
+    "github.com/ngicks/go-fsys-helper/vroot"
+    "github.com/ngicks/go-fsys-helper/vroot/osfs"
+)
+
+//go:embed static/*
+var embedFS embed.FS
+
+// Convert fs.FS to vroot (read-only)
+vrootReadOnly := vroot.FromIoFsRooted(embedFS)
+
+// Convert vroot to fs.FS
+rootedFs, _ := osfs.NewRooted("/some/path")
+standardFs := vroot.ToIoFsRooted(rootedFs)
+
+// Test with standard library
+fstest.TestFS(standardFs, "file1.txt", "subdir/file2.txt")
+```
 
 ## 🧠 Core Concepts
 
@@ -393,7 +438,7 @@ func TestRooted(t *testing.T) {
 	    defer r.Close()
 	    acceptancetest.RootedReadWrite(t, r)
     }
-    // For more stricter reader-side, use fstest.TestFS
+    // For more stricter reader-side test, use fstest.TestFS
     {
         r, err := NewRooted(filepath.Join(tempDir, "root", "readable"))
 	    if err != nil {
