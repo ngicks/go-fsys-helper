@@ -21,7 +21,7 @@ type dir struct {
 	metadata
 	parent *dir
 	// ordered and direntMap hold same objects.
-	// To refer them by name, use direntMap,
+	// To refer them by name, use files,
 	// to refer them by insertion order or something, use ordered.
 	//
 	// ordered is needed to prevent Readdir from returning randomly ordered result.
