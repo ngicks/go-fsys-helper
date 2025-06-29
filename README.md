@@ -27,7 +27,7 @@ Currently holes reads just as `0x00`. (Maybe this will change after [#22735](htt
 
 ## fsutil
 
-Filesystem-abstraction-library interaoperable utilities.
+Filesystem-abstraction-library-agnostic utilities.
 
 It should be working well with [afero](https://github.com/spf13/afero/), [go-billy](https://github.com/go-git/go-billy), [hackpadfs](https://github.com/hack-pad/hackpadfs) and of course `vroot`.
 
