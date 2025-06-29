@@ -27,7 +27,22 @@ type copyFsFsys[File copyFsFile] interface {
 }
 
 // CopyFsOption configures filesystem copy operations.
-type CopyFsOption[Fsys copyFsFsys[File], File copyFsFile] struct{}
+type CopyFsOption[Fsys copyFsFsys[File], File copyFsFile] struct {
+	// ChmodMask is used to mask file permissions during chmod operations.
+	// If zero, [fs.ModePerm] is used as the default mask.
+	// For os-backed filesystems, consider setting this to [ChmodMask]
+	ChmodMask fs.FileMode
+}
+
+// maskPerm returns the permission masked with ChmodMask.
+// If ChmodMask is zero, returns perm & fs.ModePerm.
+func (opt CopyFsOption[Fsys, File]) maskPerm(perm fs.FileMode) fs.FileMode {
+	mask := opt.ChmodMask
+	if mask == 0 {
+		mask = fs.ModePerm
+	}
+	return perm & mask
+}
 
 // CopyAll performs recursive copy from src filesystem to dst filesystem under the specified root path.
 func (opt CopyFsOption[Fsys, File]) CopyAll(dst Fsys, src fs.FS, root string) error {
@@ -115,7 +130,7 @@ func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, p
 			if err != nil {
 				return err
 			}
-			err = dst.Chmod(dir, srcInfo.Mode().Perm())
+			err = dst.Chmod(dir, opt.maskPerm(srcInfo.Mode()))
 			if err != nil {
 				return err
 			}
@@ -143,8 +158,8 @@ func (opt CopyFsOption[Fsys, File]) copyEntry(dst Fsys, src fs.FS, srcPath, dstP
 	// dstPath is already provided, use it directly
 	dstPath = filepath.FromSlash(dstPath)
 
-	// Preserve permissions from source
-	perm := info.Mode().Perm()
+	// Preserve permissions from source, masked by ChmodMask
+	perm := opt.maskPerm(info.Mode())
 
 	var err error
 	switch {

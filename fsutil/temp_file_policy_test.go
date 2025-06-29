@@ -330,4 +330,3 @@ func TestTempFilePolicy_WalkFuncErrors(t *testing.T) {
 		}
 	})
 }
-

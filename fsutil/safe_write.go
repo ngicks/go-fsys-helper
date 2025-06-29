@@ -290,7 +290,7 @@ func (p TempFilePolicyRandom[Fsys, File]) Match(path string) bool {
 
 	// Remove .tmp extension
 	nameWithoutExt := strings.TrimSuffix(base, ".tmp")
-	
+
 	// Find the last dot in the name (should separate basename from random digits)
 	lastDotIndex := strings.LastIndex(nameWithoutExt, ".")
 	if lastDotIndex == -1 || lastDotIndex == 0 {

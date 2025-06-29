@@ -93,12 +93,12 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
   if runtime.GOOS == "windows" {
       tests = append(tests, testCase{
           name:  "windows specific test",
-          input: "C:\\path\\to\\file", 
+          input: "C:\\path\\to\\file",
           expected: []string{"C:\\", "C:\\path", "C:\\path\\to", "C:\\path\\to\\file"},
       })
   } else {
       tests = append(tests, testCase{
-          name:  "unix specific test", 
+          name:  "unix specific test",
           input: "/path/to/file",
           expected: []string{"/", "/path", "/path/to", "/path/to/file"},
       })
@@ -112,7 +112,7 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
 - Windows has different permission behavior than Unix-like systems
 - **Unix-like systems**: Permissions are whatever you set, but newly created files are affected by umask (often system default is `0o022` but may vary)
 - **Windows**: Often widens permissions regardless of what you set:
-  - Directories: permissions often become `0o777` on Windows 
+  - Directories: permissions often become `0o777` on Windows
   - Files: permissions often become `0o444` (read-only) or `0o666` (read-write) on Windows
 - Pattern for permission tests:
   ```go
@@ -168,3 +168,4 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
 - If test fails and it is by the code you've made, fix the code.
 - If failure is happening from user-written code, alert user about that and receive further instruction.
 - Check `./.converinfo` and if converage is less than 90%, increase coverage.
+- Check line count for each test files. If it's more than 400 lines, split test files to 300 - 400 lines per a file.
