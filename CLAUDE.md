@@ -4,18 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Mandatory
 
-- If I say "Explain"(case insensitive) I am just needing explanation. DO NOT FIX at this point.
+- If I'm asking for explanation, e.g. "explain", "why ~ ?"(case insensitive), I am just in need of explanation. DO NOT FIX at this point.
 
 ## Commands
 
 - **Change directory**: Before executing any `go` command, `cd` into that `go module`. Don't run them on `./`. Each time after command is done, move back to root dir.
-- **Testing**: Use `go test -timeout 2s ./...` to run all tests with verbose output
+- **Testing**: Use `go test -coverprofile=./.coverinfo -timeout 2s ./...` to run all tests
+- **Converage Report**: Use `go tool cover -html=./.coverinfo -o .coverage.html` after test is called.
 - **Race testing**: Use `go test -race -timeout 2s ./...` to run tests with race detection (slower but finds timing issues)
 - **Single test**: Use `go test -timeout 2s -run TestName -v ./path/to/package` to run a specific test
 - **Single test with race detection**: Use `go test -race -timeout 2s -run TestName -v ./path/to/package` to run a specific test with race detection
 - **Formatting / Clean imports**: Use `goimports -w .` to clean imports. Everytime you add or remove lines, run this.
 - **Type checking**: Use `go vet ./...` to check for static analysis issues
-  - also `GOOS=windows go vet ./...` must be called.
 
 ## Architecture
 
@@ -51,6 +51,8 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
 - Compatible with afero, go-billy, hackpadfs, and vroot
 - Interface definitions for filesystem operations
 - Utility functions for path operations and error handling
+- Safe write operations with temporary files and hooks
+- Filesystem copying utilities with permission preservation
 
 **stream/**: Stream helpers (Go 1.22.0)
 
@@ -83,31 +85,86 @@ This is a Go library (`github.com/ngicks/go-fsys-helper`) that provides filesyst
 - Define named `testCase` struct types instead of anonymous struct literals in test tables
 - Panic on fundamental test setup failures rather than using `t.Fatalf`
 
-## Path handling
+**Cross-Platform Testing**:
 
-- Wrap every path with `fileapth.FromSlash` when passing paths to functions.
-- Wrap every path with `filepath.ToSlash` when using as test results(including `// Output:` comment in Example tests).
+- When testing paths with platform-specific behavior (like absolute paths), use `runtime.GOOS` to provide different test cases for Windows vs Unix-like systems
+- Pattern to follow:
+  ```go
+  if runtime.GOOS == "windows" {
+      tests = append(tests, testCase{
+          name:  "windows specific test",
+          input: "C:\\path\\to\\file", 
+          expected: []string{"C:\\", "C:\\path", "C:\\path\\to", "C:\\path\\to\\file"},
+      })
+  } else {
+      tests = append(tests, testCase{
+          name:  "unix specific test", 
+          input: "/path/to/file",
+          expected: []string{"/", "/path", "/path/to", "/path/to/file"},
+      })
+  }
+  ```
+- Always import `"runtime"` when using this pattern
+- Remember that Windows uses backslashes (`\`) and drive letters (e.g., `C:\`) while Unix-like systems use forward slashes (`/`) and start from root (`/`)
 
-## Opened things handling
+**Cross-Platform Permissions**:
 
-- Close every opened thing right after becoming unsed.
+- Windows has different permission behavior than Unix-like systems
+- **Unix-like systems**: Permissions are whatever you set, but newly created files are affected by umask (often system default is `0o022` but may vary)
+- **Windows**: Often widens permissions regardless of what you set:
+  - Directories: permissions often become `0o777` on Windows 
+  - Files: permissions often become `0o444` (read-only) or `0o666` (read-write) on Windows
+- Pattern for permission tests:
+  ```go
+  expectedPerm := fs.FileMode(0o644)  // Unix: respects the set value (subject to umask)
+  if runtime.GOOS == "windows" {
+      expectedPerm = 0o666  // Windows: typically widens to read-write
+  }
+  if info.Mode().Perm() != expectedPerm {
+      t.Errorf("permission mismatch: expected %o, got %o", expectedPerm, info.Mode().Perm())
+  }
+  ```
+- Be aware that umask on Unix systems can affect the final permissions of newly created files
+- On Windows, the permission you set is often ignored and replaced with Windows-appropriate values
+
+## Path Handling
+
+- Wrap every path with `filepath.FromSlash` when passing paths to functions.
+- Wrap every path with `filepath.ToSlash` when using as test results (including `// Output:` comment in Example tests).
+
+## Resource Management
+
+- Close every opened resource right after becoming unused.
 
 ## Dependency Management
 
 - Run `go mod tidy` after calling `go get` or removing dependency entries entirely from the module.
 
-## After you think you are done
+## Modern Go Practices
 
-- Run test for an entire module to check implementation is ok.
-- Run tests with race detection (`go test -race -timeout 2s`) to catch timing issues and race conditions
-- Run `go vet ./...` to check for static analysis issues and type checking problems
-- If test fails and it is by the code you've made, fix the code
-- If failure is happening from user-written code, alert user about that and receive further instruction.
-
-## Runtime and System Interaction
-
-- Never use `runtime.GOROOT`. Instead, call `go env GOROOT` via `exec.CommandContext`
+- Never use `sort` package. Use `slices.Sort` or `slices.SortFunc` instead.
+- Use `fs.Stat` when taking stat from `fs.FS`.
 
 ## Error Handling
 
-- Never use `os.IsNotExist` or similar functions. Instead, use `errors.Is(err, fs.ErrorNotExist)` or with similar fs errors.
+- Never use `os.IsNotExist` or similar functions. Instead, use `errors.Is(err, fs.ErrNotExist)` or similar `fs` errors.
+
+## Test Assertions
+
+- For tests, when comparing actual value and expected value, preferred message is `"not equal: expected(%q) != actual(%q)"`. If value is expected to print long message, use `"not equal:\nexpected: %#v\nactual: %#v\n"`.
+- For error comparison, prefer using `"errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v"`. If message is expected to be long line, split each section by `"\n"`.
+
+## Runtime and System Interaction
+
+- Never use `runtime.GOROOT`. Instead, call `go env GOROOT` via `exec.CommandContext`.
+
+## After You Think You Are Done
+
+- Run test for an entire module to check implementation is ok.
+- Run tests with race detection (`go test -race -timeout 2s ./...`) to catch timing issues and race conditions
+- Run `../govet.sh` to check for static analysis issues and type checking problems **for all platforms**
+  - return code of the command is almost always 0. So don't expect exit code other than 0 is failure.
+  - If you can't solve cross platform problems by yourself, ask help for the user.
+- If test fails and it is by the code you've made, fix the code.
+- If failure is happening from user-written code, alert user about that and receive further instruction.
+- Check `./.converinfo` and if converage is less than 90%, increase coverage.
