@@ -9,21 +9,22 @@ import (
 func PathFromHead(name string) iter.Seq[string] {
 	return func(yield func(string) bool) {
 		cut := ""
-		name := filepath.Clean(name)
+		vol := filepath.VolumeName(name)
+		name := filepath.Clean(name[len(vol):])
 		rest := name
 		for len(rest) > 0 {
 			i := strings.Index(rest, string(filepath.Separator))
 			if i < 0 {
-				yield(name)
+				yield(vol + name)
 				return
 			}
 			if i == 0 {
-				if !yield(string(filepath.Separator)) {
+				if !yield(vol + string(filepath.Separator)) {
 					return
 				}
 			} else {
 				cut = name[:len(cut)+i]
-				if !yield(cut) {
+				if !yield(vol + cut) {
 					return
 				}
 			}
@@ -35,8 +36,9 @@ func PathFromHead(name string) iter.Seq[string] {
 
 func PathFromTail(name string) iter.Seq[string] {
 	return func(yield func(string) bool) {
-		name := filepath.Clean(name)
-		if !yield(name) {
+		vol := filepath.VolumeName(name)
+		name := filepath.Clean(name[len(vol):])
+		if !yield(vol + name) {
 			return
 		}
 		if name == "." {
@@ -50,12 +52,12 @@ func PathFromTail(name string) iter.Seq[string] {
 			}
 			rest = rest[:i]
 			if i == 0 {
-				if !yield(string(filepath.Separator)) {
+				if !yield(vol + string(filepath.Separator)) {
 					return
 				}
 				break
 			} else {
-				if !yield(rest) {
+				if !yield(vol + rest) {
 					return
 				}
 			}
