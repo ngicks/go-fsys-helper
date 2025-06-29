@@ -1,6 +1,7 @@
 package fsutil
 
 import (
+	"errors"
 	"io/fs"
 	"math"
 	"os"
@@ -189,6 +190,74 @@ func testOpenRandomMultipleFiles(
 	}
 
 	if len(names) != 30 {
-		t.Errorf("expected 10 unique file names, got %d", len(names))
+		t.Errorf("expected 30 unique file names, got %d", len(names))
 	}
+}
+
+func TestOpenRandom_ErrorPaths(t *testing.T) {
+	tempDir := t.TempDir()
+
+	t.Run("OpenFile permission denied", func(t *testing.T) {
+		// Create a read-only directory
+		roDir := filepath.Join(tempDir, "readonly")
+		if err := os.Mkdir(roDir, 0o444); err != nil {
+			t.Fatalf("failed to create readonly dir: %v", err)
+		}
+		defer os.Chmod(roDir, fs.ModePerm) // Cleanup
+
+		roFs := osfsLite{base: roDir}
+		_, err := OpenFileRandom(roFs, ".", "*.tmp", 0o644)
+		if err == nil {
+			t.Error("expected error when creating file in read-only directory")
+		}
+	})
+
+	t.Run("MkdirRandom permission denied", func(t *testing.T) {
+		// Create a read-only directory
+		roDir := filepath.Join(tempDir, "readonly2")
+		if err := os.Mkdir(roDir, 0o444); err != nil {
+			t.Fatalf("failed to create readonly dir: %v", err)
+		}
+		defer os.Chmod(roDir, fs.ModePerm) // Cleanup
+
+		roFs := osfsLite{base: roDir}
+		_, err := MkdirRandom(roFs, ".", "*.tmp", 0o755)
+		if err == nil {
+			t.Error("expected error when creating directory in read-only directory")
+		}
+	})
+
+	t.Run("openRandom with max retry exceeded", func(t *testing.T) {
+		// Create a mock filesystem that always returns ErrExist for file creation
+		mockFs := &mockFsAlwaysExists{}
+
+		// Test OpenFileRandom with max retry
+		_, err := OpenFileRandom(mockFs, ".", "*.tmp", 0o644)
+		if !errors.Is(err, ErrMaxRetry) {
+			t.Errorf("expected ErrMaxRetry, got: %v", err)
+		}
+	})
+
+	t.Run("mkdirRandom with max retry exceeded", func(t *testing.T) {
+		// Create a mock filesystem that always returns ErrExist for directory creation
+		mockFs := &mockFsAlwaysExists{}
+
+		// Test MkdirRandom with max retry
+		_, err := MkdirRandom(mockFs, ".", "*.tmp", 0o755)
+		if !errors.Is(err, ErrMaxRetry) {
+			t.Errorf("expected ErrMaxRetry, got: %v", err)
+		}
+	})
+}
+
+// mockFsAlwaysExists is a mock filesystem that always returns fs.ErrExist for file/directory creation,
+// used to test max retry behavior that results in ErrMaxRetry
+type mockFsAlwaysExists struct{}
+
+func (m *mockFsAlwaysExists) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) {
+	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrExist}
+}
+
+func (m *mockFsAlwaysExists) Mkdir(name string, perm fs.FileMode) error {
+	return &fs.PathError{Op: "mkdir", Path: name, Err: fs.ErrExist}
 }
