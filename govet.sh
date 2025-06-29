@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 supported_list=$(go tool dist list)
 
 IFS=$'\n'
