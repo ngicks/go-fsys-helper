@@ -198,32 +198,40 @@ func TestOpenRandom_ErrorPaths(t *testing.T) {
 	tempDir := t.TempDir()
 
 	t.Run("OpenFile permission denied", func(t *testing.T) {
-		// Create a read-only directory
+		// Create a directory
 		roDir := filepath.Join(tempDir, "readonly")
-		if err := os.Mkdir(roDir, 0o444); err != nil {
-			t.Fatalf("failed to create readonly dir: %v", err)
+		if err := os.Mkdir(roDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
 		}
-		defer os.Chmod(roDir, fs.ModePerm) // Cleanup
 
-		roFs := osfsLite{base: roDir}
-		_, err := OpenFileRandom(roFs, ".", "*.tmp", 0o644)
+		// Use mock filesystem that rejects OpenFile
+		mockFs := &mockErrorFs{
+			osfsLite:          osfsLite{base: roDir},
+			openFileError:     fs.ErrPermission,
+			openFileErrorPath: ".tmp",
+		}
+		_, err := OpenFileRandom(mockFs, ".", "*.tmp", 0o644)
 		if err == nil {
-			t.Error("expected error when creating file in read-only directory")
+			t.Error("expected error when creating file with mock permission denied")
 		}
 	})
 
 	t.Run("MkdirRandom permission denied", func(t *testing.T) {
-		// Create a read-only directory
+		// Create a directory
 		roDir := filepath.Join(tempDir, "readonly2")
-		if err := os.Mkdir(roDir, 0o444); err != nil {
-			t.Fatalf("failed to create readonly dir: %v", err)
+		if err := os.Mkdir(roDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
 		}
-		defer os.Chmod(roDir, fs.ModePerm) // Cleanup
 
-		roFs := osfsLite{base: roDir}
-		_, err := MkdirRandom(roFs, ".", "*.tmp", 0o755)
+		// Use mock filesystem that rejects Mkdir
+		mockFs := &mockErrorFs{
+			osfsLite:       osfsLite{base: roDir},
+			mkdirError:     fs.ErrPermission,
+			mkdirErrorPath: ".tmp",
+		}
+		_, err := MkdirRandom[*mockErrorFs](mockFs, ".", "*.tmp", 0o755)
 		if err == nil {
-			t.Error("expected error when creating directory in read-only directory")
+			t.Error("expected error when creating directory with mock permission denied")
 		}
 	})
 

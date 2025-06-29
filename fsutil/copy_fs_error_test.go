@@ -23,21 +23,17 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to create dst dir: %v", err)
 		}
 
-		// Create a directory that we'll make unreadable
+		// Create a directory that will be mocked as unreadable
 		unreadableDir := filepath.Join(srcDir, "unreadable")
-		if err := os.Mkdir(unreadableDir, 0o000); err != nil {
+		if err := os.Mkdir(unreadableDir, fs.ModePerm); err != nil {
 			t.Fatalf("failed to create unreadable dir: %v", err)
 		}
-		defer os.Chmod(unreadableDir, fs.ModePerm) // Cleanup
 
-		// Set up filesystems
-		srcFs := os.DirFS(srcDir)
+		srcFs := &mockErrorDirFs{base: os.DirFS(srcDir)}
 		dstFs := &osfsLite{base: dstDir}
 
-		// Create copy option
 		opt := testCopyFsOption{}
 
-		// Perform copy - should fail due to unreadable directory
 		err := opt.CopyAll(dstFs, srcFs, ".")
 		if err == nil {
 			t.Error("expected error when copying unreadable directory")
@@ -82,10 +78,9 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		if err := os.Mkdir(srcDir, fs.ModePerm); err != nil {
 			t.Fatalf("failed to create src dir: %v", err)
 		}
-		if err := os.Mkdir(dstDir, 0o444); err != nil { // Read-only dst
+		if err := os.Mkdir(dstDir, fs.ModePerm); err != nil {
 			t.Fatalf("failed to create dst dir: %v", err)
 		}
-		defer os.Chmod(dstDir, fs.ModePerm) // Cleanup
 
 		// Create source file in subdirectory
 		if err := os.MkdirAll(filepath.Join(srcDir, "subdir"), fs.ModePerm); err != nil {
@@ -95,17 +90,21 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to create source file: %v", err)
 		}
 
-		// Set up filesystems
+		// Set up filesystems with mock mkdir error
 		srcFs := os.DirFS(srcDir)
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := &mockErrorFs{
+			osfsLite:       osfsLite{base: dstDir},
+			mkdirError:     fs.ErrPermission,
+			mkdirErrorPath: "subdir",
+		}
 
 		// Create copy option
-		opt := testCopyFsOption{}
+		opt := testMockCopyFsOption{}
 
 		// Try to copy - should fail when creating directory
 		err := opt.CopyPath(dstFs, srcFs, ".", filepath.FromSlash("subdir/file.txt"))
 		if err == nil {
-			t.Error("expected error when creating directory in read-only filesystem")
+			t.Error("expected error when creating directory in mock read-only filesystem")
 		}
 	})
 
@@ -131,16 +130,20 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Errorf("expected walk error to be returned")
 		}
 
-		// Create a file that we'll make unreadable
+		// Create a file that we'll mock as unreadable
 		unreadableFile := filepath.Join(srcDir, "unreadable.txt")
-		if err := os.WriteFile(unreadableFile, []byte("content"), 0o000); err != nil {
+		if err := os.WriteFile(unreadableFile, []byte("content"), 0o644); err != nil {
 			t.Fatalf("failed to create unreadable file: %v", err)
 		}
-		defer os.Chmod(unreadableFile, 0o644) // Cleanup
 
-		// Try to copy unreadable file
+		// Try to copy unreadable file using mock error fs
 		info, _ := os.Stat(unreadableFile)
-		err = opt.copyEntry(&osfsLite{base: dstDir}, os.DirFS(srcDir), "unreadable.txt", "unreadable.txt", info, nil)
+		mockSrcFs := &mockErrorSrcFs{
+			base:      os.DirFS(srcDir),
+			openError: fs.ErrPermission,
+			openPath:  "unreadable.txt",
+		}
+		err = opt.copyEntry(&osfsLite{base: dstDir}, mockSrcFs, "unreadable.txt", "unreadable.txt", info, nil)
 		if err == nil {
 			t.Error("expected error when copying unreadable file")
 		}
@@ -228,23 +231,21 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to create broken symlink: %v", err)
 		}
 
-		// Make the directory unreadable after creating the symlink
-		if err := os.Chmod(srcDir, 0o000); err != nil {
-			t.Fatalf("failed to make src dir unreadable: %v", err)
+		// Set up filesystems with mock Lstat error
+		srcFs := &mockLstatFs{
+			base:       os.DirFS(srcDir),
+			lstatError: fs.ErrPermission,
+			lstatPath:  "broken",
 		}
-		defer os.Chmod(srcDir, fs.ModePerm) // Cleanup
-
-		// Set up filesystems
-		srcFs := os.DirFS(srcDir)
 		dstFs := &osfsLite{base: dstDir}
 
 		// Create copy option
 		opt := testCopyFsOption{}
 
-		// Perform copy - should fail due to permission issues
+		// Perform copy - should fail due to Lstat permission issues
 		err := opt.CopyAll(dstFs, srcFs, ".")
 		if err == nil {
-			t.Error("expected error when copying from unreadable directory")
+			t.Error("expected error when copying with Lstat permission issues")
 		}
 	})
 
@@ -319,21 +320,21 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to lstat symlink: %v", err)
 		}
 
-		// Create a file with the same name in dst to cause Symlink to fail
-		conflictFile := filepath.Join(dstDir, "link.txt")
-		if err := os.WriteFile(conflictFile, []byte("conflict"), 0o644); err != nil {
-			t.Fatalf("failed to create conflict file: %v", err)
-		}
-
 		// Set up filesystems with full symlink support
 		srcFs := &osfsLite{base: srcDir}
-		dstFs := &osfsLite{base: dstDir}
 
 		// Create copy option
-		opt := testCopyFsOption{}
+		opt := testMockCopyFsOption{}
 
-		// Copy symlink using copyEntry - should fail due to file conflict
-		err = opt.copyEntry(dstFs, srcFs, "link.txt", "link.txt", linkInfo, nil)
+		// Set up mock filesystem that will fail on symlink creation
+		mockDstFs := &mockErrorFs{
+			osfsLite:           osfsLite{base: dstDir},
+			symlinkError:       fs.ErrExist,
+			symlinkErrorTarget: "link.txt",
+		}
+
+		// Copy symlink using copyEntry - should fail due to mock symlink error
+		err = opt.copyEntry(mockDstFs, srcFs, "link.txt", "link.txt", linkInfo, nil)
 		if err == nil {
 			t.Error("expected error when symlink creation conflicts with existing file")
 		}
