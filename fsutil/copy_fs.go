@@ -67,18 +67,18 @@ func (opt CopyFsOption[Fsys, File]) CopyAll(dst Fsys, src fs.FS, root string) er
 		}
 
 		dstPath := pathpkg.Join(root, path)
-		return opt.copyEntry(dst, src, path, dstPath, info, nil)
+		return opt.copyEntry(dst, src, filepath.FromSlash(dstPath), path, info, nil)
 	})
 }
 
 // CopyPath copies only the specified paths from src filesystem to dst filesystem.
 // Paths must be
 func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, paths ...string) error {
-	type pathInfo struct {
-		path string
+	type copySource struct {
+		path string // slash-separated
 		info fs.FileInfo
 	}
-	pathInfos := make([]pathInfo, 0, len(paths))
+	copySrcs := make([]copySource, 0, len(paths))
 	dirsToCreate := make(map[string]struct{})
 
 	stat := func(path string) (fs.FileInfo, error) {
@@ -98,9 +98,9 @@ func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, p
 		if err != nil {
 			return err
 		}
-		pathInfos = append(pathInfos, pathInfo{path: path, info: info})
+		copySrcs = append(copySrcs, copySource{path: filepath.ToSlash(path), info: info})
 		if info.Mode().IsRegular() {
-			dstPath := filepath.Join(root, filepath.FromSlash(path))
+			dstPath := filepath.Join(root, path)
 			parentDir := filepath.Dir(dstPath)
 			if parentDir != "." {
 				for dirPath := range pathspkg.PathFromHead(parentDir) {
@@ -140,9 +140,9 @@ func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, p
 	}
 
 	// Second pass: copy all files
-	for _, pi := range pathInfos {
-		dstPath := filepath.Join(root, filepath.FromSlash(pi.path))
-		err := opt.copyEntry(dst, src, pi.path, dstPath, pi.info, nil)
+	for _, pi := range copySrcs {
+		dstPath := filepath.Join(root, pi.path)
+		err := opt.copyEntry(dst, src, dstPath, pi.path, pi.info, nil)
 		if err != nil {
 			return err
 		}
@@ -152,13 +152,10 @@ func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, p
 }
 
 // copyEntry performs the actual copy operation for a single entry
-func (opt CopyFsOption[Fsys, File]) copyEntry(dst Fsys, src fs.FS, srcPath, dstPath string, info fs.FileInfo, walkErr error) error {
+func (opt CopyFsOption[Fsys, File]) copyEntry(dst Fsys, src fs.FS, dstPath, srcPath string, info fs.FileInfo, walkErr error) error {
 	if walkErr != nil {
 		return walkErr
 	}
-
-	// dstPath is already provided, use it directly
-	dstPath = filepath.FromSlash(dstPath)
 
 	// Preserve permissions from source, masked by ChmodMask
 	perm := opt.maskPerm(info.Mode())
