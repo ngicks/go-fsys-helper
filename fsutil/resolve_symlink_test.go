@@ -9,6 +9,7 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"syscall"
@@ -246,13 +247,17 @@ func TestResolvePath_ErrorPaths(t *testing.T) {
 
 	t.Run("symlink with absolute target path escapes", func(t *testing.T) {
 		// Create a symlink pointing to absolute path
-		if err := os.Symlink("/etc/passwd", filepath.Join(tempDir, "escape")); err != nil {
+		absPath := "/etc/passwd"
+		if runtime.GOOS == "windows" {
+			absPath = "C:\\Users"
+		}
+		if err := os.Symlink(absPath, filepath.Join(tempDir, "escape")); err != nil {
 			t.Fatalf("failed to create escaping symlink: %v", err)
 		}
 
 		_, err := ResolvePath(fsys, "escape", false)
 		if !errors.Is(err, ErrPathEscapes) {
-			t.Error("expected error for escaping symlink")
+			t.Errorf("expected ErrPathEscapes for escaping symlink but is %v", err)
 		}
 	})
 

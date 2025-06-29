@@ -315,7 +315,12 @@ func TestSafeWrite(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Stat failed: %v", err)
 		}
-		if info.Mode().Perm() != 0o644 {
+
+		expected := 0o644
+		if runtime.GOOS == "windows" {
+			expected = 0o666
+		}
+		if info.Mode().Perm() != fs.FileMode(expected) {
 			t.Errorf("wrong permissions: expected 0o644, got %o", info.Mode().Perm())
 		}
 	})

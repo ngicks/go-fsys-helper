@@ -70,7 +70,7 @@ func TestTempFilePolicy_WalkFunc(t *testing.T) {
 		if len(removed) != 1 {
 			t.Errorf("not equal: expected(%d) != actual(%d), seen files: %v", 1, len(removed), seen)
 		}
-		if len(removed) > 0 && !strings.HasPrefix(removed[0], "temp"+string(filepath.Separator)) {
+		if len(removed) > 0 && !strings.HasPrefix(removed[0], "temp/") {
 			t.Errorf("wrong file removed: %v", removed[0])
 		}
 	})
