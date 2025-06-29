@@ -244,13 +244,13 @@ func (f *fsys) Link(oldname string, newname string) error {
 
 	// Reject link to directory
 	if _, ok := source.(*dir); ok {
-		return fsutil.WrapPathErr("link", oldname, syscall.EPERM)
+		return fsutil.WrapLinkErr("link", oldname, newname, syscall.EPERM)
 	}
 
 	// Only files can be hard linked
 	sourceFile, ok := source.(*file)
 	if !ok {
-		return fsutil.WrapPathErr("link", oldname, fs.ErrInvalid)
+		return fsutil.WrapLinkErr("link", oldname, newname, fs.ErrInvalid)
 	}
 
 	// Find parent directory for new name
@@ -267,12 +267,12 @@ func (f *fsys) Link(oldname string, newname string) error {
 
 	parentDir, ok := parentDirent.(*dir)
 	if !ok {
-		return fsutil.WrapPathErr("link", newname, syscall.ENOTDIR)
+		return fsutil.WrapLinkErr("link", oldname, newname, syscall.ENOTDIR)
 	}
 
 	// Check if parent is writable
 	if !parentDir.s.isWritable() {
-		return fsutil.WrapPathErr("link", newname, syscall.EACCES)
+		return fsutil.WrapLinkErr("link", oldname, newname, syscall.EACCES)
 	}
 
 	// Create a new file entry that shares the same view
@@ -295,7 +295,7 @@ func (f *fsys) Link(oldname string, newname string) error {
 
 	// Check if already exists
 	if _, ok := parentDir.files[base]; ok {
-		return fsutil.WrapPathErr("link", newname, fs.ErrExist)
+		return fsutil.WrapLinkErr("link", oldname, newname, fs.ErrExist)
 	}
 
 	parentDir.addEntry(base, newFile)
@@ -590,12 +590,12 @@ func (f *fsys) Rename(oldname string, newname string) error {
 
 	oldParentDir, ok := oldParentDirent.(*dir)
 	if !ok {
-		return fsutil.WrapPathErr("rename", oldname, syscall.ENOTDIR)
+		return fsutil.WrapLinkErr("rename", oldname, newname, syscall.ENOTDIR)
 	}
 
 	// Check if old parent is writable
 	if !oldParentDir.s.isWritable() {
-		return fsutil.WrapPathErr("rename", oldname, syscall.EACCES)
+		return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EACCES)
 	}
 
 	// Find the destination parent
@@ -612,12 +612,12 @@ func (f *fsys) Rename(oldname string, newname string) error {
 
 	newParentDir, ok := newParentDirent.(*dir)
 	if !ok {
-		return fsutil.WrapPathErr("rename", newname, syscall.ENOTDIR)
+		return fsutil.WrapLinkErr("rename", oldname, newname, syscall.ENOTDIR)
 	}
 
 	// Check if new parent is writable
 	if !newParentDir.s.isWritable() {
-		return fsutil.WrapPathErr("rename", newname, syscall.EACCES)
+		return fsutil.WrapLinkErr("rename", oldname, newname, syscall.EACCES)
 	}
 
 	// Lock both directories (always in the same order to avoid deadlock)
@@ -639,14 +639,14 @@ func (f *fsys) Rename(oldname string, newname string) error {
 	// Get the source entry
 	elem, ok := oldParentDir.files[oldBase]
 	if !ok {
-		return fsutil.WrapPathErr("rename", oldname, fs.ErrNotExist)
+		return fsutil.WrapLinkErr("rename", oldname, newname, fs.ErrNotExist)
 	}
 
 	entry := elem.Value.(direntry)
 
 	// Check if destination exists
 	if _, exists := newParentDir.files[newBase]; exists {
-		return fsutil.WrapPathErr("rename", newname, fs.ErrExist)
+		return fsutil.WrapLinkErr("rename", oldname, newname, fs.ErrExist)
 	}
 
 	// Remove from old location
@@ -692,12 +692,12 @@ func (f *fsys) Symlink(oldname string, newname string) error {
 
 	parentDir, ok := parentDirent.(*dir)
 	if !ok {
-		return fsutil.WrapPathErr("symlink", newname, syscall.ENOTDIR)
+		return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.ENOTDIR)
 	}
 
 	// Check if parent is writable
 	if !parentDir.s.isWritable() {
-		return fsutil.WrapPathErr("symlink", newname, syscall.EACCES)
+		return fsutil.WrapLinkErr("symlink", oldname, newname, syscall.EACCES)
 	}
 
 	newSymlink := &symlink{
@@ -716,7 +716,7 @@ func (f *fsys) Symlink(oldname string, newname string) error {
 
 	// Check if already exists
 	if _, ok := parentDir.files[base]; ok {
-		return fsutil.WrapPathErr("symlink", newname, fs.ErrExist)
+		return fsutil.WrapLinkErr("symlink", oldname, newname, fs.ErrExist)
 	}
 
 	parentDir.addEntry(base, newSymlink)
