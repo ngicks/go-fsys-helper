@@ -126,7 +126,7 @@ func ResolvePath(
 	return pathBuilder.String(), nil
 }
 
-// ResolveSymlink retruns resoluition result with numbers of symlink resolved.
+// ResolveSymlink retruns resoluition result with numbers of symlink that has been resolved.
 //
 // linkRealPath must be a real path for a link.
 // Otherwise it might return an error that satisfies errors.Ie(err, fs.ErrNotExist),
@@ -136,9 +136,9 @@ func ResolvePath(
 // a file other than a symlink.
 //
 // If symlink is resolved more times than maxResolution,
-// it would return an error that satisfies errors.Is(err, syscall.ELOOP)
+// it would return an error that satisfies errors.Is(err, [errdef.ELOOP])
 //
-// For plan9, it just returns an error satisfying errors.Is(err, syscall.EPLAN9)
+// For plan9, it may return an error satisfying errors.Is(err, syscall.EPLAN9).
 func ResolveSymlink(
 	fsys interface {
 		ReadLinkFs

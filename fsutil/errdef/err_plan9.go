@@ -22,6 +22,8 @@ func (e *errTy) Unwrap() error {
 	return e.Base
 }
 
+// Error variants are just alias for syscall errors.
+// Fro plan9, these are defined as error wrapping fs error, e.g. [fs.ErrInvalid], [fs.ErrPermission].
 var (
 	ELOOP     = newErr(fs.ErrInvalid, "too many levels of symbolic links")
 	EBADF     = newErr(fs.ErrInvalid, "bad file descriptor")
