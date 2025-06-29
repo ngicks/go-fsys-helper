@@ -47,7 +47,11 @@ func (fsys *ioFsToRooted) ReadFile(name string) ([]byte, error) {
 }
 
 func (fsys *ioFsToRooted) ReadLink(name string) (string, error) {
-	return fsys.root.ReadLink(filepath.FromSlash(name))
+	s, err := fsys.root.ReadLink(filepath.FromSlash(name))
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(s), nil
 }
 
 func (fsys *ioFsToRooted) Lstat(name string) (fs.FileInfo, error) {
@@ -98,7 +102,11 @@ func (fsys *ioFsToUnrooted) ReadFile(name string) ([]byte, error) {
 }
 
 func (fsys *ioFsToUnrooted) ReadLink(name string) (string, error) {
-	return fsys.root.ReadLink(filepath.FromSlash(name))
+	s, err := fsys.root.ReadLink(filepath.FromSlash(name))
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(s), nil
 }
 
 func (fsys *ioFsToUnrooted) Lstat(name string) (fs.FileInfo, error) {

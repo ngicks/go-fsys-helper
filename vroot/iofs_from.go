@@ -162,7 +162,11 @@ func (f *ioFsFromRooted) ReadLink(name string) (string, error) {
 	if err != nil {
 		return "", fsutil.WrapPathErr("readlink", name, err)
 	}
-	return f.fsys.ReadLink(resolved)
+	s, err := f.fsys.ReadLink(resolved)
+	if err != nil {
+		return "", err
+	}
+	return filepath.FromSlash(s), nil
 }
 
 func (f *ioFsFromRooted) Remove(name string) error {
@@ -311,7 +315,11 @@ func (f *ioFsFromUnrooted) ReadLink(name string) (string, error) {
 	if err != nil {
 		return "", fsutil.WrapPathErr("readlink", name, err)
 	}
-	return f.fsys.ReadLink(resolved)
+	s, err := f.fsys.ReadLink(resolved)
+	if err != nil {
+		return "", err
+	}
+	return filepath.FromSlash(s), nil
 }
 
 func (f *ioFsFromUnrooted) Remove(name string) error {
@@ -385,7 +393,7 @@ func (f *expandedFile) Close() error {
 }
 
 func (f *expandedFile) Name() string {
-	return f.name
+	return filepath.FromSlash(f.name)
 }
 
 func (f *expandedFile) Fd() uintptr {
