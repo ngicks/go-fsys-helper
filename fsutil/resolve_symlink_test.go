@@ -221,6 +221,89 @@ func TestResolveSymlink_empty_path(t *testing.T) {
 	}
 }
 
+func TestResolvePath_ErrorPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	fsys := osfsLite{tempDir}
+
+	t.Run("Lstat error on non-existent path", func(t *testing.T) {
+		_, err := ResolvePath(fsys, "nonexistent/path", false)
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Error("expected error for non-existent path")
+		}
+	})
+
+	t.Run("ResolveSymlink error propagation", func(t *testing.T) {
+		// Create a broken symlink
+		if err := os.Symlink("nonexistent", filepath.Join(tempDir, "broken")); err != nil {
+			t.Fatalf("failed to create broken symlink: %v", err)
+		}
+
+		_, err := ResolvePath(fsys, "broken", false)
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Error("expected error for broken symlink")
+		}
+	})
+
+	t.Run("symlink with absolute target path escapes", func(t *testing.T) {
+		// Create a symlink pointing to absolute path
+		if err := os.Symlink("/etc/passwd", filepath.Join(tempDir, "escape")); err != nil {
+			t.Fatalf("failed to create escaping symlink: %v", err)
+		}
+
+		_, err := ResolvePath(fsys, "escape", false)
+		if !errors.Is(err, ErrPathEscapes) {
+			t.Error("expected error for escaping symlink")
+		}
+	})
+
+	t.Run("symlink with .. target path escapes", func(t *testing.T) {
+		// Create a symlink pointing to parent directory
+		if err := os.Symlink("../secret", filepath.Join(tempDir, "dotdot")); err != nil {
+			t.Fatalf("failed to create .. symlink: %v", err)
+		}
+
+		_, err := ResolvePath(fsys, "dotdot", false)
+		if !errors.Is(err, ErrPathEscapes) {
+			t.Error("expected error for .. symlink")
+		}
+	})
+
+	t.Run("ResolvePath skipLastElement true", func(t *testing.T) {
+		// Create a regular file
+		if err := os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte("content"), 0o644); err != nil {
+			t.Fatalf("failed to create file: %v", err)
+		}
+
+		resolved, err := ResolvePath(fsys, "file.txt", true)
+		if err != nil {
+			t.Fatalf("ResolvePath failed: %v", err)
+		}
+
+		// With skipLastElement=true on a filename with no separator, it returns the original name
+		if resolved != "file.txt" {
+			t.Errorf("expected resolved path 'file.txt', got %q", resolved)
+		}
+
+		// Test with a path that has a separator
+		if err := os.MkdirAll(filepath.Join(tempDir, "subdir"), 0o755); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(tempDir, "subdir", "file.txt"), []byte("content"), 0o644); err != nil {
+			t.Fatalf("failed to create file in subdir: %v", err)
+		}
+
+		resolved, err = ResolvePath(fsys, filepath.FromSlash("subdir/file.txt"), true)
+		if err != nil {
+			t.Fatalf("ResolvePath failed: %v", err)
+		}
+
+		expected := filepath.FromSlash("subdir/file.txt")
+		if resolved != expected {
+			t.Errorf("expected resolved path %q, got %q", expected, resolved)
+		}
+	})
+}
+
 func TestResolveSymlink_targeting_each_other_ELOOP(t *testing.T) {
 	tempDir := t.TempDir()
 

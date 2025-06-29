@@ -43,6 +43,10 @@ func (fsys osfsLite) MkdirAll(name string, perm fs.FileMode) error {
 	return os.MkdirAll(filepath.Join(fsys.base, name), perm)
 }
 
+func (fsys osfsLite) Open(name string) (fs.File, error) {
+	return os.Open(filepath.Join(fsys.base, name))
+}
+
 func (fsys osfsLite) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) {
 	return os.OpenFile(filepath.Join(fsys.base, name), flag, perm)
 }
