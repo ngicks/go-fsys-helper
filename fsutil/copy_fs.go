@@ -2,8 +2,10 @@ package fsutil
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -74,12 +76,20 @@ func (opt CopyFsOption[Fsys, File]) CopyAll(dst Fsys, src fs.FS, root string) er
 // CopyPath copies only the specified paths from src filesystem to dst filesystem.
 // Paths must be
 func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, paths ...string) error {
-	type copySource struct {
+	root = filepath.Clean(root)
+
+	if filepath.IsAbs(root) {
+		return fmt.Errorf("%w: root path escaping", ErrPathEscapes)
+	}
+
+	type sourceInfo struct {
 		path string // slash-separated
 		info fs.FileInfo
 	}
-	copySrcs := make([]copySource, 0, len(paths))
-	dirsToCreate := make(map[string]struct{})
+
+	sources := make([]sourceInfo, 0, len(paths))
+
+	dirs := make(map[string]struct{})
 
 	stat := func(path string) (fs.FileInfo, error) {
 		return fs.Stat(src, path)
@@ -98,49 +108,42 @@ func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, p
 		if err != nil {
 			return err
 		}
-		copySrcs = append(copySrcs, copySource{path: filepath.ToSlash(path), info: info})
-		if info.Mode().IsRegular() {
-			dstPath := filepath.Join(root, path)
-			parentDir := filepath.Dir(dstPath)
-			if parentDir != "." {
-				for dirPath := range pathspkg.PathFromHead(parentDir) {
-					dirsToCreate[dirPath] = struct{}{}
-				}
+		sources = append(sources, sourceInfo{path: filepath.ToSlash(path), info: info})
+		dstPath := filepath.Join(root, path)
+		parentDir := filepath.Dir(dstPath)
+		if parentDir != "." {
+			for dirPath := range pathspkg.PathFromHead(parentDir) {
+				dirs[dirPath] = struct{}{}
 			}
 		}
 	}
 
-	if len(dirsToCreate) > 0 {
-		dirs := make([]string, 0, len(dirsToCreate))
-		for dir := range dirsToCreate {
-			dirs = append(dirs, dir)
+	// Create directories
+	for _, dir := range slices.Sorted(maps.Keys(dirs)) {
+		if dir == "." {
+			continue
 		}
-		slices.Sort(dirs)
-
-		// Create directories
-		for _, dir := range dirs {
-			err := dst.Mkdir(dir, fs.ModePerm)
-			if err != nil && !errors.Is(err, fs.ErrExist) {
-				return err
-			}
-			// Extract the relative part by removing root prefix
-			relDir, err := filepath.Rel(root, dir)
-			if err != nil || relDir == "." {
-				continue // Skip if we can't get relative path or if it's the root itself
-			}
-			srcInfo, err := fs.Stat(src, filepath.ToSlash(relDir))
-			if err != nil {
-				return err
-			}
-			err = dst.Chmod(dir, opt.maskPerm(srcInfo.Mode()))
-			if err != nil {
-				return err
-			}
+		err := dst.Mkdir(dir, fs.ModePerm)
+		if err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+		// Extract the relative part by removing root prefix
+		relDir, err := filepath.Rel(root, dir)
+		if err != nil || relDir == "." {
+			continue // Skip if we can't get relative path or if it's the root itself
+		}
+		srcInfo, err := fs.Stat(src, filepath.ToSlash(relDir))
+		if err != nil {
+			return err
+		}
+		err = dst.Chmod(dir, opt.maskPerm(srcInfo.Mode()))
+		if err != nil {
+			return err
 		}
 	}
 
 	// Second pass: copy all files
-	for _, pi := range copySrcs {
+	for _, pi := range sources {
 		dstPath := filepath.Join(root, pi.path)
 		err := opt.copyEntry(dst, src, dstPath, pi.path, pi.info, nil)
 		if err != nil {
