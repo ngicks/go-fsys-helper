@@ -339,4 +339,93 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Error("expected error when symlink creation conflicts with existing file")
 		}
 	})
+
+	t.Run("CopyAll with IgnoreErr for walk errors", func(t *testing.T) {
+		// Create root directory
+		tempDir := t.TempDir()
+		srcDir := filepath.Join(tempDir, "src")
+		dstDir := filepath.Join(tempDir, "dst")
+
+		// Create src and dst directories
+		if err := os.Mkdir(srcDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create src dir: %v", err)
+		}
+		if err := os.Mkdir(dstDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create dst dir: %v", err)
+		}
+
+		// Create a directory that will be mocked as unreadable during walk
+		unreadableDir := filepath.Join(srcDir, "unreadable")
+		if err := os.Mkdir(unreadableDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create unreadable dir: %v", err)
+		}
+
+		// Create a readable file to verify partial success
+		readableFile := filepath.Join(srcDir, "readable.txt")
+		if err := os.WriteFile(readableFile, []byte("content"), 0o644); err != nil {
+			t.Fatalf("failed to create readable file: %v", err)
+		}
+
+		srcFs := &mockErrorDirFs{base: os.DirFS(srcDir)}
+		dstFs := &osfsLite{base: dstDir}
+
+		opt := CopyFsOption[*osfsLite, *os.File]{
+			IgnoreErr: func(err error) bool {
+				return errors.Is(err, fs.ErrPermission)
+			},
+		}
+
+		err := opt.CopyAll(dstFs, srcFs, ".")
+		if err != nil {
+			t.Errorf("expected no error when ignoring walk permission errors, got: %v", err)
+		}
+
+		// Verify that readable file was copied
+		copiedContent, err := os.ReadFile(filepath.Join(dstDir, "readable.txt"))
+		if err != nil {
+			t.Errorf("failed to read copied file: %v", err)
+		}
+		if string(copiedContent) != "content" {
+			t.Errorf("copied file content mismatch: expected %q, got %q", "content", string(copiedContent))
+		}
+	})
+
+	t.Run("CopyAll IgnoreErr filter specific walk errors", func(t *testing.T) {
+		// Create root directory
+		tempDir := t.TempDir()
+		srcDir := filepath.Join(tempDir, "src")
+		dstDir := filepath.Join(tempDir, "dst")
+
+		// Create src and dst directories
+		if err := os.Mkdir(srcDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create src dir: %v", err)
+		}
+		if err := os.Mkdir(dstDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create dst dir: %v", err)
+		}
+
+		// Create a directory that will be mocked as unreadable
+		unreadableDir := filepath.Join(srcDir, "unreadable")
+		if err := os.Mkdir(unreadableDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create unreadable dir: %v", err)
+		}
+
+		srcFs := &mockErrorDirFs{base: os.DirFS(srcDir)}
+		dstFs := &osfsLite{base: dstDir}
+
+		// Test with IgnoreErr that doesn't match the error
+		opt := CopyFsOption[*osfsLite, *os.File]{
+			IgnoreErr: func(err error) bool {
+				return errors.Is(err, fs.ErrNotExist) // Only ignore NotExist errors
+			},
+		}
+
+		err := opt.CopyAll(dstFs, srcFs, ".")
+		if err == nil {
+			t.Error("expected error when not ignoring permission errors")
+		}
+		if !errors.Is(err, fs.ErrPermission) {
+			t.Errorf("expected permission error, got: %v", err)
+		}
+	})
 }

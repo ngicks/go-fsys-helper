@@ -38,6 +38,9 @@ type CopyFsOption[Fsys copyFsFsys[File], File copyFsFile] struct {
 	//   - Windows: maps permissions to Windows-appropriate values
 	//   - Plan9: preserves append, exclusive, temporary modes
 	MaskChmodMode func(perm fs.FileMode) fs.FileMode
+	// IgnoreErr is used as filter for walk errors.
+	// If it returns true, CopyAll ignores that error instead of return the error.
+	IgnoreErr func(err error) bool
 }
 
 // maskPerm returns the permission after applying MaskChmodMode.
@@ -56,6 +59,9 @@ func (opt CopyFsOption[Fsys, File]) CopyAll(dst Fsys, src fs.FS, root string) er
 	})
 	return fs.WalkDir(src, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if opt.IgnoreErr != nil && opt.IgnoreErr(err) {
+				return nil
+			}
 			return err
 		}
 		var (
