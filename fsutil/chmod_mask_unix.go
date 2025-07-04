@@ -2,7 +2,13 @@
 
 package fsutil
 
-import "os"
+import (
+	"io/fs"
+)
 
 // ChmodMask is mask for Chmod described in [os.Chmod].
-const ChmodMask = os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky
+const ChmodMask = ChmodMaskUnix
+
+func MaskChmodMode(mode fs.FileMode) fs.FileMode {
+	return MaskChmodModeUnix(mode)
+}

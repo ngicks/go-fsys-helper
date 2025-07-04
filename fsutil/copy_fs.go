@@ -30,20 +30,23 @@ type copyFsFsys[File copyFsFile] interface {
 
 // CopyFsOption configures filesystem copy operations.
 type CopyFsOption[Fsys copyFsFsys[File], File copyFsFile] struct {
-	// ChmodMask is used to mask file permissions during chmod operations.
-	// If zero, [fs.ModePerm] is used as the default mask.
-	// For os-backed filesystems, consider setting this to [ChmodMask]
-	ChmodMask fs.FileMode
+	// MaskChmodMode is a function that masks file permissions during chmod operations.
+	// If nil, the default behavior is to use perm & [fs.ModePerm].
+	// For OS-backed filesystems, it is strongly recommended to set this to [MaskChmodMode]
+	// to ensure proper platform-specific permission handling:
+	//   - Unix: preserves setuid, setgid, sticky bits
+	//   - Windows: maps permissions to Windows-appropriate values
+	//   - Plan9: preserves append, exclusive, temporary modes
+	MaskChmodMode func(perm fs.FileMode) fs.FileMode
 }
 
-// maskPerm returns the permission masked with ChmodMask.
-// If ChmodMask is zero, returns perm & fs.ModePerm.
+// maskPerm returns the permission after applying MaskChmodMode.
+// If MaskChmodMode is nil, returns perm & fs.ModePerm.
 func (opt CopyFsOption[Fsys, File]) maskPerm(perm fs.FileMode) fs.FileMode {
-	mask := opt.ChmodMask
-	if mask == 0 {
-		mask = fs.ModePerm
+	if opt.MaskChmodMode != nil {
+		return opt.MaskChmodMode(perm)
 	}
-	return perm & mask
+	return perm & fs.ModePerm
 }
 
 // CopyAll performs recursive copy from src filesystem to dst filesystem under the specified root path.
