@@ -18,14 +18,20 @@ func TestCopyFsOption_MaskChmodMode(t *testing.T) {
 		expectedDirMode  fs.FileMode
 	}
 
+	nonWindowsOr := func(l, r fs.FileMode) fs.FileMode {
+		if runtime.GOOS != "windows" {
+			return l
+		}
+		return r
+	}
 	tests := []testCase{
 		{
 			name:             "default behavior (nil function)",
 			maskFunc:         nil,
 			srcFileMode:      0o755,
-			expectedFileMode: 0o755,
+			expectedFileMode: nonWindowsOr(0o755, 0o666),
 			srcDirMode:       0o755,
-			expectedDirMode:  0o755,
+			expectedDirMode:  nonWindowsOr(0o755, 0o777),
 		},
 		{
 			name: "restrictive mask 0o755",
@@ -33,9 +39,9 @@ func TestCopyFsOption_MaskChmodMode(t *testing.T) {
 				return perm & 0o755
 			},
 			srcFileMode:      0o777,
-			expectedFileMode: 0o755, // 0o777 & 0o755 = 0o755
+			expectedFileMode: nonWindowsOr(0o755, 0o666),
 			srcDirMode:       0o777,
-			expectedDirMode:  0o755,
+			expectedDirMode:  nonWindowsOr(0o755, 0o777),
 		},
 		{
 			name: "conservative mask 0o700",
@@ -43,17 +49,17 @@ func TestCopyFsOption_MaskChmodMode(t *testing.T) {
 				return perm & 0o700
 			},
 			srcFileMode:      0o755,
-			expectedFileMode: 0o700, // 0o755 & 0o700 = 0o700
+			expectedFileMode: nonWindowsOr(0o700, 0o666),
 			srcDirMode:       0o755,
-			expectedDirMode:  0o700, // 0o755 & 0o700 = 0o700
+			expectedDirMode:  nonWindowsOr(0o700, 0o777),
 		},
 		{
 			name:             "using platform-specific MaskChmodMode",
 			maskFunc:         MaskChmodMode,
 			srcFileMode:      0o755,
-			expectedFileMode: 0o755, // Will be adjusted per platform below
+			expectedFileMode: nonWindowsOr(0o755, 0o666),
 			srcDirMode:       0o755,
-			expectedDirMode:  0o755, // Will be adjusted per platform below
+			expectedDirMode:  nonWindowsOr(0o755, 0o777), // Will be adjusted per platform below
 		},
 	}
 
@@ -103,28 +109,6 @@ func TestCopyFsOption_MaskChmodMode(t *testing.T) {
 			}
 
 			expectedFilePerm := tc.expectedFileMode
-			// Adjust expectations for platform-specific MaskChmodMode
-			if tc.name == "using platform-specific MaskChmodMode" {
-				if runtime.GOOS == "windows" {
-					// MaskChmodModeWindows behavior
-					if tc.srcFileMode&0o200 != 0 {
-						expectedFilePerm = 0o666
-					} else {
-						expectedFilePerm = 0o444
-					}
-				} else {
-					// Unix/Plan9 behavior - preserves permission bits
-					expectedFilePerm = tc.srcFileMode & fs.ModePerm
-				}
-			} else if runtime.GOOS == "windows" && tc.maskFunc == nil {
-				// Windows typically widens permissions
-				if tc.expectedFileMode&0o200 != 0 {
-					expectedFilePerm = 0o666 // read-write
-				} else {
-					expectedFilePerm = 0o444 // read-only
-				}
-			}
-
 			if fileInfo.Mode().Perm() != expectedFilePerm {
 				t.Errorf("file permissions: not equal: expected(%o) != actual(%o)", expectedFilePerm, fileInfo.Mode().Perm())
 			}
@@ -136,24 +120,6 @@ func TestCopyFsOption_MaskChmodMode(t *testing.T) {
 			}
 
 			expectedDirPerm := tc.expectedDirMode
-			// Adjust expectations for platform-specific MaskChmodMode
-			if tc.name == "using platform-specific MaskChmodMode" {
-				if runtime.GOOS == "windows" {
-					// MaskChmodModeWindows behavior for directories
-					if tc.srcDirMode&0o200 != 0 {
-						expectedDirPerm = 0o777
-					} else {
-						expectedDirPerm = 0o555
-					}
-				} else {
-					// Unix/Plan9 behavior - preserves permission bits
-					expectedDirPerm = tc.srcDirMode & fs.ModePerm
-				}
-			} else if runtime.GOOS == "windows" && tc.maskFunc == nil {
-				// Windows typically makes directories 0o777
-				expectedDirPerm = 0o777
-			}
-
 			if dirInfo.Mode().Perm() != expectedDirPerm {
 				t.Errorf("directory permissions: not equal: expected(%o) != actual(%o)", expectedDirPerm, dirInfo.Mode().Perm())
 			}
@@ -252,30 +218,8 @@ func TestCopyFsOption_MaskChmodModeCopyPath(t *testing.T) {
 				t.Fatalf("failed to stat copied file: %v", err)
 			}
 
-			expectedFilePerm := tc.expectedFileMode
-			// Adjust expectations for platform-specific MaskChmodMode
-			if tc.name == "CopyPath with platform-specific MaskChmodMode" {
-				if runtime.GOOS == "windows" {
-					// MaskChmodModeWindows behavior
-					if tc.srcFileMode&0o200 != 0 {
-						expectedFilePerm = 0o666
-					} else {
-						expectedFilePerm = 0o444
-					}
-				} else {
-					// Unix/Plan9 behavior - preserves permission bits
-					expectedFilePerm = tc.srcFileMode & fs.ModePerm
-				}
-			} else if runtime.GOOS == "windows" && tc.maskFunc == nil {
-				// Windows typically widens permissions
-				if tc.expectedFileMode&0o200 != 0 {
-					expectedFilePerm = 0o666 // read-write
-				} else {
-					expectedFilePerm = 0o444 // read-only
-				}
-			}
-
-			if fileInfo.Mode().Perm() != expectedFilePerm {
+			expectedFilePerm := MaskChmodMode(tc.expectedFileMode)
+			if fileInfo.Mode().Perm() != (expectedFilePerm) {
 				t.Errorf("file permissions: not equal: expected(%o) != actual(%o)", expectedFilePerm, fileInfo.Mode().Perm())
 			}
 
@@ -293,10 +237,10 @@ func TestCopyFsOption_MaskChmodModeCopyPath(t *testing.T) {
 
 func TestCopyFsOption_maskPerm(t *testing.T) {
 	type testCase struct {
-		name      string
-		maskFunc  func(fs.FileMode) fs.FileMode
-		input     fs.FileMode
-		expected  fs.FileMode
+		name     string
+		maskFunc func(fs.FileMode) fs.FileMode
+		input    fs.FileMode
+		expected fs.FileMode
 	}
 
 	tests := []testCase{
@@ -366,13 +310,13 @@ func TestCopyFsOption_maskPerm(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			opt := testCopyFsOption{MaskChmodMode: tc.maskFunc}
 			result := opt.maskPerm(tc.input)
-			
+
 			expected := tc.expected
 			// Adjust expectation for platform-specific MaskChmodMode
 			if tc.name == "using platform-specific MaskChmodMode" {
 				expected = MaskChmodMode(tc.input)
 			}
-			
+
 			if result != expected {
 				t.Errorf("maskPerm result: not equal: expected(%o) != actual(%o)", expected, result)
 			}
