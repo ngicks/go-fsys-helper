@@ -1,6 +1,7 @@
 package acceptancetest
 
 import (
+	"bytes"
 	"cmp"
 	"fmt"
 	"io/fs"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
@@ -90,19 +92,38 @@ type LineDirection struct {
 
 func ParseLine(txt string) LineDirection {
 	switch {
-	case strings.HasSuffix(txt, "/"):
+	case strings.Contains(txt, "/ ") || strings.HasSuffix(txt, "/"):
+		var suf string
+		if strings.Contains(txt, "/ ") {
+			txt, suf, _ = strings.Cut(txt, "/ ")
+		}
+		var perm uint64
+		if suf != "" {
+			perm, _ = strconv.ParseUint(suf, 0, 64)
+		}
 		return LineDirection{
-			LineKind: LineKindMkdir,
-			Path:     txt,
+			LineKind:   LineKindMkdir,
+			Path:       txt,
+			Permission: fs.FileMode(perm),
 		}
 	case strings.Contains(txt, ": "):
 		idx := strings.Index(txt, ": ")
 		path := txt[:idx]
-		content := txt[idx+len(": "):]
+		contentPerm := txt[idx+len(": "):]
+		permStr, content, ok := strings.Cut(contentPerm, " ")
+		var perm uint64
+		if !ok {
+			content = permStr
+		} else {
+			if permStr != "" {
+				perm, _ = strconv.ParseUint(permStr, 0, 64)
+			}
+		}
 		return LineDirection{
-			LineKind: LineKindWriteFile,
-			Path:     path,
-			Content:  []byte(content),
+			LineKind:   LineKindWriteFile,
+			Path:       path,
+			Content:    []byte(content),
+			Permission: fs.FileMode(perm),
 		}
 	case strings.Contains(txt, " -> "):
 		idx := strings.Index(txt, " -> ")
@@ -115,6 +136,14 @@ func ParseLine(txt string) LineDirection {
 		}
 	}
 	return LineDirection{}
+}
+
+func (l LineDirection) Equal(r LineDirection) bool {
+	return l.LineKind == r.LineKind &&
+		l.Permission == r.Permission &&
+		l.Path == r.Path &&
+		filepath.Clean(filepath.FromSlash(l.TargetPath)) == filepath.Clean(filepath.FromSlash(r.TargetPath)) &&
+		bytes.Equal(l.Content, r.Content)
 }
 
 func (l LineDirection) ExecuteOs(baseDir string) error {

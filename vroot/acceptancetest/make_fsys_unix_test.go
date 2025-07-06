@@ -12,6 +12,67 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
 
+func TestParseLine(t *testing.T) {
+	type testCase struct {
+		line     string
+		expected acceptancetest.LineDirection
+	}
+
+	cases := []testCase{
+		{
+			line: "foo1: yayyay",
+			expected: acceptancetest.LineDirection{
+				LineKind:   acceptancetest.LineKindWriteFile,
+				Permission: 0,
+				Path:       "foo1",
+				Content:    []byte("yayyay"),
+			},
+		},
+		{
+			line: "foo2: 0o77755 yayyay",
+			expected: acceptancetest.LineDirection{
+				LineKind:   acceptancetest.LineKindWriteFile,
+				Permission: 0o77755, // bit range ot of 0o777 is clipped but within it, respected.
+				Path:       "foo2",
+				Content:    []byte("yayyay"),
+			},
+		},
+		{
+			line: "bar1/ yayyay",
+			expected: acceptancetest.LineDirection{
+				LineKind:   acceptancetest.LineKindMkdir,
+				Permission: 0,
+				Path:       "bar1",
+			},
+		},
+		{
+			line: "bar2/bar2/bar2/ 457",
+			expected: acceptancetest.LineDirection{
+				LineKind:   acceptancetest.LineKindMkdir,
+				Permission: 0o711, // bit range ot of 0o777 is clipped but within it, respected.
+				Path:       "bar2/bar2/bar2",
+			},
+		},
+		{
+			line: "baz -> foo1",
+			expected: acceptancetest.LineDirection{
+				LineKind:   acceptancetest.LineKindSymlink,
+				Path:       "baz",
+				TargetPath: "foo1",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.line, func(t *testing.T) {
+			parsed := acceptancetest.ParseLine(tc.line)
+			if !tc.expected.Equal(parsed) {
+				t.Errorf("not qeual:\nexpected: %#v\nactual  : %#v\n", tc.expected, parsed)
+			}
+		})
+	}
+}
+
 func TestLineDirection_Execute(t *testing.T) {
 	// can't execute this on windwos platform since it only paritally uses permission.
 
