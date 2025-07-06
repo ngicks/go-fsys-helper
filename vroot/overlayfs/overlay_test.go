@@ -9,6 +9,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
@@ -42,10 +43,10 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 		switch i {
 		case 1:
 			// only regular files under root/readable/
-			for d := range acceptancetest.FilterLineDirection(
-				func(l acceptancetest.LineDirection) bool {
-					return (l.LineKind == acceptancetest.LineKindMkdir) ||
-						(l.LineKind == acceptancetest.LineKindWriteFile &&
+			for d := range testhelper.FilterLineDirection(
+				func(l testhelper.LineDirection) bool {
+					return (l.LineKind == testhelper.LineKindMkdir) ||
+						(l.LineKind == testhelper.LineKindWriteFile &&
 							strings.HasPrefix(l.Path, filepath.FromSlash("root/readable/")) &&
 							strings.Count(l.Path, string(filepath.Separator)) == 2)
 				},
@@ -59,10 +60,10 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 			}
 		case 2:
 			// only regular files under root/readable/
-			for d := range acceptancetest.FilterLineDirection(
-				func(l acceptancetest.LineDirection) bool {
-					return (l.LineKind == acceptancetest.LineKindMkdir) ||
-						(l.LineKind == acceptancetest.LineKindSymlink &&
+			for d := range testhelper.FilterLineDirection(
+				func(l testhelper.LineDirection) bool {
+					return (l.LineKind == testhelper.LineKindMkdir) ||
+						(l.LineKind == testhelper.LineKindSymlink &&
 							strings.HasPrefix(l.Path, filepath.FromSlash("root/readable/")) &&
 							strings.Count(l.Path, string(filepath.Separator)) == 2)
 				},
@@ -76,10 +77,10 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 			}
 		case 3:
 			// only content under "root/readable/subdir"
-			for d := range acceptancetest.FilterLineDirection(
-				func(l acceptancetest.LineDirection) bool {
-					return (l.LineKind == acceptancetest.LineKindMkdir) ||
-						((l.LineKind == acceptancetest.LineKindWriteFile || l.LineKind == acceptancetest.LineKindSymlink) &&
+			for d := range testhelper.FilterLineDirection(
+				func(l testhelper.LineDirection) bool {
+					return (l.LineKind == testhelper.LineKindMkdir) ||
+						((l.LineKind == testhelper.LineKindWriteFile || l.LineKind == testhelper.LineKindSymlink) &&
 							strings.HasPrefix(l.Path, filepath.FromSlash("root/readable/")) &&
 							strings.Count(l.Path, string(filepath.Separator)) == 3)
 				},
@@ -93,10 +94,10 @@ func prepareLayers(tempDir string) (*Fs, func(t *testing.T)) {
 			}
 		case 4:
 			// only content under "root/readable/subdir"
-			for d := range acceptancetest.FilterLineDirection(
-				func(l acceptancetest.LineDirection) bool {
-					return (l.LineKind == acceptancetest.LineKindMkdir) ||
-						((l.LineKind == acceptancetest.LineKindWriteFile || l.LineKind == acceptancetest.LineKindSymlink) &&
+			for d := range testhelper.FilterLineDirection(
+				func(l testhelper.LineDirection) bool {
+					return (l.LineKind == testhelper.LineKindMkdir) ||
+						((l.LineKind == testhelper.LineKindWriteFile || l.LineKind == testhelper.LineKindSymlink) &&
 							strings.HasPrefix(l.Path, filepath.FromSlash("root/readable/")) &&
 							strings.Count(l.Path, string(filepath.Separator)) == 4)
 				},

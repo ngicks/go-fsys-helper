@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
@@ -272,7 +273,7 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 
 func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
 	tempDir := t.TempDir()
-	err := acceptancetest.ExecuteLines(
+	err := testhelper.ExecuteLines(
 		tempDir,
 		"root/",
 		"root/a -> b",
@@ -398,7 +399,7 @@ func TestWalk_Rooted_loop(t *testing.T) {
 	for _, tc := range walkTestCases {
 		t.Run(tc.name(), func(t *testing.T) {
 			tempDir := t.TempDir()
-			err := acceptancetest.ExecuteLines(
+			err := testhelper.ExecuteLines(
 				tempDir,
 				tc.fsysStructure...,
 			)
@@ -490,7 +491,7 @@ func TestWalk_Unrooted_loop(t *testing.T) {
 	for _, tc := range slices.Concat(walkTestCases, outsideCases) {
 		t.Run(tc.name(), func(t *testing.T) {
 			tempDir := t.TempDir()
-			err := acceptancetest.ExecuteLines(
+			err := testhelper.ExecuteLines(
 				tempDir,
 				tc.fsysStructure...,
 			)

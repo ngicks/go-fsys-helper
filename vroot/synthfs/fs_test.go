@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 	"github.com/ngicks/go-fsys-helper/vroot/clock"
@@ -25,10 +26,10 @@ func must1(err error) {
 func prep(fsys vroot.Fs) {
 	// Create all content under root/, not just writable
 	must1(
-		acceptancetest.ExecuteAllLineDirection(
+		testhelper.ExecuteAllLineDirection(
 			fsys,
-			acceptancetest.FilterLineDirection(
-				func(l acceptancetest.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
+			testhelper.FilterLineDirection(
+				func(l testhelper.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
 				slices.Values(acceptancetest.RootFsysDirections),
 			),
 		),
