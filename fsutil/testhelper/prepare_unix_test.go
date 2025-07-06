@@ -31,7 +31,7 @@ func TestParseLine(t *testing.T) {
 			line: "foo2: 0o77755 yayyay",
 			expected: LineDirection{
 				LineKind:   LineKindWriteFile,
-				Permission: 0o77755, // bit range ot of 0o777 is clipped but within it, respected.
+				Permission: 0o77755,
 				Path:       "foo2",
 				Content:    []byte("yayyay"),
 			},
@@ -48,7 +48,7 @@ func TestParseLine(t *testing.T) {
 			line: "bar2/bar2/bar2/ 457",
 			expected: LineDirection{
 				LineKind:   LineKindMkdir,
-				Permission: 0o711, // bit range ot of 0o777 is clipped but within it, respected.
+				Permission: 0o711,
 				Path:       "bar2/bar2/bar2",
 			},
 		},
@@ -119,7 +119,7 @@ func TestLineDirection_Execute(t *testing.T) {
 		{
 			dir: LineDirection{
 				LineKind:   LineKindMkdir,
-				Permission: 0o711, // bit range ot of 0o777 is clipped but within it, respected.
+				Permission: 0o711,
 				Path:       "bar2/bar2/bar2",
 			},
 			expectedMode: fs.ModeDir | 0o711,
