@@ -182,8 +182,8 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to lstat symlink: %v", err)
 		}
 
-		// Set up filesystems with symlink support
-		srcFs := os.DirFS(srcDir)
+		// Set up filesystems with symlink support (FsWrapper supports ReadLinkFs)
+		srcFs := osfslite.NewFsWrapper(srcDir)
 		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
@@ -322,8 +322,8 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to lstat symlink: %v", err)
 		}
 
-		// Set up filesystems with full symlink support (os.DirFS now supports ReadLink in Go 1.25)
-		srcFs := os.DirFS(srcDir)
+		// Set up filesystems with full symlink support (FsWrapper supports ReadLinkFs)
+		srcFs := osfslite.NewFsWrapper(srcDir)
 
 		// Create copy option
 		opt := testMockCopyFsOption{}
