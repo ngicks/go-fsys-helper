@@ -33,7 +33,9 @@ func (m *metadata) chmod(mode fs.FileMode) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	allbits := m.maskChmodMode(fs.FileMode(^uint32(0))) | fs.ModePerm
-	m.s.mode = m.s.mode&^allbits | m.maskChmodMode(mode)
+	// Preserve file type bits (directory, symlink, etc.) when applying new permissions
+	fullMode := m.s.mode&^fs.ModePerm | mode
+	m.s.mode = m.s.mode&^allbits | m.maskChmodMode(fullMode)
 }
 
 func (m *metadata) chown(uid, gid int) {
