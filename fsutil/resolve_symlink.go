@@ -147,10 +147,6 @@ func ResolveSymlink(
 	linkRealPath string,
 	maxResolution int,
 ) (resolved string, numSymlink int, err error) {
-	if linkRealPath == "" || linkRealPath == "." {
-		return "", 0, nil
-	}
-
 	resolved = filepath.Clean(linkRealPath)
 	var i int
 	for i = 0; i < maxResolution; i++ {

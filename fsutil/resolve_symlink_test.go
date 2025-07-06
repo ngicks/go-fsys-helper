@@ -216,9 +216,9 @@ func TestResolveSymlink_non_link(t *testing.T) {
 func TestResolveSymlink_empty_path(t *testing.T) {
 	tempDir := t.TempDir()
 	resolved, num, err := ResolveSymlink(*osfslite.New(tempDir), "", 30)
-	if resolved != "" || num != 0 || err != nil {
+	if resolved != "" || num != 0 || err == nil {
 		t.Errorf(
-			"incorrect: expected \"\", 0 and nil error, but is %q, %d and %v",
+			"incorrect: expected \"\", 0 and EINVAL error, but is %q, %d and %v",
 			resolved, num, err,
 		)
 	}
