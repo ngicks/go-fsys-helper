@@ -1,6 +1,7 @@
 package acceptancetest
 
 import (
+	"cmp"
 	"fmt"
 	"io/fs"
 	"iter"
@@ -81,6 +82,7 @@ const (
 
 type LineDirection struct {
 	LineKind   LineKind
+	Permission fs.FileMode
 	Path       string
 	TargetPath string // for symlink target
 	Content    []byte // for write file content
@@ -116,30 +118,58 @@ func ParseLine(txt string) LineDirection {
 }
 
 func (l LineDirection) ExecuteOs(baseDir string) error {
-	baseDir = filepath.FromSlash(filepath.Clean(baseDir))
+	perm := cmp.Or(l.Permission, fs.ModePerm) & fs.ModePerm
+	baseDir = filepath.Clean(filepath.FromSlash(baseDir))
 	switch l.LineKind {
 	default:
 		return nil
 	case LineKindMkdir:
-		return os.MkdirAll(filepath.Join(baseDir, filepath.FromSlash(l.Path)), fs.ModePerm)
+		path := filepath.Join(baseDir, filepath.FromSlash(l.Path))
+		err := os.MkdirAll(path, fs.ModePerm)
+		if err != nil {
+			return err
+		}
+		return os.Chmod(path, perm)
 	case LineKindWriteFile:
-		return os.WriteFile(filepath.Join(baseDir, filepath.FromSlash(l.Path)), l.Content, fs.ModePerm)
+		path := filepath.Join(baseDir, filepath.FromSlash(l.Path))
+		err := os.WriteFile(path, l.Content, fs.ModePerm)
+		if err != nil {
+			return err
+		}
+		return os.Chmod(path, perm)
 	case LineKindSymlink:
 		if runtime.GOOS == "plan9" {
 			return nil
 		}
-		return os.Symlink(filepath.FromSlash(l.TargetPath), filepath.Join(baseDir, filepath.FromSlash(l.Path)))
+		return os.Symlink(
+			filepath.FromSlash(l.TargetPath),
+			filepath.Join(baseDir, filepath.FromSlash(l.Path)),
+		)
 	}
 }
 
 func (l LineDirection) Execute(fsys vroot.Fs) error {
+	perm := cmp.Or(l.Permission, fs.ModePerm) & fs.ModePerm
 	switch l.LineKind {
 	default:
 		return nil
 	case LineKindMkdir:
-		return fsys.MkdirAll(filepath.FromSlash(l.Path), fs.ModePerm)
+		err := fsys.MkdirAll(filepath.FromSlash(l.Path), fs.ModePerm)
+		if err != nil {
+			return err
+		}
+		return fsys.Chmod(filepath.FromSlash(l.Path), perm)
 	case LineKindWriteFile:
-		return vroot.WriteFile(fsys, filepath.FromSlash(l.Path), l.Content, fs.ModePerm)
+		err := vroot.WriteFile(
+			fsys,
+			filepath.FromSlash(l.Path),
+			l.Content,
+			fs.ModePerm,
+		)
+		if err != nil {
+			return err
+		}
+		return fsys.Chmod(filepath.FromSlash(l.Path), perm)
 	case LineKindSymlink:
 		return fsys.Symlink(filepath.FromSlash(l.TargetPath), filepath.FromSlash(l.Path))
 	}
