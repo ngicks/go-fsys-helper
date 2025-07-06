@@ -1,5 +1,3 @@
-//go:build unix || (js && wasm) || wasip1
-
 package testhelper
 
 import (
