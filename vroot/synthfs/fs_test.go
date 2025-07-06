@@ -36,9 +36,17 @@ func prep(fsys vroot.Fs) {
 	)
 }
 
+func umaskOr(left bool, l, r fs.FileMode) *fs.FileMode {
+	if left {
+		return &l
+	}
+	return &r
+}
+
 func TestRooted(t *testing.T) {
 	opt := Option{
 		Clock:                  clock.RealWallClock(),
+		Umask:                  umaskOr(runtime.GOOS == "windows", 0, 0o022),
 		DisableOpenFileRemoval: runtime.GOOS == "windows",
 		MaskChmodMode:          fsutil.MaskChmodMode,
 	}
@@ -53,6 +61,7 @@ func TestRooted(t *testing.T) {
 func TestUnrooted(t *testing.T) {
 	opt := Option{
 		Clock:                  clock.RealWallClock(),
+		Umask:                  umaskOr(runtime.GOOS == "windows", 0, 0o022),
 		DisableOpenFileRemoval: runtime.GOOS == "windows",
 		MaskChmodMode:          fsutil.MaskChmodMode,
 	}
