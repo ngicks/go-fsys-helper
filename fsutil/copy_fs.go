@@ -12,7 +12,7 @@ import (
 	"slices"
 
 	"github.com/ngicks/go-fsys-helper/fsutil/internal/bufpool"
-	pathspkg "github.com/ngicks/go-fsys-helper/fsutil/internal/paths"
+	"github.com/ngicks/go-fsys-helper/fsutil/pathutil"
 )
 
 type copyFsFile interface {
@@ -121,7 +121,7 @@ func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, p
 		dstPath := filepath.Join(root, path)
 		parentDir := filepath.Dir(dstPath)
 		if parentDir != "." {
-			for dirPath := range pathspkg.PathFromHead(parentDir) {
+			for dirPath := range pathutil.PathFromHead(parentDir) {
 				dirs[dirPath] = struct{}{}
 			}
 		}
