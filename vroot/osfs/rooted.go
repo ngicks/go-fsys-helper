@@ -1,12 +1,66 @@
 package osfs
 
 import (
+	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
+
+// vendored until https://github.com/golang/go/issues/73868
+// is closed
+// TODO: remove when approporate
+type readdirWorkAroundFile struct {
+	fsys *Rooted
+	name string
+	*os.File
+}
+
+func wrapReaddirWorkAroundFile(fsys *Rooted, name string, f *os.File) vroot.File {
+	if f == nil {
+		return nil
+	}
+	return &readdirWorkAroundFile{fsys, name, f}
+}
+
+func (f *readdirWorkAroundFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	dirents, err := f.File.ReadDir(n)
+	for i, dirent := range dirents {
+		if dirent == nil {
+			continue
+		}
+		dirents[i] = &readdirWorkAroundDirEntry{f.fsys, filepath.Join(f.name, dirent.Name()), dirent}
+	}
+	return dirents, err
+}
+
+func (f *readdirWorkAroundFile) Readdir(n int) ([]fs.FileInfo, error) {
+	dirents, err := f.ReadDir(n)
+	infos := make([]fs.FileInfo, 0, len(dirents))
+	for _, dirent := range dirents {
+		info, err := dirent.Info()
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		infos = append(infos, info)
+	}
+	return infos, err
+}
+
+var _ fs.DirEntry = (*readdirWorkAroundDirEntry)(nil)
+
+type readdirWorkAroundDirEntry struct {
+	fsys *Rooted
+	name string
+	fs.DirEntry
+}
+
+func (d *readdirWorkAroundDirEntry) Info() (fs.FileInfo, error) {
+	return d.fsys.Lstat(d.name)
+}
 
 var (
 	_ vroot.Rooted     = (*Rooted)(nil)
@@ -78,7 +132,7 @@ func (r *Rooted) Create(name string) (vroot.File, error) {
 	if err != nil {
 		return nil, swapPathEscapesErr(err)
 	}
-	return f, nil
+	return wrapReaddirWorkAroundFile(r, name, f), nil
 }
 
 func (r *Rooted) Lchown(name string, uid int, gid int) error {
@@ -114,7 +168,7 @@ func (r *Rooted) Open(name string) (vroot.File, error) {
 	if err != nil {
 		return nil, swapPathEscapesErr(err)
 	}
-	return f, nil
+	return wrapReaddirWorkAroundFile(r, name, f), nil
 }
 
 func (r *Rooted) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, error) {
@@ -122,7 +176,7 @@ func (r *Rooted) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, 
 	if err != nil {
 		return nil, swapPathEscapesErr(err)
 	}
-	return f, nil
+	return wrapReaddirWorkAroundFile(r, name, f), nil
 }
 
 func (r *Rooted) OpenRoot(name string) (vroot.Rooted, error) {
