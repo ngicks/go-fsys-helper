@@ -1,6 +1,7 @@
 package synthfs
 
 import (
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"runtime"
@@ -16,6 +17,7 @@ import (
 
 func must1(err error) {
 	if err != nil {
+		fmt.Printf("err = %#v\n", err)
 		panic(err)
 	}
 }
