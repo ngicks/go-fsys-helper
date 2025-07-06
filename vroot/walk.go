@@ -119,7 +119,7 @@ func walkDir_(
 			realPath_ string
 		)
 		info, err = fsys.Stat(path)
-		if err == nil {
+		if err == nil && realPath != "" {
 			var numResolved int
 			realPath_, numResolved, err = fsutil.ResolveSymlink(fsys, realPath, state.symlinkResolveRemaining)
 			state.symlinkResolveRemaining -= numResolved
