@@ -10,12 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Change directory**: Before executing any `go` command, `cd` into that `go module`. Don't run them on `./`. Each time after command is done, move back to root dir.
 - **Testing**: Use `go test -coverprofile=./.coverinfo -timeout 2s ./...` to run all tests
-- **Converage Report**: Use `go tool cover -html=./.coverinfo -o .coverage.html` after test is called.
+- **Converage Report**: Use `go tool cover -html=./.coverinfo -o .coverinfo.html` after test is called.
 - **Race testing**: Use `go test -race -timeout 2s ./...` to run tests with race detection (slower but finds timing issues)
 - **Single test**: Use `go test -timeout 2s -run TestName -v ./path/to/package` to run a specific test
 - **Single test with race detection**: Use `go test -race -timeout 2s -run TestName -v ./path/to/package` to run a specific test with race detection
-- **Formatting / Clean imports**: Use `goimports -w .` to clean imports. Everytime you add or remove lines, run this.
-- **Type checking**: Use `go vet ./...` to check for static analysis issues
 
 ## Architecture
 
