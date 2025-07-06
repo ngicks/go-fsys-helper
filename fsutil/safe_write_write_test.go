@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 // checkNoTempFiles verifies no temporary files are left in the directory
@@ -30,7 +32,7 @@ func checkNoTempFiles(t *testing.T, tempDir string) {
 func TestSafeWrite(t *testing.T) {
 	t.Run("basic copy from reader", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		opt := testSafeWriteOption{}
 		targetPath := "test.txt"
@@ -66,7 +68,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("copy with pre and post hooks", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		var preHookCalled, postHookCalled, optPreHookCalled, optPostHookCalled bool
 		var hookOrder []string
@@ -129,7 +131,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("copy with sync hook", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		opt := testSafeWriteOption{
 			PostHooks: []func(*os.File, string) error{
@@ -146,7 +148,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("copy error in pre-hook", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		hookErr := errors.New("pre-hook error")
 		opt := testSafeWriteOption{
@@ -174,7 +176,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("copy error in post-hook", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		hookErr := errors.New("post-hook error")
 		opt := testSafeWriteOption{
@@ -202,7 +204,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("copy with read error", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		opt := testSafeWriteOption{}
 		targetPath := "test-write-error.txt"
@@ -226,7 +228,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("copy overwrite existing file", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		opt := testSafeWriteOption{}
 		targetPath := "test-overwrite.txt"
@@ -255,7 +257,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("copy with TempFilePolicyDir", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		tempPolicyDir := ".tmp"
 		policy := newTestTempFilePolicyDir(tempPolicyDir)
@@ -287,7 +289,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("Write method with writer function", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		opt := testSafeWriteOption{}
 		targetPath := "test-write-func.txt"
@@ -327,7 +329,7 @@ func TestSafeWrite(t *testing.T) {
 
 	t.Run("Write method with error in writer function", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		opt := testSafeWriteOption{}
 		targetPath := "test-write-error.txt"

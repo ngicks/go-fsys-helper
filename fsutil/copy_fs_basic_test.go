@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
-type testCopyFsOption = CopyFsOption[*osfsLite, *os.File]
+type testCopyFsOption = CopyFsOption[*osfslite.OsfsLite, *os.File]
 
 func TestCopyFs(t *testing.T) {
 	t.Run("basic copy", func(t *testing.T) {
@@ -41,7 +43,7 @@ func TestCopyFs(t *testing.T) {
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
 		opt := testCopyFsOption{}
@@ -124,7 +126,7 @@ func TestCopyFs(t *testing.T) {
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
 		opt := testCopyFsOption{}
@@ -184,7 +186,7 @@ func TestCopyPath(t *testing.T) {
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
 		opt := testCopyFsOption{}
@@ -240,7 +242,7 @@ func TestCopyPath(t *testing.T) {
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
 		opt := testCopyFsOption{}

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 func TestCopyFs_ErrorPaths(t *testing.T) {
@@ -30,7 +32,7 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		}
 
 		srcFs := &mockErrorDirFs{base: os.DirFS(srcDir)}
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
 		opt := testCopyFsOption{}
 
@@ -56,7 +58,7 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
 		opt := testCopyFsOption{}
@@ -93,7 +95,7 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		// Set up filesystems with mock mkdir error
 		srcFs := os.DirFS(srcDir)
 		dstFs := &mockErrorFs{
-			osfsLite:       osfsLite{base: dstDir},
+			OsfsLite:       *osfslite.New(dstDir),
 			mkdirError:     fs.ErrPermission,
 			mkdirErrorPath: "subdir",
 		}
@@ -125,7 +127,7 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		// Test copyEntry with walk error
 		opt := testCopyFsOption{}
 		mockErr := errors.New("walk error")
-		err := opt.copyEntry(&osfsLite{base: dstDir}, os.DirFS(srcDir), "path", "path", nil, mockErr)
+		err := opt.copyEntry(osfslite.New(dstDir), os.DirFS(srcDir), "path", "path", nil, mockErr)
 		if err != mockErr {
 			t.Errorf("expected walk error to be returned")
 		}
@@ -143,7 +145,7 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			openError: fs.ErrPermission,
 			openPath:  "unreadable.txt",
 		}
-		err = opt.copyEntry(&osfsLite{base: dstDir}, mockSrcFs, "unreadable.txt", "unreadable.txt", info, nil)
+		err = opt.copyEntry(osfslite.New(dstDir), mockSrcFs, "unreadable.txt", "unreadable.txt", info, nil)
 		if err == nil {
 			t.Error("expected error when copying unreadable file")
 		}
@@ -181,8 +183,8 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		}
 
 		// Set up filesystems with symlink support
-		srcFs := &osfsLite{base: srcDir}
-		dstFs := &osfsLite{base: dstDir}
+		srcFs := os.DirFS(srcDir)
+		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
 		opt := testCopyFsOption{}
@@ -237,7 +239,7 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			lstatError: fs.ErrPermission,
 			lstatPath:  "broken",
 		}
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
 		opt := testCopyFsOption{}
@@ -275,9 +277,9 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to lstat symlink: %v", err)
 		}
 
-		// Set up filesystems where src doesn't support ReadLink (os.DirFS)
-		srcFs := os.DirFS(srcDir)
-		dstFs := &osfsLite{base: dstDir}
+		// Set up filesystems where src doesn't support ReadLink (BasicWrapper doesn't implement ReadLinkFs)
+		srcFs := osfslite.NewBasicWrapper(srcDir)
+		dstFs := osfslite.New(dstDir)
 
 		// Create copy option
 		opt := testCopyFsOption{}
@@ -290,7 +292,7 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 
 		// Verify symlink was NOT copied (since src doesn't support ReadLink)
 		if _, err := os.Lstat(filepath.Join(dstDir, "link.txt")); !errors.Is(err, fs.ErrNotExist) {
-			t.Error("symlink should not have been copied when src doesn't support ReadLink")
+			t.Errorf("symlink should not have been copied when src doesn't support ReadLink: %v", err)
 		}
 	})
 
@@ -320,15 +322,15 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to lstat symlink: %v", err)
 		}
 
-		// Set up filesystems with full symlink support
-		srcFs := &osfsLite{base: srcDir}
+		// Set up filesystems with full symlink support (os.DirFS now supports ReadLink in Go 1.25)
+		srcFs := os.DirFS(srcDir)
 
 		// Create copy option
 		opt := testMockCopyFsOption{}
 
 		// Set up mock filesystem that will fail on symlink creation
 		mockDstFs := &mockErrorFs{
-			osfsLite:           osfsLite{base: dstDir},
+			OsfsLite:           *osfslite.New(dstDir),
 			symlinkError:       fs.ErrExist,
 			symlinkErrorTarget: "link.txt",
 		}
@@ -367,9 +369,9 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		}
 
 		srcFs := &mockErrorDirFs{base: os.DirFS(srcDir)}
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
-		opt := CopyFsOption[*osfsLite, *os.File]{
+		opt := CopyFsOption[*osfslite.OsfsLite, *os.File]{
 			IgnoreErr: func(err error) bool {
 				return errors.Is(err, fs.ErrPermission)
 			},
@@ -411,10 +413,10 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		}
 
 		srcFs := &mockErrorDirFs{base: os.DirFS(srcDir)}
-		dstFs := &osfsLite{base: dstDir}
+		dstFs := osfslite.New(dstDir)
 
 		// Test with IgnoreErr that doesn't match the error
-		opt := CopyFsOption[*osfsLite, *os.File]{
+		opt := CopyFsOption[*osfslite.OsfsLite, *os.File]{
 			IgnoreErr: func(err error) bool {
 				return errors.Is(err, fs.ErrNotExist) // Only ignore NotExist errors
 			},

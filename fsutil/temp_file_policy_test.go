@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 func checkNotExist(t *testing.T, fsys fs.FS, paths ...string) {
@@ -22,7 +24,7 @@ func checkNotExist(t *testing.T, fsys fs.FS, paths ...string) {
 func TestTempFilePolicy_WalkFunc(t *testing.T) {
 	t.Run("TempFilePolicyDir prefix check", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 
 		// Create two directories: "temp" and "temp2" to verify no false prefix matches
 		policy1 := newTestTempFilePolicyDir("temp")
@@ -77,7 +79,7 @@ func TestTempFilePolicy_WalkFunc(t *testing.T) {
 
 	t.Run("TempFilePolicyRandom", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 		policy := testTempFilePolicyRandom{}
 
 		// Create some temp files
@@ -163,7 +165,7 @@ func TestTempFilePolicy_WalkFunc(t *testing.T) {
 
 	t.Run("TempFilePolicyDir", func(t *testing.T) {
 		tempDir := t.TempDir()
-		fsys := &osfsLite{base: tempDir}
+		fsys := osfslite.New(tempDir)
 		tempPolicyDir := ".tmp"
 		policy := newTestTempFilePolicyDir(tempPolicyDir)
 
@@ -260,7 +262,7 @@ func TestTempFilePolicy_Match(t *testing.T) {
 
 func TestTempFilePolicy_WalkFuncErrors(t *testing.T) {
 	tempDir := t.TempDir()
-	fsys := &osfsLite{base: tempDir}
+	fsys := osfslite.New(tempDir)
 
 	t.Run("TempFilePolicyDir WalkFunc errors", func(t *testing.T) {
 		policy := newTestTempFilePolicyDir(".tmp")

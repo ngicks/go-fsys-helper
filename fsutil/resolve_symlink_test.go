@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"syscall"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 type toAndFro struct {
@@ -146,7 +148,7 @@ func TestResolvePath(t *testing.T) {
 			}
 
 			resolved, err := ResolvePath(
-				osfsLite{tempDir},
+				*osfslite.New(tempDir),
 				filepath.FromSlash(tc.from),
 				false,
 			)
@@ -188,7 +190,7 @@ func TestResolveSymlink(t *testing.T) {
 	_ = f.Close()
 
 	_, num, _ := ResolveSymlink(
-		osfsLite{tempDir},
+		*osfslite.New(tempDir),
 		filepath.Join("foo", "0"),
 		20,
 	)
@@ -205,7 +207,7 @@ func TestResolveSymlink_non_link(t *testing.T) {
 		panic(err)
 	}
 
-	_, _, err = ResolveSymlink(osfsLite{tempDir}, "a", 10)
+	_, _, err = ResolveSymlink(*osfslite.New(tempDir), "a", 10)
 	if errors.Is(err, fs.ErrInvalid) {
 		t.Errorf("expected fs.ErrInvalid, but is %v", err)
 	}
@@ -213,7 +215,7 @@ func TestResolveSymlink_non_link(t *testing.T) {
 
 func TestResolveSymlink_empty_path(t *testing.T) {
 	tempDir := t.TempDir()
-	resolved, num, err := ResolveSymlink(osfsLite{tempDir}, "", 30)
+	resolved, num, err := ResolveSymlink(*osfslite.New(tempDir), "", 30)
 	if resolved != "" || num != 0 || err != nil {
 		t.Errorf(
 			"incorrect: expected \"\", 0 and nil error, but is %q, %d and %v",
@@ -224,7 +226,7 @@ func TestResolveSymlink_empty_path(t *testing.T) {
 
 func TestResolvePath_ErrorPaths(t *testing.T) {
 	tempDir := t.TempDir()
-	fsys := osfsLite{tempDir}
+	fsys := *osfslite.New(tempDir)
 
 	t.Run("Lstat error on non-existent path", func(t *testing.T) {
 		_, err := ResolvePath(fsys, "nonexistent/path", false)
@@ -327,7 +329,7 @@ func TestResolveSymlink_targeting_each_other_ELOOP(t *testing.T) {
 		panic(err)
 	}
 
-	fsys := osfsLite{filepath.Join(tempDir, "root")}
+	fsys := *osfslite.New(filepath.Join(tempDir, "root"))
 	resolved, num, err := ResolveSymlink(fsys, "a", 30)
 	if resolved != "" || num != 30 || !errors.Is(err, syscall.ELOOP) {
 		t.Errorf(

@@ -4,11 +4,13 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 // mockErrorFs wraps an existing filesystem and injects errors for specific operations
 type mockErrorFs struct {
-	osfsLite
+	osfslite.OsfsLite
 	mkdirError         error
 	mkdirErrorPath     string
 	openFileError      error
@@ -29,32 +31,32 @@ func (m *mockErrorFs) OpenFile(name string, flag int, perm fs.FileMode) (*os.Fil
 	if m.openFileError != nil && (m.openFileErrorPath == "" || strings.Contains(name, m.openFileErrorPath)) {
 		return nil, m.openFileError
 	}
-	return m.osfsLite.OpenFile(name, flag, perm)
+	return m.OsfsLite.OpenFile(name, flag, perm)
 }
 
 func (m *mockErrorFs) Mkdir(name string, perm fs.FileMode) error {
 	if m.mkdirError != nil && (m.mkdirErrorPath == "" || strings.Contains(name, m.mkdirErrorPath)) {
 		return m.mkdirError
 	}
-	return m.osfsLite.Mkdir(name, perm)
+	return m.OsfsLite.Mkdir(name, perm)
 }
 
 func (m *mockErrorFs) Chmod(name string, mode fs.FileMode) error {
 	if m.chmodError != nil && (m.chmodErrorPath == "" || strings.Contains(name, m.chmodErrorPath)) {
 		return m.chmodError
 	}
-	return m.osfsLite.Chmod(name, mode)
+	return m.OsfsLite.Chmod(name, mode)
 }
 
 func (m *mockErrorFs) Symlink(oldname, newname string) error {
 	if m.symlinkError != nil && (m.symlinkErrorTarget == "" || strings.Contains(newname, m.symlinkErrorTarget)) {
 		return m.symlinkError
 	}
-	return m.osfsLite.Symlink(oldname, newname)
+	return m.OsfsLite.Symlink(oldname, newname)
 }
 
 func (m *mockErrorFs) ReadLink(name string) (string, error) {
-	return m.osfsLite.ReadLink(name)
+	return m.OsfsLite.ReadLink(name)
 }
 
 // mockErrorSrcFs wraps a filesystem and injects errors for read operations

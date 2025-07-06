@@ -4,22 +4,24 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 type (
-	testSafeWriteOption      = SafeWriteOption[*osfsLite, *os.File]
-	testTempFilePolicyRandom = TempFilePolicyRandom[*osfsLite, *os.File]
-	testTempFilePolicyDir    = TempFilePolicyDir[*osfsLite, *os.File]
+	testSafeWriteOption      = SafeWriteOption[*osfslite.OsfsLite, *os.File]
+	testTempFilePolicyRandom = TempFilePolicyRandom[*osfslite.OsfsLite, *os.File]
+	testTempFilePolicyDir    = TempFilePolicyDir[*osfslite.OsfsLite, *os.File]
 )
 
 var (
-	newTestTempFilePolicyRandom = NewTempFilePolicyRandom[*osfsLite]
-	newTestTempFilePolicyDir    = NewTempFilePolicyDir[*osfsLite]
+	newTestTempFilePolicyRandom = NewTempFilePolicyRandom[*osfslite.OsfsLite]
+	newTestTempFilePolicyDir    = NewTempFilePolicyDir[*osfslite.OsfsLite]
 )
 
 // testFsysWrapper wraps osfsLite to implement fs.FS for fs.WalkDir
 type testFsysWrapper struct {
-	fsys *osfsLite
+	fsys *osfslite.OsfsLite
 }
 
 func (f *testFsysWrapper) Open(name string) (fs.File, error) {

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 func TestCopyFsOption_MaskChmodMode(t *testing.T) {
@@ -91,7 +93,7 @@ func TestCopyFsOption_MaskChmodMode(t *testing.T) {
 
 			// Set up filesystems
 			srcFs := os.DirFS(srcDir)
-			dstFs := &osfsLite{base: dstDir}
+			dstFs := osfslite.New(dstDir)
 
 			// Create copy option with MaskChmodMode
 			opt := testCopyFsOption{MaskChmodMode: tc.maskFunc}
@@ -201,7 +203,7 @@ func TestCopyFsOption_MaskChmodModeCopyPath(t *testing.T) {
 
 			// Set up filesystems
 			srcFs := os.DirFS(srcDir)
-			dstFs := &osfsLite{base: dstDir}
+			dstFs := osfslite.New(dstDir)
 
 			// Create copy option with MaskChmodMode
 			opt := testCopyFsOption{MaskChmodMode: tc.maskFunc}

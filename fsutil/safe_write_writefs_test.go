@@ -4,11 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 func TestSafeWriteCopyFs(t *testing.T) {
 	tempDir := t.TempDir()
-	fsys := &osfsLite{base: tempDir}
+	fsys := osfslite.New(tempDir)
 
 	t.Run("basic copy from source fs", func(t *testing.T) {
 		// Create source directory with files

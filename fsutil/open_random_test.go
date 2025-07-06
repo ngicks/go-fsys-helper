@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
 type openFileRandomTestCase struct {
@@ -53,13 +55,13 @@ func TestMkdirRandom(t *testing.T) {
 
 func testOpenRandom(
 	t *testing.T,
-	opener func(fsys osfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
+	opener func(fsys osfslite.OsfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
 	tc openFileRandomTestCase,
 ) {
 	t.Helper()
 
 	tempDir := t.TempDir()
-	fsys := osfsLite{tempDir}
+	fsys := *osfslite.New(tempDir)
 
 	if tc.dir != "" && tc.dir != "." {
 		err := os.MkdirAll(filepath.Join(tempDir, filepath.FromSlash(tc.dir)), fs.ModePerm)
@@ -114,12 +116,12 @@ func TestMkdirRandom_BadPattern(t *testing.T) {
 
 func testOpenRandomBadPattern(
 	t *testing.T,
-	opener func(fsys osfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
+	opener func(fsys osfslite.OsfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
 ) {
 	t.Helper()
 
 	tempDir := t.TempDir()
-	fsys := osfsLite{tempDir}
+	fsys := *osfslite.New(tempDir)
 
 	_, err := opener(
 		fsys,
@@ -145,12 +147,12 @@ func TestMkdirRandom_MultipleFiles(t *testing.T) {
 
 func testOpenRandomMultipleFiles(
 	t *testing.T,
-	opener func(fsys osfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
+	opener func(fsys osfslite.OsfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
 ) {
 	t.Helper()
 
 	tempDir := t.TempDir()
-	fsys := osfsLite{tempDir}
+	fsys := *osfslite.New(tempDir)
 
 	var files []*os.File
 	defer func() {
@@ -206,7 +208,7 @@ func TestOpenRandom_ErrorPaths(t *testing.T) {
 
 		// Use mock filesystem that rejects OpenFile
 		mockFs := &mockErrorFs{
-			osfsLite:          osfsLite{base: roDir},
+			OsfsLite:          *osfslite.New(roDir),
 			openFileError:     fs.ErrPermission,
 			openFileErrorPath: ".tmp",
 		}
@@ -225,7 +227,7 @@ func TestOpenRandom_ErrorPaths(t *testing.T) {
 
 		// Use mock filesystem that rejects Mkdir
 		mockFs := &mockErrorFs{
-			osfsLite:       osfsLite{base: roDir},
+			OsfsLite:       *osfslite.New(roDir),
 			mkdirError:     fs.ErrPermission,
 			mkdirErrorPath: ".tmp",
 		}
