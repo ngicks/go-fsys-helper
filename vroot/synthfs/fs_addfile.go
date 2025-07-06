@@ -43,9 +43,10 @@ func (f *fsys) AddFile(name string, view FileView, dirPerm, filePerm fs.FileMode
 		metadata: metadata{
 			s: stat{
 				mode:    filePerm &^ f.umask,
-				modTime: f.clock.Now(),
+				modTime: f.opt.Clock.Now(),
 				name:    baseName,
 			},
+			maskChmodMode: f.opt.MaskChmodMode,
 		},
 		view: view,
 	}

@@ -3,10 +3,12 @@ package synthfs
 import (
 	"io/fs"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 	"github.com/ngicks/go-fsys-helper/vroot/clock"
@@ -21,15 +23,21 @@ func must1(err error) {
 func prep(fsys vroot.Fs) {
 	// Create all content under root/, not just writable
 	must1(
-		acceptancetest.ExecuteAllLineDirection(fsys, acceptancetest.FilterLineDirection(
-			func(l acceptancetest.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
-			slices.Values(acceptancetest.RootFsysDirections),
-		)))
+		acceptancetest.ExecuteAllLineDirection(
+			fsys,
+			acceptancetest.FilterLineDirection(
+				func(l acceptancetest.LineDirection) bool { return strings.HasPrefix(l.Path, "root/") },
+				slices.Values(acceptancetest.RootFsysDirections),
+			),
+		),
+	)
 }
 
 func TestRooted(t *testing.T) {
 	opt := Option{
-		Clock: clock.RealWallClock(),
+		Clock:                  clock.RealWallClock(),
+		DisableOpenFileRemoval: runtime.GOOS == "windows",
+		MaskChmodMode:          fsutil.MaskChmodMode,
 	}
 	r := NewRooted("synth", NewMemFileAllocator(clock.RealWallClock()), opt)
 	prep(r)
@@ -41,7 +49,9 @@ func TestRooted(t *testing.T) {
 
 func TestUnrooted(t *testing.T) {
 	opt := Option{
-		Clock: clock.RealWallClock(),
+		Clock:                  clock.RealWallClock(),
+		DisableOpenFileRemoval: runtime.GOOS == "windows",
+		MaskChmodMode:          fsutil.MaskChmodMode,
 	}
 	r := NewUnrooted("synth", NewMemFileAllocator(clock.RealWallClock()), opt)
 	prep(r)

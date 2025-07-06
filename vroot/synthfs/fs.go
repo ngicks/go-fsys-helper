@@ -26,6 +26,14 @@ type Option struct {
 	// Umask is the file mode mask applied to new files and directories.
 	// If nil, defaults to 0o022. Set to pointer to zero to disable umask.
 	Umask *fs.FileMode
+	// If true, Remove call on opened files returns error.
+	// On windows it would be syscall.Errno(0x20),
+	// On other platforms, it would be syscall.EINVAL.
+	DisableOpenFileRemoval bool
+	// MaskChmodMode is used to widen or narrow fs.FileMode before executing chmod.
+	// If zero, it will just simply mask it with [fs.ModePerm].
+	// In case emulated platform specific behavior is needed, use [fsutil.MaskChmodMode]
+	MaskChmodMode func(fs.FileMode) fs.FileMode
 }
 
 // applyDefaults returns an Option with default values filled in.
@@ -37,6 +45,11 @@ func (o Option) applyDefaults() Option {
 		defaultUmask := fs.FileMode(0o022)
 		o.Umask = &defaultUmask
 	}
+	if o.MaskChmodMode == nil {
+		o.MaskChmodMode = func(fm fs.FileMode) fs.FileMode {
+			return fm & fs.ModePerm
+		}
+	}
 	return o
 }
 
@@ -47,12 +60,13 @@ var (
 )
 
 type fsys struct {
+	// from option
+	opt       Option
 	umask     fs.FileMode
-	clock     clock.WallClock
-	root      *dir
-	allocator FileViewAllocator
 	isRooted  bool
+	allocator FileViewAllocator
 	name      string
+	root      *dir
 }
 
 // Rooted constructs a synthetic filesystem that combines file-like views from different data sources,
@@ -125,8 +139,8 @@ func (u *Unrooted) OpenUnrooted(name string) (vroot.Unrooted, error) {
 
 	return &Unrooted{
 		fsys: &fsys{
+			opt:       u.opt,
 			umask:     u.umask,
-			clock:     u.clock,
 			root:      dir,
 			allocator: u.allocator,
 			isRooted:  false,
@@ -142,10 +156,11 @@ func newFs(name string, allocator FileViewAllocator, opt Option, isRooted bool) 
 	root := &dir{
 		metadata: metadata{
 			s: stat{
-				mode:    fs.ModeDir | 0o755,
+				mode:    (fs.ModeDir | 0o777) &^ (*opt.Umask),
 				modTime: opt.Clock.Now(),
 				name:    ".",
 			},
+			maskChmodMode: opt.MaskChmodMode,
 		},
 		ordered: list.New(),
 		files:   make(map[string]*list.Element),
@@ -153,7 +168,7 @@ func newFs(name string, allocator FileViewAllocator, opt Option, isRooted bool) 
 
 	return &fsys{
 		umask:     *opt.Umask,
-		clock:     opt.Clock,
+		opt:       opt,
 		root:      root,
 		allocator: allocator,
 		isRooted:  isRooted,
@@ -284,8 +299,9 @@ func (f *fsys) Link(oldname string, newname string) error {
 				name:    cleanName,
 				size:    sourceFile.s.size,
 			},
-			uid: sourceFile.uid,
-			gid: sourceFile.gid,
+			uid:           sourceFile.uid,
+			gid:           sourceFile.gid,
+			maskChmodMode: f.opt.MaskChmodMode,
 		},
 		view: sourceFile.view, // Share the same view
 	}
@@ -339,9 +355,10 @@ func (f *fsys) Mkdir(name string, perm fs.FileMode) error {
 		metadata: metadata{
 			s: stat{
 				mode:    fs.ModeDir | (perm &^ f.umask),
-				modTime: f.clock.Now(),
+				modTime: f.opt.Clock.Now(),
 				name:    cleanName,
 			},
+			maskChmodMode: f.opt.MaskChmodMode,
 		},
 		parent:  parentDir,
 		ordered: list.New(),
@@ -419,9 +436,10 @@ func (f *fsys) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, er
 				metadata: metadata{
 					s: stat{
 						mode:    perm &^ f.umask,
-						modTime: f.clock.Now(),
+						modTime: f.opt.Clock.Now(),
 						name:    cleanName,
 					},
+					maskChmodMode: f.opt.MaskChmodMode,
 				},
 				view: view,
 			}
@@ -470,8 +488,7 @@ func (f *fsys) OpenRoot(name string) (vroot.Rooted, error) {
 
 	return &Rooted{
 		fsys: &fsys{
-			umask:     f.umask,
-			clock:     f.clock,
+			opt:       f.opt,
 			root:      dir,
 			allocator: f.allocator,
 			isRooted:  true,
@@ -526,6 +543,13 @@ func (f *fsys) Remove(name string) error {
 	if dir, ok := elem.Value.(*dir); ok {
 		if dir.ordered.Len() > 0 {
 			return fsutil.WrapPathErr("remove", name, errdef.ENOTEMPTY)
+		}
+	}
+
+	dirent, ok := parentDir.files[base]
+	if ok && f.opt.DisableOpenFileRemoval {
+		if dirent.Value.(direntry).refCount() > 0 {
+			return fsutil.WrapPathErr("remove", name, ERROR_SHARING_VIOLATION)
 		}
 	}
 
@@ -704,9 +728,10 @@ func (f *fsys) Symlink(oldname string, newname string) error {
 		metadata: metadata{
 			s: stat{
 				mode:    fs.ModeSymlink | 0o777,
-				modTime: f.clock.Now(),
+				modTime: f.opt.Clock.Now(),
 				name:    cleanName,
 			},
+			maskChmodMode: f.opt.MaskChmodMode,
 		},
 		target: oldname,
 	}

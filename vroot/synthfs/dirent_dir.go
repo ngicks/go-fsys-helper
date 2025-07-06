@@ -32,6 +32,9 @@ type dir struct {
 // Methods chmod, chown, chtimes, rename, stat, and owner are inherited from metadata
 
 func (d *dir) open(flag int) (openDirentry, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.increfNoLock()
 	return &openDir{path: d.s.name, dir: d}, nil
 }
 
@@ -294,6 +297,11 @@ func (d *openDir) Seek(offset int64, whence int) (int64, error) {
 func (d *openDir) Close() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if !d.closed {
+		d.dir.mu.Lock()
+		d.dir.decrefNoLock()
+		d.dir.mu.Unlock()
+	}
 	// double close is fine
 	d.closed = true
 	return nil

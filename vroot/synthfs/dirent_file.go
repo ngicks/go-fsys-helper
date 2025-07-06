@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
@@ -44,6 +45,7 @@ func (f *file) open(flag int) (openDirentry, error) {
 	}
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	f.increfNoLock()
 	return newFileWrapper(v, f.s.name, &f.metadata), nil
 }
 
@@ -57,6 +59,8 @@ var _ vroot.File = (*fileWrapper)(nil)
 // and updates the directory entry's mtime when writes occur
 type fileWrapper struct {
 	vroot.File
+	mu       sync.Mutex
+	closed   bool
 	name     string    // stored with forward slashes
 	metadata *metadata // reference to directory entry's metadata
 }
@@ -72,6 +76,18 @@ func newFileWrapper(f vroot.File, name string, meta *metadata) vroot.File {
 // Name returns the path with platform-specific separators
 func (f *fileWrapper) Name() string {
 	return filepath.FromSlash(f.name)
+}
+
+func (f *fileWrapper) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.closed {
+		f.metadata.mu.Lock()
+		f.metadata.decrefNoLock()
+		f.metadata.mu.Unlock()
+	}
+	f.closed = true
+	return f.File.Close()
 }
 
 // syncMtimeFromView attempts to get the current mtime from the underlying view

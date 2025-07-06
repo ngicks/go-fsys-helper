@@ -16,6 +16,7 @@ type direntry interface {
 	stat() (fs.FileInfo, error)
 	owner() (uid, gid int)
 	open(flag int) (openDirentry, error)
+	refCount() int
 	readLink() (string, error)
 }
 

@@ -167,7 +167,7 @@ func (f *memFileHandle) WriteString(s string) (ret int, err error) {
 func (f *memFileHandle) Chmod(mode fs.FileMode) error {
 	f.file.mu.Lock()
 	defer f.file.mu.Unlock()
-	f.file.mode = chmodMask & mode
+	f.file.mode = mode
 	return nil
 }
 
@@ -197,7 +197,7 @@ type memFile struct {
 func newMemFile(mode fs.FileMode, clock clock.WallClock) *memFile {
 	return &memFile{
 		clock:   clock,
-		mode:    mode & chmodMask,
+		mode:    mode,
 		modTime: clock.Now(),
 	}
 }

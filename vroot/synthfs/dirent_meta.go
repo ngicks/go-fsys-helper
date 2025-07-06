@@ -8,15 +8,32 @@ import (
 
 // metadata contains common metadata fields for all directory entries
 type metadata struct {
-	mu       sync.RWMutex
-	s        stat
-	uid, gid int
+	mu            sync.RWMutex
+	s             stat
+	uid, gid      int
+	maskChmodMode func(fs.FileMode) fs.FileMode
+	ref           int
+}
+
+func (m *metadata) increfNoLock() {
+	m.ref++
+}
+
+func (m *metadata) decrefNoLock() {
+	m.ref--
+}
+
+func (m *metadata) refCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.ref
 }
 
 func (m *metadata) chmod(mode fs.FileMode) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.s.mode = chmodMask & mode
+	allbits := m.maskChmodMode(fs.FileMode(^uint32(0))) | fs.ModePerm
+	m.s.mode = m.s.mode&^allbits | m.maskChmodMode(mode)
 }
 
 func (m *metadata) chown(uid, gid int) {
