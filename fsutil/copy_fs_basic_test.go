@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 )
 
 type testCopyFsOption = CopyFsOption[*osfslite.OsfsLite, *os.File]
@@ -20,25 +21,16 @@ func TestCopyFs(t *testing.T) {
 		srcDir := filepath.Join(tempDir, "src")
 		dstDir := filepath.Join(tempDir, "dst")
 
-		// Create src and dst directories
-		if err := os.Mkdir(srcDir, fs.ModePerm); err != nil {
-			t.Fatalf("failed to create src dir: %v", err)
-		}
-		if err := os.Mkdir(dstDir, fs.ModePerm); err != nil {
-			t.Fatalf("failed to create dst dir: %v", err)
-		}
-
-		// Create source files and directories
-		if err := os.MkdirAll(filepath.Join(srcDir, "subdir"), fs.ModePerm); err != nil {
-			t.Fatalf("failed to create source subdir: %v", err)
-		}
-
-		if err := os.WriteFile(filepath.Join(srcDir, "file1.txt"), []byte("content1"), 0o644); err != nil {
-			t.Fatalf("failed to create source file1: %v", err)
-		}
-
-		if err := os.WriteFile(filepath.Join(srcDir, "subdir", "file2.txt"), []byte("content2"), 0o755); err != nil {
-			t.Fatalf("failed to create source file2: %v", err)
+		// Create test structure using testhelper
+		err := testhelper.ExecuteLines(tempDir,
+			"src/",
+			"dst/",
+			"src/subdir/",
+			"src/file1.txt: 0644 content1",
+			"src/subdir/file2.txt: 0755 content2",
+		)
+		if err != nil {
+			t.Fatalf("failed to create test structure: %v", err)
 		}
 
 		// Set up filesystems
@@ -49,7 +41,7 @@ func TestCopyFs(t *testing.T) {
 		opt := testCopyFsOption{}
 
 		// Perform copy
-		err := opt.CopyAll(dstFs, srcFs, ".")
+		err = opt.CopyAll(dstFs, srcFs, ".")
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
@@ -112,16 +104,14 @@ func TestCopyFs(t *testing.T) {
 		srcDir := filepath.Join(tempDir, "src")
 		dstDir := filepath.Join(tempDir, "dst")
 
-		// Create src and dst directories
-		if err := os.Mkdir(srcDir, fs.ModePerm); err != nil {
-			t.Fatalf("failed to create src dir: %v", err)
-		}
-		if err := os.Mkdir(dstDir, fs.ModePerm); err != nil {
-			t.Fatalf("failed to create dst dir: %v", err)
-		}
-
-		if err := os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("content"), 0o600); err != nil {
-			t.Fatalf("failed to create source file: %v", err)
+		// Create test structure using testhelper
+		err := testhelper.ExecuteLines(tempDir,
+			"src/",
+			"dst/",
+			"src/file.txt: 0600 content",
+		)
+		if err != nil {
+			t.Fatalf("failed to create test structure: %v", err)
 		}
 
 		// Set up filesystems
@@ -132,7 +122,7 @@ func TestCopyFs(t *testing.T) {
 		opt := testCopyFsOption{}
 
 		// Perform copy
-		err := opt.CopyAll(dstFs, srcFs, ".")
+		err = opt.CopyAll(dstFs, srcFs, ".")
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
