@@ -39,19 +39,36 @@ func TestSepConverter(t *testing.T) {
 
 			osPath := vroot.ToOsPathRooted(r)
 
+			assertSameDirnames := func(t *testing.T, expected []string, actual []fs.DirEntry) {
+				t.Helper()
+
+				slices.Sort(expected)
+
+				var names []string
+				for _, dirent := range actual {
+					names = append(names, dirent.Name())
+				}
+
+				slices.Sort(names)
+
+				if !slices.Equal(expected, names) {
+					t.Errorf("not equal: expected != actual\nexpected:\n%#v\n\nactual:\n%#v", expected, names)
+				}
+			}
+
 			dirents, err := vroot.ReadDir(osPath, "subdir/")
 			if err != nil {
 				t.Errorf("readdir failed with %v", err)
 			}
-			var names []string
-			for _, dirent := range dirents {
-				names = append(names, dirent.Name())
-			}
-			slices.Sort(names)
 			expected := []string{"double_nested", "nested_file.txt", "symlink_upward", "symlink_upward_escapes"}
-			if !slices.Equal(expected, names) {
-				t.Errorf("not equal: expected != actual\nexpected:\n%#v\n\nactual:\n%#v", expected, names)
+			assertSameDirnames(t, expected, dirents)
+
+			dirents, err = vroot.ReadDir(osPath, "subdir/double_nested/")
+			if err != nil {
+				t.Errorf("readdir failed with %v", err)
 			}
+			expected = []string{"double_nested.txt"}
+			assertSameDirnames(t, expected, dirents)
 		})
 	})
 
