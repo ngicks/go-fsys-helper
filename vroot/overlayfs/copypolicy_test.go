@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
 
@@ -15,35 +16,16 @@ func TestCopyPolicyDotTmp_AllTypes(t *testing.T) {
 	srcDir := filepath.Join(tempDir, "src")
 	dstDir := filepath.Join(tempDir, "dst")
 
-	err := os.MkdirAll(srcDir, 0o755)
+	// Create test structure using testhelper
+	err := testhelper.ExecuteLines(tempDir, 
+		"src/ 0755",
+		"dst/ 0755",
+		"src/test.txt: 0644 test content",
+		"src/testdir/ 0755",
+		"src/testsymlink -> test.txt",
+	)
 	if err != nil {
-		t.Fatalf("Failed to create source directory: %v", err)
-	}
-
-	err = os.MkdirAll(dstDir, 0o755)
-	if err != nil {
-		t.Fatalf("Failed to create destination directory: %v", err)
-	}
-
-	// Create test files
-	testFile := filepath.Join(srcDir, "test.txt")
-	err = os.WriteFile(testFile, []byte("test content"), 0o644)
-	if err != nil {
-		t.Fatalf("Failed to create test file: %v", err)
-	}
-
-	// Create test directory
-	testDir := filepath.Join(srcDir, "testdir")
-	err = os.Mkdir(testDir, 0o755)
-	if err != nil {
-		t.Fatalf("Failed to create test directory: %v", err)
-	}
-
-	// Create test symlink
-	testSymlink := filepath.Join(srcDir, "testsymlink")
-	err = os.Symlink("test.txt", testSymlink)
-	if err != nil {
-		t.Fatalf("Failed to create test symlink: %v", err)
+		t.Fatalf("Failed to create test structure: %v", err)
 	}
 
 	// Create filesystem wrappers
