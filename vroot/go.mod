@@ -1,6 +1,6 @@
 module github.com/ngicks/go-fsys-helper/vroot
 
-go 1.25rc1
+go 1.25rc2
 
 require (
 	github.com/ngicks/go-common/serr v0.6.0
