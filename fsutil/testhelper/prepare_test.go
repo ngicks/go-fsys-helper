@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -31,7 +32,7 @@ func TestExecuteLines(t *testing.T) {
 		t.Errorf("dir1 not created properly")
 	}
 
-	info, err = fs.Stat(os.DirFS(tempDir), filepath.Join("dir2", "subdir"))
+	info, err = fs.Stat(os.DirFS(tempDir), path.Join("dir2", "subdir"))
 	if err != nil || !info.IsDir() {
 		t.Errorf("dir2/subdir not created properly")
 	}
@@ -149,8 +150,8 @@ func TestParseLine_Comprehensive(t *testing.T) {
 			},
 		},
 		{
-			name: "file with unquoted spaces should fail",
-			line: "bad.txt: content with spaces",
+			name:     "file with unquoted spaces should fail",
+			line:     "bad.txt: content with spaces",
 			expected: LineDirection{}, // Should fail because spaces in content require quotes
 		},
 	}
@@ -236,7 +237,7 @@ func TestLineDirection_Equal(t *testing.T) {
 			}
 		})
 	}
-	
+
 	// Test symlink path cleaning
 	t.Run("symlink path cleaning", func(t *testing.T) {
 		link1 := LineDirection{
@@ -616,3 +617,4 @@ func (m *mockPrepareFile) Close() error {
 	m.closed = true
 	return m.closeErr
 }
+
