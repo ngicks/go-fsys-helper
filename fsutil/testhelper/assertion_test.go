@@ -7,7 +7,22 @@ import (
 	"io/fs"
 	"os"
 	"testing"
+
+	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
+
+// Type checking with real implementation
+var _ = func() {
+	var osfsLite *osfslite.OsfsLite
+	var t T
+	var testingT *testing.T
+	var extendedT ExtendedT
+
+	OpenFile(t, osfsLite, "test.txt", os.O_RDONLY, 0o644, func(t ExtendedT, file *os.File) {})
+	Open(testingT, osfsLite, "test.txt", func(t ExtendedT, file *os.File) {})
+	Create(testingT, osfsLite, "test.txt", func(t ExtendedT, file *os.File) {})
+	AssertContent(extendedT, osfsLite, "test.txt", []byte("content"))
+}
 
 func TestOpenFile(t *testing.T) {
 	tempDir := t.TempDir()
