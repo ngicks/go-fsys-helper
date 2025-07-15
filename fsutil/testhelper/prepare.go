@@ -10,6 +10,7 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -55,6 +56,8 @@ func ParseLine(txt string) LineDirection {
 		var suf string
 		if strings.Contains(txt, "/ ") {
 			txt, suf, _ = strings.Cut(txt, "/ ")
+		} else if strings.HasSuffix(txt, "/") {
+			txt = strings.TrimSuffix(txt, "/")
 		}
 		var perm uint64
 		if suf != "" {
@@ -69,13 +72,59 @@ func ParseLine(txt string) LineDirection {
 		idx := strings.Index(txt, ": ")
 		path := txt[:idx]
 		contentPerm := txt[idx+len(": "):]
-		permStr, content, ok := strings.Cut(contentPerm, " ")
+
 		var perm uint64
-		if !ok {
-			content = permStr
+		var content string
+
+		// First check if content starts with a quote - if so, it's quoted content without permission
+		if strings.HasPrefix(contentPerm, `"`) || strings.HasPrefix(contentPerm, "`") {
+			// Try to unquote
+			if unquoted, err := strconv.Unquote(contentPerm); err == nil {
+				content = unquoted
+			} else {
+				// If unquoting fails, this is malformed
+				return LineDirection{}
+			}
 		} else {
-			if permStr != "" {
-				perm, _ = strconv.ParseUint(permStr, 0, 64)
+			// Try to parse as "permission content" format
+			parts := strings.SplitN(contentPerm, " ", 2)
+			if len(parts) >= 2 {
+				// Check if the first part is a valid permission (numeric)
+				if parsedPerm, err := strconv.ParseUint(parts[0], 0, 64); err == nil {
+					perm = parsedPerm
+					remainder := parts[1]
+					
+					// Check if the content is quoted
+					if strings.HasPrefix(remainder, `"`) || strings.HasPrefix(remainder, "`") {
+						// Try to unquote
+						if unquoted, err := strconv.Unquote(remainder); err == nil {
+							content = unquoted
+						} else {
+							// If unquoting fails, this is malformed
+							return LineDirection{}
+						}
+					} else {
+						// Unquoted content with spaces is not allowed when permission is specified
+						if strings.Contains(remainder, " ") {
+							return LineDirection{}
+						}
+						content = remainder
+					}
+				} else {
+					// If first part looks like a permission attempt but fails to parse, it's malformed
+					if regexp.MustCompile(`^(0[box])?[0-9a-fA-F]+$`).MatchString(parts[0]) {
+						return LineDirection{}
+					}
+					// Otherwise, this might be content with spaces, which is not allowed unquoted
+					if strings.Contains(contentPerm, " ") {
+						return LineDirection{}
+					}
+					// Single word content without permission
+					content = contentPerm
+				}
+			} else {
+				// No space, single word content without permission
+				content = contentPerm
 			}
 		}
 		return LineDirection{
@@ -127,7 +176,7 @@ func (l LineDirection) ExecuteOs(baseDir string) error {
 		return os.Chmod(path, perm)
 	case LineKindSymlink:
 		if runtime.GOOS == "plan9" {
-			return nil
+			return nil // or just return syscall.EPLAN9?
 		}
 		return os.Symlink(
 			filepath.FromSlash(l.TargetPath),

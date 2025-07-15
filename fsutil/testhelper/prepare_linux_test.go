@@ -16,6 +16,7 @@ func TestParseLine(t *testing.T) {
 	}
 
 	cases := []testCase{
+		// Basic file cases
 		{
 			line: "foo1: yayyay",
 			expected: LineDirection{
@@ -34,6 +35,7 @@ func TestParseLine(t *testing.T) {
 				Content:    []byte("yayyay"),
 			},
 		},
+		// Directory cases
 		{
 			line: "bar1/ yayyay",
 			expected: LineDirection{
@@ -50,12 +52,98 @@ func TestParseLine(t *testing.T) {
 				Path:       "bar2/bar2/bar2",
 			},
 		},
+		// Symlink case
 		{
 			line: "baz -> foo1",
 			expected: LineDirection{
 				LineKind:   LineKindSymlink,
 				Path:       "baz",
 				TargetPath: "foo1",
+			},
+		},
+		// Quoted content cases
+		{
+			line: `quoted.txt: "hello world with spaces"`,
+			expected: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0,
+				Path:       "quoted.txt",
+				Content:    []byte("hello world with spaces"),
+			},
+		},
+		{
+			line: `secure.txt: 0o600 "secret content"`,
+			expected: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0o600,
+				Path:       "secure.txt",
+				Content:    []byte("secret content"),
+			},
+		},
+		{
+			line: "raw.txt: `raw string content`",
+			expected: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0,
+				Path:       "raw.txt",
+				Content:    []byte("raw string content"),
+			},
+		},
+		{
+			line: `escaped.txt: "content with \"quotes\" inside"`,
+			expected: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0,
+				Path:       "escaped.txt",
+				Content:    []byte(`content with "quotes" inside`),
+			},
+		},
+		// Permission edge cases
+		{
+			line: "bad.txt: 0o999 content", // 999 is not valid octal
+			expected: LineDirection{}, // Should return empty because permission is malformed
+		},
+		{
+			line: "numeric.txt: 384 content", // 384 decimal = 0o600 octal
+			expected: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0o600,
+				Path:       "numeric.txt",
+				Content:    []byte("content"),
+			},
+		},
+		{
+			line: "hex.txt: 0x1a4 content", // 0x1a4 hex = 420 decimal = 0o644 octal
+			expected: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0o644,
+				Path:       "hex.txt",
+				Content:    []byte("content"),
+			},
+		},
+		// Content with colons and spaces - must be quoted
+		{
+			line: `config.yml: "key: value"`,
+			expected: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0,
+				Path:       "config.yml",
+				Content:    []byte("key: value"),
+			},
+		},
+		// Unquoted content with spaces should fail
+		{
+			line: "config.yml: key: value",
+			expected: LineDirection{}, // Should fail because spaces in content require quotes
+		},
+		// Empty content
+		{
+			line: "empty.txt: ",
+			expected: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0,
+				Path:       "empty.txt",
+				Content:    []byte{},
 			},
 		},
 	}
@@ -129,6 +217,27 @@ func TestLineDirection_Execute(t *testing.T) {
 				TargetPath: "foo1",
 			},
 			expectedMode: fs.ModeSymlink | 0o777,
+		},
+		// Test quoted content with permissions
+		{
+			dir: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0o640,
+				Path:       "quoted",
+				Content:    []byte("content with spaces"),
+			},
+			expectedMode:    0o640,
+			expectedContent: []byte("content with spaces"),
+		},
+		{
+			dir: LineDirection{
+				LineKind:   LineKindWriteFile,
+				Permission: 0o755,
+				Path:       "script.sh",
+				Content:    []byte("#!/bin/bash\necho \"Hello World\""),
+			},
+			expectedMode:    0o755,
+			expectedContent: []byte("#!/bin/bash\necho \"Hello World\""),
 		},
 	}
 	for _, tc := range cases {
