@@ -28,7 +28,7 @@ func OpenFile[
 	tt.Helper()
 	f, err := fsys.OpenFile(filepath.FromSlash(path), flag, perm.Perm())
 	if err != nil {
-		tt.Errorf("failed: %v", err)
+		tt.Fatalf("failed: %v", err)
 		return
 	}
 	defer f.Close()
@@ -52,7 +52,7 @@ func Open[
 	tt.Helper()
 	f, err := fsys.Open(filepath.FromSlash(path))
 	if err != nil {
-		tt.Errorf("failed: %v", err)
+		tt.Fatalf("failed: %v", err)
 		return
 	}
 	defer f.Close()
@@ -76,7 +76,7 @@ func Create[
 	tt.Helper()
 	f, err := fsys.Create(filepath.FromSlash(path))
 	if err != nil {
-		tt.Errorf("failed: %v", err)
+		tt.Fatalf("failed: %v", err)
 		return
 	}
 	defer f.Close()
@@ -97,7 +97,7 @@ func AssertContent[
 
 	f, err := fsys.Open(path)
 	if err != nil {
-		tt.Errorf("failed: %v", err)
+		tt.Fatalf("failed: %v", err)
 		return
 	}
 	defer f.Close()
@@ -106,7 +106,7 @@ func AssertContent[
 	bin, err := io.ReadAll(f)
 	if err != nil {
 		tt = tt.PushContext("read bytes", len(bin))
-		tt.Errorf("failed: %v", err)
+		tt.Fatalf("failed: %v", err)
 		return
 	}
 
@@ -118,5 +118,5 @@ func AssertContent[
 		PushPath(path).
 		PushContext("expected", strconv.Quote(string(content))).
 		PushContext("actual", strconv.Quote(string(bin))).
-		Error("not equal")
+		Fatal("not equal")
 }

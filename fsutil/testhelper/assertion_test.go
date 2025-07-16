@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
@@ -68,12 +69,20 @@ func TestOpenFile(t *testing.T) {
 		return &mockFile{}, errors.New("open failed")
 	}
 
-	OpenFile(mt, fsys, "nonexistent.txt", os.O_RDONLY, 0o644, func(t ExtendedT, file *mockFile) {
-		t.Errorf("callback should not be called on error")
-	})
+	// Run in goroutine to handle Goexit
+	done := make(chan bool)
+	go func() {
+		defer func() {
+			done <- true
+		}()
+		OpenFile(mt, fsys, "nonexistent.txt", os.O_RDONLY, 0o644, func(t ExtendedT, file *mockFile) {
+			t.Errorf("callback should not be called on error")
+		})
+	}()
+	<-done
 
-	if !mt.errorfCalled {
-		t.Errorf("Errorf should be called on open error")
+	if !mt.fatalfCalled {
+		t.Errorf("Fatalf should be called on open error")
 	}
 
 	expectedFormat := `
@@ -81,8 +90,8 @@ Op: OpenFile
 Path: nonexistent.txt
 
 failed: %v`
-	if mt.errorfFormat != expectedFormat {
-		t.Errorf("error format mismatch: expected %q, got %q", expectedFormat, mt.errorfFormat)
+	if mt.fatalfFormat != expectedFormat {
+		t.Errorf("error format mismatch: expected %q, got %q", expectedFormat, mt.fatalfFormat)
 	}
 }
 
@@ -200,13 +209,13 @@ func TestAssertContent_HappyPath(t *testing.T) {
 
 			AssertContent(ext, fsys, "test.txt", tc.expectedContent)
 
-			if mt.errorCalled || mt.errorfCalled {
-				t.Errorf("unexpected error call: errorCalled=%v, errorfCalled=%v", mt.errorCalled, mt.errorfCalled)
-				if mt.errorCalled {
-					t.Errorf("error args: %v", mt.errorArgs)
+			if mt.fatalCalled || mt.fatalfCalled {
+				t.Errorf("unexpected fatal call: fatalCalled=%v, fatalfCalled=%v", mt.fatalCalled, mt.fatalfCalled)
+				if mt.fatalCalled {
+					t.Errorf("fatal args: %v", mt.fatalArgs)
 				}
-				if mt.errorfCalled {
-					t.Errorf("errorf format: %s, args: %v", mt.errorfFormat, mt.errorfArgs)
+				if mt.fatalfCalled {
+					t.Errorf("fatalf format: %s, args: %v", mt.fatalfFormat, mt.fatalfArgs)
 				}
 			}
 		})
@@ -292,10 +301,18 @@ func TestAssertContent_Errors(t *testing.T) {
 				},
 			}
 
-			AssertContent(ext, fsys, "test.txt", tc.expectedContent)
+			// Run in goroutine to handle Goexit
+			done := make(chan bool)
+			go func() {
+				defer func() {
+					done <- true
+				}()
+				AssertContent(ext, fsys, "test.txt", tc.expectedContent)
+			}()
+			<-done
 
-			if !mt.errorCalled && !mt.errorfCalled {
-				t.Errorf("expected error to be called, but it wasn't")
+			if !mt.fatalCalled && !mt.fatalfCalled {
+				t.Errorf("expected fatal to be called, but it wasn't")
 			}
 		})
 	}
@@ -398,25 +415,33 @@ actual: "hello"
 				},
 			}
 
-			AssertContent(ext, fsys, "test.txt", tc.expectedContent)
+			// Run in goroutine to handle Goexit
+			done := make(chan bool)
+			go func() {
+				defer func() {
+					done <- true
+				}()
+				AssertContent(ext, fsys, "test.txt", tc.expectedContent)
+			}()
+			<-done
 
-			if !mt.errorCalled {
-				t.Errorf("expected Error to be called for content mismatch, but it wasn't")
+			if !mt.fatalCalled {
+				t.Errorf("expected Fatal to be called for content mismatch, but it wasn't")
 				return
 			}
 
-			// Content mismatch should use Error, not Errorf
-			if len(mt.errorArgs) != 1 {
-				t.Errorf("Error should have 1 arg (slice), got %d: %v", len(mt.errorArgs), mt.errorArgs)
+			// Content mismatch should use Fatal, not Fatalf
+			if len(mt.fatalArgs) != 1 {
+				t.Errorf("Fatal should have 1 arg (slice), got %d: %v", len(mt.fatalArgs), mt.fatalArgs)
 				return
 			}
-			argsSlice, ok := mt.errorArgs[0].([]any)
+			argsSlice, ok := mt.fatalArgs[0].([]any)
 			if !ok {
-				t.Errorf("Error arg should be a slice, got %T: %v", mt.errorArgs[0], mt.errorArgs[0])
+				t.Errorf("Fatal arg should be a slice, got %T: %v", mt.fatalArgs[0], mt.fatalArgs[0])
 				return
 			}
 			if len(argsSlice) != 2 {
-				t.Errorf("Error args slice should have 2 elements (prefix + message), got %d: %v", len(argsSlice), argsSlice)
+				t.Errorf("Fatal args slice should have 2 elements (prefix + message), got %d: %v", len(argsSlice), argsSlice)
 				return
 			}
 
