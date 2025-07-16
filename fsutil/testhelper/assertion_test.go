@@ -23,6 +23,7 @@ var _ = func() {
 	Open(testingT, osfsLite, "test.txt", func(t ExtendedT, file *os.File) {})
 	Create(testingT, osfsLite, "test.txt", func(t ExtendedT, file *os.File) {})
 	AssertContent(extendedT, osfsLite, "test.txt", []byte("content"))
+	AssertAccessible(extendedT, osfsLite, "test.txt")
 }
 
 func TestOpenFile(t *testing.T) {
@@ -461,11 +462,69 @@ actual: "hello"
 	}
 }
 
+func TestAssertAccessible(t *testing.T) {
+	t.Run("file exists", func(t *testing.T) {
+		mt := new(mockT)
+		ext := wrapT(T(mt))
+
+		fsys := &mockFsys{
+			statFunc: func(name string) (fs.FileInfo, error) {
+				return &mockFileInfo{
+					name: "test.txt",
+					size: 10,
+					mode: 0o644,
+				}, nil
+			},
+		}
+
+		AssertAccessible(ext, fsys, "test.txt")
+
+		if mt.fatalCalled || mt.fatalfCalled {
+			t.Errorf("unexpected fatal call: fatalCalled=%v, fatalfCalled=%v", mt.fatalCalled, mt.fatalfCalled)
+		}
+	})
+
+	t.Run("file not exists", func(t *testing.T) {
+		mt := new(mockT)
+		ext := wrapT(T(mt))
+
+		fsys := &mockFsys{
+			statFunc: func(name string) (fs.FileInfo, error) {
+				return nil, fs.ErrNotExist
+			},
+		}
+
+		// Run in goroutine to handle Goexit
+		done := make(chan bool)
+		go func() {
+			defer func() {
+				done <- true
+			}()
+			AssertAccessible(ext, fsys, "missing.txt")
+		}()
+		<-done
+
+		if !mt.fatalfCalled {
+			t.Errorf("expected Fatalf to be called for missing file")
+		}
+
+		expectedFormat := `
+Op: Stat
+Path: missing.txt
+
+failed: %v`
+		if mt.fatalfFormat != expectedFormat {
+			t.Errorf("error format mismatch: expected %q, got %q", expectedFormat, mt.fatalfFormat)
+		}
+	})
+}
+
 // mockFsys implements a filesystem for testing
 type mockFsys struct {
 	openFileFunc func(name string, flag int, perm fs.FileMode) (*mockFile, error)
 	openFunc     func(name string) (*mockFile, error)
 	createFunc   func(name string) (*mockFile, error)
+	statFunc     func(name string) (fs.FileInfo, error)
 }
 
 func (m *mockFsys) OpenFile(name string, flag int, perm fs.FileMode) (*mockFile, error) {
@@ -487,6 +546,13 @@ func (m *mockFsys) Create(name string) (*mockFile, error) {
 		return m.createFunc(name)
 	}
 	return &mockFile{}, errors.New("not implemented")
+}
+
+func (m *mockFsys) Stat(name string) (fs.FileInfo, error) {
+	if m.statFunc != nil {
+		return m.statFunc(name)
+	}
+	return nil, errors.New("not implemented")
 }
 
 // mockFile implements a file for testing
@@ -536,3 +602,19 @@ func (m *mockFile) Close() error {
 	m.closed = true
 	return nil
 }
+
+// mockFileInfo implements fs.FileInfo for testing
+type mockFileInfo struct {
+	name    string
+	size    int64
+	mode    fs.FileMode
+	modTime time.Time
+	isDir   bool
+}
+
+func (m *mockFileInfo) Name() string       { return m.name }
+func (m *mockFileInfo) Size() int64        { return m.size }
+func (m *mockFileInfo) Mode() fs.FileMode  { return m.mode }
+func (m *mockFileInfo) ModTime() time.Time { return m.modTime }
+func (m *mockFileInfo) IsDir() bool        { return m.isDir }
+func (m *mockFileInfo) Sys() interface{}   { return nil }

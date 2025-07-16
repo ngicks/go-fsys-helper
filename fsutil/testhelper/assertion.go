@@ -120,3 +120,17 @@ func AssertContent[
 		PushContext("actual", strconv.Quote(string(bin))).
 		Fatal("not equal")
 }
+
+func AssertAccessible[
+	Fsys interface {
+		Stat(name string) (fs.FileInfo, error)
+	},
+](t ExtendedT, fsys Fsys, path string) {
+	tt := t.PushOp("Stat").PushPath(path)
+	tt.Helper()
+
+	_, err := fsys.Stat(filepath.FromSlash(path))
+	if err != nil {
+		tt.Fatalf("failed: %v", err)
+	}
+}
