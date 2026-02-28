@@ -1,6 +1,8 @@
 package fsutil
 
 import (
+	"bytes"
+	"cmp"
 	"errors"
 	"io/fs"
 	"os"
@@ -50,80 +52,93 @@ func ResolvePath(
 		return "", ErrPathEscapes
 	}
 
-	nameWihoutLastPart := name
 	var lastPart string
 	if skipLastElement {
-		// Use strings.LastIndex to find the last separator and extract the last part
 		idx := strings.LastIndex(name, string(filepath.Separator))
 		if idx < 0 {
-			// No separator found, the entire name is the last part
 			return name, nil
 		}
 		lastPart = name[idx+1:]
-		nameWihoutLastPart = name[:idx]
+		name = name[:idx]
 	}
 
-	currentSymlinkResolutionCount := 0
+	curLinkResolved := 0
 
-	var pathBuilder strings.Builder
-	for i, part := range splitPathSeq(nameWihoutLastPart) {
+	resolved := new(bytes.Buffer)
+
+	i := 0
+	offStart := 0
+	offEnd := 0
+	for offStart < len(name) {
 		if i > 0 {
-			pathBuilder.WriteByte(filepath.Separator)
+			resolved.WriteByte(filepath.Separator)
 		}
 
-		pathBuilder.WriteString(part.component)
-		currentPath := pathBuilder.String()
+		if idx := strings.Index(name[offStart:], string(filepath.Separator)); idx >= 0 {
+			offEnd = offStart + idx
+		} else {
+			offEnd = len(name)
+		}
 
-		info, err := fsys.Lstat(currentPath)
+		resolved.WriteString(name[offStart:offEnd])
+
+		info, err := fsys.Lstat(resolved.String())
 		if err != nil {
-			rest := name[min(len(name), part.offsetEnd):]
-			if len(rest) > 0 {
-				return currentPath + string(filepath.Separator) + rest, err
+			if offEnd < len(name) {
+				resolved.WriteString(name[offEnd:])
 			}
-			return currentPath, err
+			return resolved.String(), err
 		}
 
 		if info.Mode()&fs.ModeSymlink == 0 {
+			offStart = offEnd + 1
+			i++
 			continue
 		}
 
-		resolved, numSymlink, err := ResolveSymlink(
+		currentResolved, numSymlink, err := ResolveSymlink(
 			fsys,
-			currentPath,
-			maxSymlinkResolutionCount-currentSymlinkResolutionCount,
+			resolved.String(),
+			maxSymlinkResolutionCount-curLinkResolved,
 		)
 		if err != nil {
-			return "", err
+			return resolved.String(), err
 		}
 
-		currentSymlinkResolutionCount += numSymlink
-		if currentSymlinkResolutionCount >= maxSymlinkResolutionCount {
-			return "", WrapPathErr("stat", name, errdef.ELOOP)
+		curLinkResolved += numSymlink
+		if curLinkResolved >= maxSymlinkResolutionCount {
+			return cmp.Or(currentResolved, resolved.String()), WrapPathErr("stat", name, errdef.ELOOP)
 		}
 
-		if resolved == "" || !filepath.IsLocal(resolved) {
+		if currentResolved == "" || !filepath.IsLocal(currentResolved) {
 			// Target is absolute or has "..".
 			// *os.Root rejects this anyway, since it cannot tell final result is within root.
 			// *os.Root depends on "at" variants of syscalls(e.g. openat.)
 			// The root directory may be moved after open,
 			// but you don't have robust way to convert an fd back to a path on the filesystem,
 			// maybe even multiple paths are linked to a file.
-			return "", ErrPathEscapes
+			return cmp.Or(currentResolved, resolved.String()), ErrPathEscapes
 		}
 
-		// Reset the builder and start from the resolved path
-		pathBuilder.Reset()
-		pathBuilder.WriteString(resolved)
+		if offEnd >= len(name) {
+			name = currentResolved
+		} else {
+			name = currentResolved + name[offEnd:]
+		}
+		i = 0
+		offStart = 0
+		offEnd = 0
+		resolved.Reset()
 	}
 
 	if lastPart != "" {
-		if pathBuilder.Len() > 0 {
-			pathBuilder.WriteByte(filepath.Separator)
+		if resolved.Len() > 0 {
+			resolved.WriteByte(filepath.Separator)
 		}
-		pathBuilder.WriteString(lastPart)
+		resolved.WriteString(lastPart)
 	}
 
-	return pathBuilder.String(), nil
+	return resolved.String(), nil
 }
 
 // ResolveSymlink retruns resoluition result with numbers of symlink that has been resolved.

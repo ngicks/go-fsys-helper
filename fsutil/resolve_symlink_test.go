@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/errdef"
 	"github.com/ngicks/go-fsys-helper/fsutil/internal/osfslite"
 )
 
@@ -90,8 +91,26 @@ func TestResolvePath(t *testing.T) {
 			slices.Collect(makeChainedSymlink("foo", maxSymlinkResolutionCount)),
 			"./foo/0",
 			fmt.Sprintf("./foo/%d", maxSymlinkResolutionCount),
-			"",
-			syscall.ELOOP,
+			"foo/40",
+			errdef.ELOOP,
+		},
+		{
+			func() string {
+				return "nested"
+			},
+			[]toAndFro{
+				/*
+				 a -> b
+				 c -> a/d
+				 file: b/d
+				*/
+				{"b", "a"},
+				{"a/d", "c"},
+			},
+			"./c",
+			"b/d",
+			"b/d",
+			nil,
 		},
 	}
 
