@@ -21,6 +21,14 @@
 go.work
 go.work.sum
 
-working
+/working
 .coverinfo
 .coverinfo.html
+
+/.agents
+/.claude
+/.codex
+# APM dependencies
+apm_modules/
+
+AGENTS.md

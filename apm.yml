@@ -1,0 +1,14 @@
+name: go-fsys-helper
+version: 1.0.0
+description: APM project for go-fsys-helper
+author: ngicks
+dependencies:
+  apm:
+  - ngicks/agents-package/hooks/golangci-lint-fmt-after-edit
+  - ngicks/agents-package/hooks/golangci-lint-run-after-edit
+  - ngicks/agents-package/instructions/base-env.instructions.md
+  - ngicks/agents-package/instructions/go/go-basics.instructions.md
+  - ngicks/agents-package/skills/go-check-outdated-patterns
+  - ngicks/agents-package/skills/go-review-checklist
+  mcp: []
+scripts: {}
