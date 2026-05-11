@@ -20,11 +20,11 @@ type WalkOption struct {
 	ResolveSymlink bool
 }
 
-func WalkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
+func WalkDir[F File, Fsys Fs[F]](fsys Fsys, root string, opt *WalkOption, fn WalkDirFunc) error {
 	return walkDir(fsys, root, opt, fn)
 }
 
-type walkState struct {
+type walkState[F File, Fsys Fs[F]] struct {
 	// maintains visited real paths.
 	// either visitedPaths or visitedInodes is present
 	visitedPaths map[string]struct{}
@@ -37,7 +37,7 @@ type walkState struct {
 
 var logUniqueness = false
 
-func (s *walkState) recordVisited(fsys Fs, virtualPath, realPath string, info fs.FileInfo) (visited bool) {
+func (s *walkState[F, Fsys]) recordVisited(fsys Fsys, virtualPath, realPath string, info fs.FileInfo) (visited bool) {
 	ident, ok := fileIdentFromSys(fsys, virtualPath, realPath, info)
 	if logUniqueness {
 		fmt.Printf("%q: %#v\n", realPath, ident)
@@ -72,7 +72,7 @@ func (s *walkState) recordVisited(fsys Fs, virtualPath, realPath string, info fs
 	}
 }
 
-func (s *walkState) removeVisited(fsys Fs, virtualPath, realPath string, info fs.FileInfo) {
+func (s *walkState[F, Fsys]) removeVisited(fsys Fsys, virtualPath, realPath string, info fs.FileInfo) {
 	ident, ok := fileIdentFromSys(fsys, virtualPath, realPath, info)
 	if ok {
 		delete(s.visitedInodes, ident)
@@ -81,8 +81,8 @@ func (s *walkState) removeVisited(fsys Fs, virtualPath, realPath string, info fs
 	}
 }
 
-func walkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
-	state := &walkState{
+func walkDir[F File, Fsys Fs[F]](fsys Fsys, root string, opt *WalkOption, fn WalkDirFunc) error {
+	state := &walkState[F, Fsys]{
 		symlinkResolveRemaining: 40, // following linux's recent max
 	}
 	if opt == nil {
@@ -102,12 +102,12 @@ func walkDir(fsys Fs, root string, opt *WalkOption, fn WalkDirFunc) error {
 	return err
 }
 
-func walkDir_(
-	fsys Fs,
+func walkDir_[F File, Fsys Fs[F]](
+	fsys Fsys,
 	path string,
 	realPath string,
 	info fs.FileInfo,
-	state *walkState,
+	state *walkState[F, Fsys],
 	opt *WalkOption,
 	fn WalkDirFunc,
 ) error {
