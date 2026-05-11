@@ -24,7 +24,7 @@ var (
 //
 // Methods are encouraged to return [*os.LinkError] wrapping an appropriate error for Rename, Link and Symlink,
 // [*fs.PathError] for others,
-type Fs interface {
+type Fs[F File] interface {
 	Chmod(name string, mode fs.FileMode) error
 	Chown(name string, uid int, gid int) error
 	Chtimes(name string, atime time.Time, mtime time.Time) error
@@ -32,7 +32,7 @@ type Fs interface {
 	// Callers should not use Fs after return of this method but
 	// it is still possible that the method is just a no-op.
 	Close() error
-	Create(name string) (File, error)
+	Create(name string) (F, error)
 	Lchown(name string, uid int, gid int) error
 	Link(oldname string, newname string) error
 	Lstat(name string) (fs.FileInfo, error)
@@ -41,9 +41,8 @@ type Fs interface {
 	// Name returns name for the Fs.
 	// For osfs, it reutnrs the name of the directory presented to OpenRoot.
 	Name() string
-	Open(name string) (File, error)
-	OpenFile(name string, flag int, perm fs.FileMode) (File, error)
-	OpenRoot(name string) (Rooted, error)
+	Open(name string) (F, error)
+	OpenFile(name string, flag int, perm fs.FileMode) (F, error)
 	ReadLink(name string) (string, error)
 	Remove(name string) error
 	RemoveAll(name string) error
@@ -52,20 +51,13 @@ type Fs interface {
 	Symlink(oldname string, newname string) error
 }
 
-// Unrooted is like [Rooted] but allow escaping root by sysmlink.
-// Path traversals are still not allowed.
-type Unrooted interface {
-	Fs
-	Unrooted()
-	OpenUnrooted(name string) (Unrooted, error)
-}
-
-// Rooted indicates the implementation is rooted,
+// Root indicates the implementation is rooted,
 // which means escaping root by path traversal or symlink
 // is not allowed.
-type Rooted interface {
-	Fs
-	Rooted()
+type Root[F File, R Root[F, R]] interface {
+	Fs[F]
+	IsRoot()
+	OpenRoot(name string) (R, error)
 }
 
 // File is basically same as [*os.File]
