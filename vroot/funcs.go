@@ -8,8 +8,8 @@ import (
 	"slices"
 )
 
-type ReadDirFs interface {
-	Fs
+type ReadDirFs[F File] interface {
+	Fs[F]
 	ReadDir(name string) ([]fs.DirEntry, error)
 }
 
