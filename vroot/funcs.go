@@ -13,8 +13,8 @@ type ReadDirFs[F File] interface {
 	ReadDir(name string) ([]fs.DirEntry, error)
 }
 
-func ReadDir(fsys Fs, name string) ([]fs.DirEntry, error) {
-	if readDirFsys, ok := fsys.(ReadDirFs); ok {
+func ReadDir[F File](fsys Fs[F], name string) ([]fs.DirEntry, error) {
+	if readDirFsys, ok := fsys.(ReadDirFs[F]); ok {
 		return readDirFsys.ReadDir(name)
 	}
 
@@ -31,13 +31,13 @@ func ReadDir(fsys Fs, name string) ([]fs.DirEntry, error) {
 	return dirents, err
 }
 
-type ReadFileFs interface {
-	Fs
+type ReadFileFs[F File] interface {
+	Fs[F]
 	ReadFile(name string) ([]byte, error)
 }
 
-func ReadFile(fsys Fs, name string) ([]byte, error) {
-	if readFileFsys, ok := fsys.(ReadFileFs); ok {
+func ReadFile[F File](fsys Fs[F], name string) ([]byte, error) {
+	if readFileFsys, ok := fsys.(ReadFileFs[F]); ok {
 		return readFileFsys.ReadFile(name)
 	}
 
@@ -63,7 +63,7 @@ func Fd(f any) uintptr {
 }
 
 // WriteFile is short hand for creating file at name and writing data into it.
-func WriteFile(fsys Fs, name string, data []byte, perm fs.FileMode) error {
+func WriteFile[F File](fsys Fs[F], name string, data []byte, perm fs.FileMode) error {
 	f, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
 		return err

@@ -15,18 +15,19 @@ var (
 	_ vroot.Fs[*os.File] = (*Fs)(nil)
 )
 
-// Unrooted exposes a file system under given path as [vroot.Unrooted].
+// Fs exposes a file system under given path as [vroot.Fs].
 // Like [*os.Root] implementation on js/wasm,
-// Unrooted is vulnerable to TOCTOU(time of check, time of use) attacks.
+// Fs is vulnerable to TOCTOU(time of check, time of use) attacks,
+// and also reopening sub fs-es may be needed after renaming their root.
 //
-// Zero value of Unrooted is invalid and must be initialized by [NewUnrooted].
+// Zero value of Fs is invalid and must be initialized by [NewFs].
 type Fs struct {
 	root string // absolute path to the root directory
 }
 
-// NewUnrooted opens a new Unrooted on path.
+// NewFs opens a new Fs on the path.
 //
-// The path must exist before NewUnrooted is called.
+// The path must exist before NewFs is called.
 // It also must be a directory.
 func NewFs(path string) (*Fs, error) {
 	absRoot, err := filepath.Abs(path)
@@ -49,7 +50,7 @@ func NewFs(path string) (*Fs, error) {
 
 func (u *Fs) resolvePath(path string) (string, error) {
 	if u.root == "" {
-		panic("calling method of zero *Unroot")
+		panic("calling method of zero *Fs")
 	}
 
 	path = filepath.Clean(path)

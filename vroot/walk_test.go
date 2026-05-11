@@ -97,7 +97,7 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 	acceptancetest.MakeOsFsys(tempDir, true, false)
-	r, err := osfs.NewUnrooted(filepath.Join(tempDir, "root", "readable"))
+	r, err := osfs.NewFs(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
 	}
@@ -183,7 +183,7 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
 	acceptancetest.MakeOsFsys(tempDir, true, false)
-	r, err := osfs.NewRooted(filepath.Join(tempDir, "root", "readable"))
+	r, err := osfs.NewRoot(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
 	}
@@ -282,7 +282,7 @@ func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	r, err := osfs.NewRooted(filepath.Join(tempDir, "root"))
+	r, err := osfs.NewRoot(filepath.Join(tempDir, "root"))
 	if err != nil {
 		panic(err)
 	}
@@ -406,7 +406,7 @@ func TestWalk_Rooted_loop(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
-			r, err := osfs.NewRooted(filepath.Join(tempDir, "root"))
+			r, err := osfs.NewRoot(filepath.Join(tempDir, "root"))
 			if err != nil {
 				panic(err)
 			}
@@ -498,7 +498,7 @@ func TestWalk_Unrooted_loop(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
-			r, err := osfs.NewUnrooted(filepath.Join(tempDir, "root"))
+			r, err := osfs.NewFs(filepath.Join(tempDir, "root"))
 			if err != nil {
 				panic(err)
 			}
