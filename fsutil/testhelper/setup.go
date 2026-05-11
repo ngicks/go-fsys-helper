@@ -24,6 +24,24 @@ func (c *C[T, F, Fs]) Setup(setups ...SetupProc[F, Fs]) {
 	}
 }
 
+// SetupLines parses lines using [ParseSetupProcLine] and applies them via [C.Setup].
+// Lines accept the same syntax as ParseSetupProcLine:
+//   - "path/to/dir/"             creates a directory
+//   - `path/to/file: "content"`  creates a file with the given content
+//   - "path/to/link -> target"   creates a symbolic link
+func (c *C[T, F, Fs]) SetupLines(lines ...string) {
+	c.t.Helper()
+	procs := make([]SetupProc[F, Fs], 0, len(lines))
+	for _, line := range lines {
+		proc, err := ParseSetupProcLine[F, Fs](line)
+		if err != nil {
+			c.ReportFailf("SetupLines: %v", err)
+		}
+		procs = append(procs, proc)
+	}
+	c.Setup(procs...)
+}
+
 type SetupProc[F File, Fs Fsys[F]] interface {
 	Path() string
 	Order() int
