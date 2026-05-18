@@ -6,6 +6,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -14,10 +15,8 @@ import (
 // When Option.SkipReadAt is set, the implementation may return [vroot.ErrOpNotSupported].
 // Otherwise ReadAt must not change the file position observed by sequential Read.
 func TestFileReadAt[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
-	fsys := makeFs(t, s)
+	fsys := makeFs(t, s, `f.txt: "abcdef"`)
 	c := newC(t, fsys)
-
-	c.SetupLines(`f.txt: "abcdef"`)
 
 	f := c.Open("f.txt")
 	defer func() { _ = f.Close() }()
@@ -53,9 +52,7 @@ func TestFileReadAt[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) 
 		}
 
 		got, err := io.ReadAll(f)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if !bytes.Equal(got, []byte("abcdef")) {
 			t.Errorf("after ReadAt, ReadAll: got %q, want %q", got, "abcdef")
 		}
@@ -64,9 +61,7 @@ func TestFileReadAt[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) 
 	t.Run("EOF past end", func(t *testing.T) {
 		buf := make([]byte, 4)
 		n, err := f.ReadAt(buf, 4)
-		if err != io.EOF {
-			t.Errorf("ReadAt past end: want io.EOF, got %v", err)
-		}
+		testhelper.ErrIs(t, err, io.EOF)
 		if n != 2 {
 			t.Errorf("ReadAt past end: n=%d, want 2", n)
 		}

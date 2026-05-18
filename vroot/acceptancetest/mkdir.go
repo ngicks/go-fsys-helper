@@ -1,10 +1,10 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io/fs"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -19,9 +19,7 @@ func TestMkdir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	t.Run("basic", func(t *testing.T) {
 		c.Mkdir("d1", 0o755)
 		info, err := fsys.Stat("d1")
-		if err != nil {
-			t.Fatalf("Stat: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if !info.IsDir() {
 			t.Errorf("Mkdir did not produce a directory")
 		}
@@ -31,9 +29,7 @@ func TestMkdir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		c.Mkdir("d2", 0o755)
 		c.Mkdir("d2/inner", 0o755)
 		info, err := fsys.Stat("d2/inner")
-		if err != nil {
-			t.Fatalf("Stat: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if !info.IsDir() {
 			t.Errorf("nested mkdir produced non-directory")
 		}
@@ -41,22 +37,12 @@ func TestMkdir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	t.Run("fails when parent missing", func(t *testing.T) {
 		err := fsys.Mkdir("missing-parent/child", 0o755)
-		if err == nil {
-			t.Fatalf("Mkdir with missing parent: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Mkdir with missing parent: want fs.ErrNotExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 
 	t.Run("fails when path already exists", func(t *testing.T) {
 		c.SetupLines("already/")
 		err := fsys.Mkdir("already", 0o755)
-		if err == nil {
-			t.Fatalf("Mkdir for existing path: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrExist) {
-			t.Errorf("Mkdir for existing path: want fs.ErrExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrExist)
 	})
 }

@@ -1,10 +1,10 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io/fs"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -19,18 +19,14 @@ func TestRemove[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		c.SetupLines(`f.txt: "x"`)
 		c.Remove("f.txt")
 		_, err := fsys.Stat("f.txt")
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("after Remove, Stat: want fs.ErrNotExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 
 	t.Run("empty directory", func(t *testing.T) {
 		c.SetupLines("emptydir/")
 		c.Remove("emptydir")
 		_, err := fsys.Stat("emptydir")
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("after Remove, Stat: want fs.ErrNotExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 
 	if !s.Option.SkipSymlink {
@@ -40,13 +36,11 @@ func TestRemove[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 				"symremove -> linktarget.txt",
 			)
 			c.Remove("symremove")
-			if _, err := fsys.Lstat("symremove"); !errors.Is(err, fs.ErrNotExist) {
-				t.Errorf("after Remove, Lstat: want fs.ErrNotExist, got %v", err)
-			}
+			_, err := fsys.Lstat("symremove")
+			testhelper.ErrIs(t, err, fs.ErrNotExist)
 			// Target should still exist.
-			if _, err := fsys.Stat("linktarget.txt"); err != nil {
-				t.Errorf("Remove of symlink deleted target: %v", err)
-			}
+			_, err = fsys.Stat("linktarget.txt")
+			testhelper.NilErr(t, err)
 		})
 	}
 
@@ -63,11 +57,6 @@ func TestRemove[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	t.Run("non-existent path", func(t *testing.T) {
 		err := fsys.Remove("does-not-exist")
-		if err == nil {
-			t.Fatalf("Remove missing path: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Remove missing path: want fs.ErrNotExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 }

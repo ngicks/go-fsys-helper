@@ -5,6 +5,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -13,20 +14,17 @@ import (
 // Reads return bytes sequentially. After exhausting the file, the next Read returns
 // (0, io.EOF). Read on a closed file errors.
 func TestFileRead[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
-	fsys := makeFs(t, s)
+	fsys := makeFs(t, s, `f.txt: "abcdef"`)
 	c := newC(t, fsys)
 
 	content := []byte("abcdef")
-	c.SetupLines(`f.txt: "abcdef"`)
 
 	t.Run("reads full content", func(t *testing.T) {
 		f := c.Open("f.txt")
 		defer func() { _ = f.Close() }()
 
 		got, err := io.ReadAll(f)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if !bytes.Equal(got, content) {
 			t.Errorf("content: got %q, want %q", got, content)
 		}
@@ -38,9 +36,7 @@ func TestFileRead[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 		buf := make([]byte, 4)
 		n, err := f.Read(buf)
-		if err != nil {
-			t.Fatalf("first Read: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if n != 4 || !bytes.Equal(buf[:n], content[:4]) {
 			t.Errorf("first Read: n=%d buf=%q, want 4 %q", n, buf[:n], content[:4])
 		}
@@ -55,8 +51,6 @@ func TestFileRead[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 		// Drain final EOF (some implementations return io.EOF along with n>0).
 		_, err = f.Read(buf)
-		if err != io.EOF {
-			t.Errorf("trailing Read: want io.EOF, got %v", err)
-		}
+		testhelper.ErrIs(t, err, io.EOF)
 	})
 }

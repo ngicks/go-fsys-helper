@@ -1,10 +1,10 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io/fs"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -37,9 +37,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		c.Chmod("file.txt", want)
 
 		info, err := fsys.Stat("file.txt")
-		if err != nil {
-			t.Fatalf("Stat: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		switch s.Option.Os {
 		case OsUnix:
 			if got := info.Mode().Perm(); got != want {
@@ -64,9 +62,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		c.Chmod("dir", want)
 
 		info, err := fsys.Stat("dir")
-		if err != nil {
-			t.Fatalf("Stat: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if !info.IsDir() {
 			t.Errorf("dir lost directory mode after Chmod")
 		}
@@ -79,12 +75,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	t.Run("non-existent path", func(t *testing.T) {
 		err := fsys.Chmod("does-not-exist", 0o644)
-		if err == nil {
-			t.Fatalf("Chmod on missing file: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Chmod on missing file: want fs.ErrNotExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 
 	if s.Option.Os == OsWindows {
@@ -92,9 +83,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 			c.Chmod("file.txt", 0o444)
 			c.Chmod("file.txt", 0o666)
 			f, err := fsys.OpenFile("file.txt", openFlagWrite(), 0)
-			if err != nil {
-				t.Fatalf("OpenFile for write after re-chmod: %v", err)
-			}
+			testhelper.NilErr(t, err)
 			_ = f.Close()
 		})
 	}

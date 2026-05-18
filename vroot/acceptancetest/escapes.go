@@ -1,10 +1,10 @@
 package acceptancetest
 
 import (
-	"errors"
 	"path/filepath"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -36,39 +36,24 @@ func TestRootEscapes[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot
 
 	for _, p := range traversal {
 		t.Run("Open "+p, func(t *testing.T) {
-			f, err := r.Open(p)
-			if err == nil {
-				_ = f.Close()
-				t.Fatalf("Open(%q): want error, got nil", p)
-			}
-			if !errors.Is(err, vroot.ErrPathEscapes) {
-				t.Errorf("Open(%q): want ErrPathEscapes, got %v", p, err)
-			}
+			_, err := r.Open(p)
+			testhelper.ErrIs(t, err, vroot.ErrPathEscapes)
 		})
 		t.Run("Stat "+p, func(t *testing.T) {
-			if _, err := r.Stat(p); !errors.Is(err, vroot.ErrPathEscapes) {
-				t.Errorf("Stat(%q): want ErrPathEscapes, got %v", p, err)
-			}
+			_, err := r.Stat(p)
+			testhelper.ErrIs(t, err, vroot.ErrPathEscapes)
 		})
 		t.Run("Mkdir "+p, func(t *testing.T) {
 			err := r.Mkdir(filepath.Join(p, "newdir"), 0o755)
-			if !errors.Is(err, vroot.ErrPathEscapes) {
-				t.Errorf("Mkdir(%q): want ErrPathEscapes, got %v", filepath.Join(p, "newdir"), err)
-			}
+			testhelper.ErrIs(t, err, vroot.ErrPathEscapes)
 		})
 	}
 
 	if !s.Option.SkipSymlink {
 		for _, lnk := range []string{"escapelink", filepath.FromSlash("sub/escapelink")} {
 			t.Run("Open via symlink "+lnk, func(t *testing.T) {
-				f, err := r.Open(lnk)
-				if err == nil {
-					_ = f.Close()
-					t.Fatalf("Open(%q): want error, got nil", lnk)
-				}
-				if !errors.Is(err, vroot.ErrPathEscapes) {
-					t.Errorf("Open(%q): want ErrPathEscapes, got %v", lnk, err)
-				}
+				_, err := r.Open(lnk)
+				testhelper.ErrIs(t, err, vroot.ErrPathEscapes)
 			})
 		}
 	}

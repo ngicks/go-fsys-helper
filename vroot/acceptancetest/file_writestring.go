@@ -4,6 +4,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -15,9 +16,7 @@ func TestFileWriteString[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, 
 	f := c.Create("s.txt")
 	want := "hello string"
 	n, err := f.WriteString(want)
-	if err != nil {
-		t.Fatalf("WriteString: %v", err)
-	}
+	testhelper.NilErr(t, err)
 	if n != len(want) {
 		t.Errorf("WriteString returned n=%d, want %d", n, len(want))
 	}
@@ -26,9 +25,7 @@ func TestFileWriteString[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, 
 	r := c.Open("s.txt")
 	defer func() { _ = r.Close() }()
 	got, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatalf("ReadAll: %v", err)
-	}
+	testhelper.NilErr(t, err)
 	if string(got) != want {
 		t.Errorf("content: got %q, want %q", got, want)
 	}

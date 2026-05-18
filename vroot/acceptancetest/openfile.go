@@ -1,12 +1,12 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io"
 	"io/fs"
 	"os"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -21,9 +21,7 @@ func TestOpenFile[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		f := c.OpenFile("existing.txt", os.O_RDONLY, 0)
 		defer func() { _ = f.Close() }()
 		got, err := io.ReadAll(f)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if string(got) != "old" {
 			t.Errorf("content: got %q, want %q", got, "old")
 		}
@@ -34,17 +32,14 @@ func TestOpenFile[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	t.Run("O_WRONLY|O_TRUNC", func(t *testing.T) {
 		f := c.OpenFile("existing.txt", os.O_WRONLY|os.O_TRUNC, 0)
-		if _, err := f.Write([]byte("new")); err != nil {
-			t.Fatalf("Write: %v", err)
-		}
+		_, err := f.Write([]byte("new"))
+		testhelper.NilErr(t, err)
 		_ = f.Close()
 
 		r := c.Open("existing.txt")
 		defer func() { _ = r.Close() }()
 		got, err := io.ReadAll(r)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if string(got) != "new" {
 			t.Errorf("content after O_TRUNC: got %q, want %q", got, "new")
 		}
@@ -53,17 +48,14 @@ func TestOpenFile[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	t.Run("O_WRONLY|O_APPEND", func(t *testing.T) {
 		c.SetupLines(`append.txt: "ab"`)
 		f := c.OpenFile("append.txt", os.O_WRONLY|os.O_APPEND, 0)
-		if _, err := f.Write([]byte("cd")); err != nil {
-			t.Fatalf("Write: %v", err)
-		}
+		_, err := f.Write([]byte("cd"))
+		testhelper.NilErr(t, err)
 		_ = f.Close()
 
 		r := c.Open("append.txt")
 		defer func() { _ = r.Close() }()
 		got, err := io.ReadAll(r)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if string(got) != "abcd" {
 			t.Errorf("content after O_APPEND: got %q, want %q", got, "abcd")
 		}
@@ -72,42 +64,23 @@ func TestOpenFile[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	t.Run("O_CREATE on new path", func(t *testing.T) {
 		f := c.OpenFile("created.txt", os.O_WRONLY|os.O_CREATE, 0o644)
 		_ = f.Close()
-		if _, err := fsys.Stat("created.txt"); err != nil {
-			t.Errorf("Stat after O_CREATE: %v", err)
-		}
+		_, err := fsys.Stat("created.txt")
+		testhelper.NilErr(t, err)
 	})
 
 	t.Run("O_CREATE|O_EXCL fails when path exists", func(t *testing.T) {
 		c.SetupLines(`excl.txt: "x"`)
-		f, err := fsys.OpenFile("excl.txt", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-		if err == nil {
-			_ = f.Close()
-			t.Fatalf("O_CREATE|O_EXCL on existing path: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrExist) {
-			t.Errorf("O_CREATE|O_EXCL: want fs.ErrExist, got %v", err)
-		}
+		_, err := fsys.OpenFile("excl.txt", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		testhelper.ErrIs(t, err, fs.ErrExist)
 	})
 
 	t.Run("non-existent path without O_CREATE", func(t *testing.T) {
-		f, err := fsys.OpenFile("missing.txt", os.O_RDONLY, 0)
-		if err == nil {
-			_ = f.Close()
-			t.Fatalf("OpenFile missing: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("OpenFile missing: want fs.ErrNotExist, got %v", err)
-		}
+		_, err := fsys.OpenFile("missing.txt", os.O_RDONLY, 0)
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 
 	t.Run("parent does not exist", func(t *testing.T) {
-		f, err := fsys.OpenFile("missing-parent/file.txt", os.O_WRONLY|os.O_CREATE, 0o644)
-		if err == nil {
-			_ = f.Close()
-			t.Fatalf("OpenFile missing parent: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("OpenFile missing parent: want fs.ErrNotExist, got %v", err)
-		}
+		_, err := fsys.OpenFile("missing-parent/file.txt", os.O_WRONLY|os.O_CREATE, 0o644)
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 }

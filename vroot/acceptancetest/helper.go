@@ -13,9 +13,11 @@ func newC[F vroot.File, Fs vroot.Fs[F]](t *testing.T, fsys Fs) *testhelper.C[*te
 }
 
 // makeFs creates a new Fs from the Setup and registers Close() via t.Cleanup.
-func makeFs[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) Fs {
+//
+// lines, when non-empty, are pre-applied to the Fs by Setup.Make.
+func makeFs[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs], lines ...string) Fs {
 	t.Helper()
-	fsys := s.Make(t)
+	fsys := s.Make(t, lines)
 	t.Cleanup(func() {
 		_ = fsys.Close()
 	})
@@ -23,9 +25,11 @@ func makeFs[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) Fs {
 }
 
 // makeRoot creates a new Root from the SetupRoot and registers Close() via t.Cleanup.
-func makeRoot[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot[F, R]) R {
+//
+// lines, when non-empty, are pre-applied to the Root by SetupRoot.Make.
+func makeRoot[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot[F, R], lines ...string) R {
 	t.Helper()
-	r := s.Make(t)
+	r := s.Make(t, lines)
 	t.Cleanup(func() {
 		_ = r.Close()
 	})

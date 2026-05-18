@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -29,14 +30,10 @@ func TestFileChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		want = 0o444
 	}
 
-	if err := f.Chmod(want); err != nil {
-		t.Fatalf("File.Chmod: %v", err)
-	}
+	testhelper.NilErr(t, f.Chmod(want))
 
 	info, err := fsys.Stat("f.txt")
-	if err != nil {
-		t.Fatalf("Stat: %v", err)
-	}
+	testhelper.NilErr(t, err)
 	if s.Option.Os == OsUnix {
 		if got := info.Mode().Perm(); got != want {
 			t.Errorf("after File.Chmod, mode: got %#o, want %#o", got, want)

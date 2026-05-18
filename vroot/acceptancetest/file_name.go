@@ -8,10 +8,8 @@ import (
 
 // TestFileName exercises [vroot.File.Name].
 func TestFileName[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
-	fsys := makeFs(t, s)
+	fsys := makeFs(t, s, `hello.txt: "x"`)
 	c := newC(t, fsys)
-
-	c.SetupLines(`hello.txt: "x"`)
 
 	f := c.Open("hello.txt")
 	defer func() { _ = f.Close() }()

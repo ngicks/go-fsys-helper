@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -14,25 +15,22 @@ import (
 // at once. With n>0 it returns up to n entries per call, then io.EOF (or just nil with
 // less-than-n on the final call, depending on implementation).
 func TestFileReadDir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
-	fsys := makeFs(t, s)
-	c := newC(t, fsys)
-
-	c.SetupLines(
+	fsys := makeFs(t, s,
 		"dir/",
 		`dir/a.txt: "a"`,
 		`dir/b.txt: "b"`,
 		`dir/c.txt: "c"`,
 		"dir/sub/",
+		`reg.txt: "x"`,
 	)
+	c := newC(t, fsys)
 
 	t.Run("read all", func(t *testing.T) {
 		f := c.Open("dir")
 		defer func() { _ = f.Close() }()
 
 		entries, err := f.ReadDir(-1)
-		if err != nil {
-			t.Fatalf("ReadDir: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		names := make([]string, 0, len(entries))
 		for _, e := range entries {
 			names = append(names, e.Name())
@@ -73,7 +71,6 @@ func TestFileReadDir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs])
 	})
 
 	t.Run("ReadDir on regular file errors", func(t *testing.T) {
-		c.SetupLines(`reg.txt: "x"`)
 		f := c.Open("reg.txt")
 		defer func() { _ = f.Close() }()
 		if _, err := f.ReadDir(-1); err == nil {

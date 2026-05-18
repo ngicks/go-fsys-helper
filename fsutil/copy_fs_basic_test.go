@@ -22,16 +22,22 @@ func TestCopyFs(t *testing.T) {
 		dstDir := filepath.Join(tempDir, "dst")
 
 		// Create test structure using testhelper
-		err := testhelper.ExecuteLines(tempDir,
-			"src/",
-			"dst/",
-			"src/subdir/",
-			"src/file1.txt: 0644 content1",
-			"src/subdir/file2.txt: 0755 content2",
+		c := testhelper.New(t, osfslite.New(tempDir))
+		c.Setup(
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: "src"},
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: "dst"},
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: filepath.FromSlash("src/subdir")},
+			&testhelper.CreateFile[*os.File, *osfslite.OsfsLite]{
+				Name:    filepath.FromSlash("src/file1.txt"),
+				Mode:    0o644,
+				Content: []byte("content1"),
+			},
+			&testhelper.CreateFile[*os.File, *osfslite.OsfsLite]{
+				Name:    filepath.FromSlash("src/subdir/file2.txt"),
+				Mode:    0o755,
+				Content: []byte("content2"),
+			},
 		)
-		if err != nil {
-			t.Fatalf("failed to create test structure: %v", err)
-		}
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
@@ -41,7 +47,7 @@ func TestCopyFs(t *testing.T) {
 		opt := testCopyFsOption{}
 
 		// Perform copy
-		err = opt.CopyAll(dstFs, srcFs, ".")
+		err := opt.CopyAll(dstFs, srcFs, ".")
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
@@ -105,14 +111,16 @@ func TestCopyFs(t *testing.T) {
 		dstDir := filepath.Join(tempDir, "dst")
 
 		// Create test structure using testhelper
-		err := testhelper.ExecuteLines(tempDir,
-			"src/",
-			"dst/",
-			"src/file.txt: 0600 content",
+		c := testhelper.New(t, osfslite.New(tempDir))
+		c.Setup(
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: "src"},
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: "dst"},
+			&testhelper.CreateFile[*os.File, *osfslite.OsfsLite]{
+				Name:    filepath.FromSlash("src/file.txt"),
+				Mode:    0o600,
+				Content: []byte("content"),
+			},
 		)
-		if err != nil {
-			t.Fatalf("failed to create test structure: %v", err)
-		}
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
@@ -122,7 +130,7 @@ func TestCopyFs(t *testing.T) {
 		opt := testCopyFsOption{}
 
 		// Perform copy
-		err = opt.CopyAll(dstFs, srcFs, ".")
+		err := opt.CopyAll(dstFs, srcFs, ".")
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}

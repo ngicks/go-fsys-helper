@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -19,17 +20,13 @@ func TestFileTruncate[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]
 		f := c.OpenFile("f.txt", os.O_RDWR, 0)
 		defer func() { _ = f.Close() }()
 
-		if err := f.Truncate(3); err != nil {
-			t.Fatalf("Truncate: %v", err)
-		}
+		testhelper.NilErr(t, f.Truncate(3))
 		_ = f.Close()
 
 		r := c.Open("f.txt")
 		defer func() { _ = r.Close() }()
 		got, err := io.ReadAll(r)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if string(got) != "abc" {
 			t.Errorf("after Truncate(3): got %q, want %q", got, "abc")
 		}
@@ -40,17 +37,13 @@ func TestFileTruncate[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]
 		f := c.OpenFile("ext.txt", os.O_RDWR, 0)
 		defer func() { _ = f.Close() }()
 
-		if err := f.Truncate(5); err != nil {
-			t.Fatalf("Truncate: %v", err)
-		}
+		testhelper.NilErr(t, f.Truncate(5))
 		_ = f.Close()
 
 		r := c.Open("ext.txt")
 		defer func() { _ = r.Close() }()
 		got, err := io.ReadAll(r)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if want := "ab\x00\x00\x00"; string(got) != want {
 			t.Errorf("after Truncate(5): got %q, want %q", got, want)
 		}

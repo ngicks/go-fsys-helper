@@ -3,6 +3,7 @@ package acceptancetest
 import (
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -17,9 +18,7 @@ func TestMkdirAll[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	t.Run("creates nested directories", func(t *testing.T) {
 		c.MkdirAll("a/b/c", 0o755)
 		info, err := fsys.Stat("a/b/c")
-		if err != nil {
-			t.Fatalf("Stat: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if !info.IsDir() {
 			t.Errorf("MkdirAll did not produce a directory at the leaf")
 		}
@@ -39,12 +38,8 @@ func TestMkdirAll[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	t.Run("idempotent on existing directory", func(t *testing.T) {
 		c.SetupLines("already/")
 		// Calling MkdirAll on an existing directory should be nil.
-		if err := fsys.MkdirAll("already", 0o755); err != nil {
-			t.Errorf("MkdirAll on existing dir: %v", err)
-		}
-		if err := fsys.MkdirAll("already", 0o755); err != nil {
-			t.Errorf("MkdirAll twice on existing dir: %v", err)
-		}
+		testhelper.NilErr(t, fsys.MkdirAll("already", 0o755))
+		testhelper.NilErr(t, fsys.MkdirAll("already", 0o755))
 	})
 
 	t.Run("fails when path is a file", func(t *testing.T) {

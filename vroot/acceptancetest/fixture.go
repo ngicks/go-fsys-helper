@@ -1,7 +1,6 @@
 package acceptancetest
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
@@ -38,11 +37,12 @@ var RootFsys = []string{
 	`root/writable/subdir/nested_file.txt: "nested_file"`,
 }
 
-// MakeOsFsys populates tempDir on the host file system with [RootFsys] entries.
+// MakeOsFsys populates c with [RootFsys] entries.
 //
 // Set readable=true to include the read-only tree under root/readable/.
 // Set writable=true to include the writable tree under root/writable/.
-func MakeOsFsys(tempDir string, readable, writable bool) {
+func MakeOsFsys[T testhelper.Test[T], F testhelper.File, Fs testhelper.Fsys[F]](c *testhelper.C[T, F, Fs], readable, writable bool) {
+	lines := make([]string, 0, len(RootFsys))
 	for _, line := range RootFsys {
 		if !readable && strings.HasPrefix(line, "root/readable") {
 			continue
@@ -50,8 +50,7 @@ func MakeOsFsys(tempDir string, readable, writable bool) {
 		if !writable && strings.HasPrefix(line, "root/writable") {
 			continue
 		}
-		if err := testhelper.ExecuteLineOs(tempDir, line); err != nil {
-			panic(fmt.Errorf("MakeOsFsys: %w", err))
-		}
+		lines = append(lines, line)
 	}
+	c.SetupLines(lines...)
 }

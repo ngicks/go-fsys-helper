@@ -1,11 +1,11 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io/fs"
 	"testing"
 	"time"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -27,9 +27,7 @@ func TestChtimes[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	t.Run("set mtime", func(t *testing.T) {
 		c.Chtimes("file.txt", atime, mtime)
 		info, err := fsys.Stat("file.txt")
-		if err != nil {
-			t.Fatalf("Stat: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		// allow up to 1 second slack for filesystems with low resolution timestamps.
 		if diff := info.ModTime().Sub(mtime).Abs(); diff > time.Second {
 			t.Errorf("modtime: got %v, want %v (diff %v)", info.ModTime(), mtime, diff)
@@ -38,11 +36,6 @@ func TestChtimes[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	t.Run("non-existent path", func(t *testing.T) {
 		err := fsys.Chtimes("does-not-exist", atime, mtime)
-		if err == nil {
-			t.Fatalf("Chtimes on missing file: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Chtimes on missing file: want fs.ErrNotExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 }

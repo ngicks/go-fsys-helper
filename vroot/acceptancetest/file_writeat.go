@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -29,17 +30,14 @@ func TestFileWriteAt[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs])
 		return
 	}
 
-	if _, err := f.WriteAt([]byte("xyz"), 2); err != nil {
-		t.Fatalf("WriteAt: %v", err)
-	}
+	_, err := f.WriteAt([]byte("xyz"), 2)
+	testhelper.NilErr(t, err)
 	_ = f.Close()
 
 	r := c.Open("f.txt")
 	defer func() { _ = r.Close() }()
 	got, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatalf("ReadAll: %v", err)
-	}
+	testhelper.NilErr(t, err)
 	if string(got) != "ABxyzF" {
 		t.Errorf("after WriteAt: got %q, want %q", got, "ABxyzF")
 	}

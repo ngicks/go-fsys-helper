@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
@@ -29,8 +30,13 @@ func newOption() acceptancetest.Option {
 func TestFs(t *testing.T) {
 	opt := newOption()
 	s := acceptancetest.Setup[*os.File, *osfs.Fs]{
-		Make: func(t *testing.T) *osfs.Fs {
+		Make: func(t *testing.T, lines []string) *osfs.Fs {
 			dir := t.TempDir()
+			setupFs, err := osfs.NewFs(dir)
+			if err != nil {
+				t.Fatalf("NewFs setup: %v", err)
+			}
+			testhelper.New(t, setupFs).SetupLines(lines...)
 			fsys, err := osfs.NewFs(dir)
 			if err != nil {
 				t.Fatalf("NewFs: %v", err)
@@ -45,8 +51,13 @@ func TestFs(t *testing.T) {
 func TestRoot(t *testing.T) {
 	opt := newOption()
 	s := acceptancetest.SetupRoot[*os.File, *osfs.Root]{
-		Make: func(t *testing.T) *osfs.Root {
+		Make: func(t *testing.T, lines []string) *osfs.Root {
 			dir := t.TempDir()
+			setupFs, err := osfs.NewFs(dir)
+			if err != nil {
+				t.Fatalf("NewFs setup: %v", err)
+			}
+			testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(lines...)
 			r, err := osfs.NewRoot(dir)
 			if err != nil {
 				t.Fatalf("NewRoot: %v", err)

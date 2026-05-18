@@ -1,11 +1,11 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io"
 	"io/fs"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -27,9 +27,7 @@ func TestCreate[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		defer func() { _ = f.Close() }()
 
 		n, err := f.Write([]byte("hello"))
-		if err != nil {
-			t.Fatalf("Write: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if n != 5 {
 			t.Errorf("Write returned n=%d, want 5", n)
 		}
@@ -46,23 +44,15 @@ func TestCreate[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		defer func() { _ = r.Close() }()
 
 		got, err := io.ReadAll(r)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if len(got) != 0 {
 			t.Errorf("after Create, file should be truncated; got %q", got)
 		}
 	})
 
 	t.Run("parent does not exist", func(t *testing.T) {
-		f, err := fsys.Create("missing-dir/file.txt")
-		if err == nil {
-			_ = f.Close()
-			t.Fatalf("Create with missing parent: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Create with missing parent: want fs.ErrNotExist, got %v", err)
-		}
+		_, err := fsys.Create("missing-dir/file.txt")
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 
 	t.Run("rejects target is directory", func(t *testing.T) {

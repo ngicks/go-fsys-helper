@@ -1,10 +1,10 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io/fs"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -27,26 +27,15 @@ func TestChown[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	)
 
 	t.Run("on file", func(t *testing.T) {
-		err := fsys.Chown("file.txt", s.Option.ChownUid, s.Option.ChownGid)
-		if err != nil {
-			t.Fatalf("Chown: %v", err)
-		}
+		testhelper.NilErr(t, fsys.Chown("file.txt", s.Option.ChownUid, s.Option.ChownGid))
 	})
 
 	t.Run("on directory", func(t *testing.T) {
-		err := fsys.Chown("dir", s.Option.ChownUid, s.Option.ChownGid)
-		if err != nil {
-			t.Fatalf("Chown: %v", err)
-		}
+		testhelper.NilErr(t, fsys.Chown("dir", s.Option.ChownUid, s.Option.ChownGid))
 	})
 
 	t.Run("non-existent path", func(t *testing.T) {
 		err := fsys.Chown("does-not-exist", s.Option.ChownUid, s.Option.ChownGid)
-		if err == nil {
-			t.Fatalf("Chown on missing file: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Chown on missing file: want fs.ErrNotExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 }

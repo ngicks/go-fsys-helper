@@ -1,10 +1,10 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io/fs"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -27,26 +27,17 @@ func TestLchown[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	}
 
 	t.Run("on file", func(t *testing.T) {
-		if err := fsys.Lchown("file.txt", s.Option.ChownUid, s.Option.ChownGid); err != nil {
-			t.Fatalf("Lchown: %v", err)
-		}
+		testhelper.NilErr(t, fsys.Lchown("file.txt", s.Option.ChownUid, s.Option.ChownGid))
 	})
 
 	if !s.Option.SkipSymlink {
 		t.Run("on symlink", func(t *testing.T) {
-			if err := fsys.Lchown("link", s.Option.ChownUid, s.Option.ChownGid); err != nil {
-				t.Fatalf("Lchown(symlink): %v", err)
-			}
+			testhelper.NilErr(t, fsys.Lchown("link", s.Option.ChownUid, s.Option.ChownGid))
 		})
 	}
 
 	t.Run("non-existent path", func(t *testing.T) {
 		err := fsys.Lchown("does-not-exist", s.Option.ChownUid, s.Option.ChownGid)
-		if err == nil {
-			t.Fatalf("Lchown on missing file: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Lchown on missing file: want fs.ErrNotExist, got %v", err)
-		}
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 }

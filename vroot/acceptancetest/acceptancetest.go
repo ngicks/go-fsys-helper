@@ -66,19 +66,25 @@ type Option struct {
 
 // Setup describes how to build a fresh [vroot.Fs] for a test.
 //
-// The constructor is invoked once per test or sub-test and must register any cleanup
-// it requires on t. The returned Fs must be rooted at a fresh, empty directory.
+// Make is invoked once per test or sub-test and must register any cleanup it
+// requires on t. The returned Fs must be rooted at a fresh directory
+// pre-populated with the entries described by lines (using the same syntax as
+// [github.com/ngicks/go-fsys-helper/fsutil/testhelper.ParseSetupProcLine]).
+// lines may be empty.
+//
+// Read-write Fs implementations typically materialize lines through the Fs's
+// own write methods. Read-only Fs implementations must materialize lines
+// out-of-band before constructing the read-only view and should be exercised
+// via [RunFsReadOnly] rather than [RunFs].
 type Setup[F vroot.File, Fs vroot.Fs[F]] struct {
-	// Make builds a fresh, empty file system. Implementations should register
-	// cleanup via t.Cleanup so the test framework can release resources.
-	Make func(t *testing.T) Fs
+	Make func(t *testing.T, lines []string) Fs
 
 	Option Option
 }
 
 // SetupRoot is the [vroot.Root]-typed counterpart of [Setup].
 type SetupRoot[F vroot.File, R vroot.Root[F, R]] struct {
-	Make func(t *testing.T) R
+	Make func(t *testing.T, lines []string) R
 
 	Option Option
 }

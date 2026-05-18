@@ -3,6 +3,7 @@ package acceptancetest
 import (
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -20,7 +21,5 @@ func TestFileChown[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	f := c.Open("f.txt")
 	defer func() { _ = f.Close() }()
 
-	if err := f.Chown(s.Option.ChownUid, s.Option.ChownGid); err != nil {
-		t.Fatalf("File.Chown: %v", err)
-	}
+	testhelper.NilErr(t, f.Chown(s.Option.ChownUid, s.Option.ChownGid))
 }

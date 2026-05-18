@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"iter"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -93,10 +94,27 @@ func assertPathSeen(t *testing.T, expected, actual []pathSeen) {
 	}
 }
 
+func setupLines(t *testing.T, dir string, lines ...string) {
+	t.Helper()
+	setupC(t, dir).SetupLines(lines...)
+}
+
+func setupC(t *testing.T, dir string) *testhelper.C[*testing.T, *os.File, *osfs.Fs] {
+	t.Helper()
+	fsys, err := osfs.NewFs(dir)
+	if err != nil {
+		t.Fatalf("NewFs: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = fsys.Close()
+	})
+	return testhelper.New(t, fsys)
+}
+
 func TestWalk_Unrooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeOsFsys(tempDir, true, false)
+	acceptancetest.MakeOsFsys(setupC(t, tempDir), true, false)
 	r, err := osfs.NewFs(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
@@ -182,7 +200,7 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 func TestWalk_Rooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeOsFsys(tempDir, true, false)
+	acceptancetest.MakeOsFsys(setupC(t, tempDir), true, false)
 	r, err := osfs.NewRoot(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
@@ -273,15 +291,11 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 
 func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
 	tempDir := t.TempDir()
-	err := testhelper.ExecuteLines(
-		tempDir,
+	setupLines(t, tempDir,
 		"root/",
 		"root/a -> b",
 		"root/b -> a",
 	)
-	if err != nil {
-		panic(err)
-	}
 	r, err := osfs.NewRoot(filepath.Join(tempDir, "root"))
 	if err != nil {
 		panic(err)
@@ -399,13 +413,9 @@ func TestWalk_Rooted_loop(t *testing.T) {
 	for _, tc := range walkTestCases {
 		t.Run(tc.name(), func(t *testing.T) {
 			tempDir := t.TempDir()
-			err := testhelper.ExecuteLines(
-				tempDir,
+			setupLines(t, tempDir,
 				tc.fsysStructure...,
 			)
-			if err != nil {
-				panic(err)
-			}
 			r, err := osfs.NewRoot(filepath.Join(tempDir, "root"))
 			if err != nil {
 				panic(err)
@@ -491,13 +501,9 @@ func TestWalk_Unrooted_loop(t *testing.T) {
 	for _, tc := range slices.Concat(walkTestCases, outsideCases) {
 		t.Run(tc.name(), func(t *testing.T) {
 			tempDir := t.TempDir()
-			err := testhelper.ExecuteLines(
-				tempDir,
+			setupLines(t, tempDir,
 				tc.fsysStructure...,
 			)
-			if err != nil {
-				panic(err)
-			}
 			r, err := osfs.NewFs(filepath.Join(tempDir, "root"))
 			if err != nil {
 				panic(err)

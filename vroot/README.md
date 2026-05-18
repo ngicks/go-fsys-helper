@@ -414,6 +414,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot/acceptancetest"
 )
 
@@ -421,7 +422,11 @@ func TestRooted(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
     // For os-backed fsys
-	acceptancetest.MakeOsFsys(tempDir, false, true)
+	setupFs, err := NewFs(tempDir)
+	if err != nil {
+		panic(err)
+	}
+	acceptancetest.MakeOsFsys(testhelper.New(t, setupFs), false, true)
     // For readonly testing
     {
 	    r, err := NewRooted(filepath.Join(tempDir, "root", "readable"))

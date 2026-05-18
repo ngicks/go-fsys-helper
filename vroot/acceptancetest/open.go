@@ -1,11 +1,11 @@
 package acceptancetest
 
 import (
-	"errors"
 	"io"
 	"io/fs"
 	"testing"
 
+	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
@@ -14,22 +14,18 @@ import (
 // Open opens an existing file for reading. The returned file must report Stat
 // truthfully and ReadDir must fail when applied to a regular file.
 func TestOpen[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
-	fsys := makeFs(t, s)
-	c := newC(t, fsys)
-
-	c.SetupLines(
+	fsys := makeFs(t, s,
 		"dir/",
 		`file.txt: "hello"`,
 	)
+	c := newC(t, fsys)
 
 	t.Run("regular file", func(t *testing.T) {
 		f := c.Open("file.txt")
 		defer func() { _ = f.Close() }()
 
 		got, err := io.ReadAll(f)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if string(got) != "hello" {
 			t.Errorf("content: got %q, want %q", got, "hello")
 		}
@@ -47,9 +43,7 @@ func TestOpen[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		defer func() { _ = f.Close() }()
 
 		info, err := f.Stat()
-		if err != nil {
-			t.Fatalf("Stat: %v", err)
-		}
+		testhelper.NilErr(t, err)
 		if !info.IsDir() {
 			t.Errorf("opened dir not reported as directory")
 		}
@@ -62,14 +56,8 @@ func TestOpen[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	})
 
 	t.Run("non-existent path", func(t *testing.T) {
-		f, err := fsys.Open("does-not-exist")
-		if err == nil {
-			_ = f.Close()
-			t.Fatalf("Open missing path: want error, got nil")
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Open missing path: want fs.ErrNotExist, got %v", err)
-		}
+		_, err := fsys.Open("does-not-exist")
+		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 
 	t.Run("returned file is read-only", func(t *testing.T) {
