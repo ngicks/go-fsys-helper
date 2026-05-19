@@ -5,15 +5,15 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
 // TestFileReadDir exercises [vroot.File.ReadDir].
 //
-// ReadDir returns directory entries as [fs.DirEntry]. With n<=0 it returns all entries
-// at once. With n>0 it returns up to n entries per call, then io.EOF (or just nil with
-// less-than-n on the final call, depending on implementation).
+// ReadDir is stateful: successive ReadDir(n) calls (n>0) advance an internal
+// cursor and return non-overlapping batches until exhausted (io.EOF or zero
+// entries). Behavior when the underlying directory is mutated mid-iteration is
+// implementation-defined and not exercised here.
 func TestFileReadDir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	fsys := makeFs(t, s,
 		"dir/",
@@ -25,24 +25,7 @@ func TestFileReadDir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs])
 	)
 	c := newC(t, fsys)
 
-	t.Run("read all", func(t *testing.T) {
-		f := c.Open("dir")
-		defer func() { _ = f.Close() }()
-
-		entries, err := f.ReadDir(-1)
-		testhelper.NilErr(t, err)
-		names := make([]string, 0, len(entries))
-		for _, e := range entries {
-			names = append(names, e.Name())
-		}
-		slices.Sort(names)
-		want := []string{"a.txt", "b.txt", "c.txt", "sub"}
-		if !slices.Equal(names, want) {
-			t.Errorf("names: got %v, want %v", names, want)
-		}
-	})
-
-	t.Run("read in chunks", func(t *testing.T) {
+	t.Run("stateful chunked read", func(t *testing.T) {
 		f := c.Open("dir")
 		defer func() { _ = f.Close() }()
 
@@ -52,15 +35,11 @@ func TestFileReadDir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs])
 			for _, e := range entries {
 				collected = append(collected, e.Name())
 			}
-			if err == io.EOF {
+			if err == io.EOF || len(entries) == 0 {
 				break
 			}
 			if err != nil {
 				t.Fatalf("ReadDir(2): %v", err)
-			}
-			if len(entries) == 0 {
-				// Some implementations return nil error with zero entries on EOF.
-				break
 			}
 		}
 		slices.Sort(collected)

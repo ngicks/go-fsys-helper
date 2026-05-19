@@ -3,32 +3,22 @@ package sftpfs
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path"
-	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
 	"github.com/ngicks/go-fsys-helper/vroot"
-	"github.com/ngicks/go-iterator-helper/hiter"
 	"github.com/pkg/sftp"
 )
 
 var _ vroot.Fs[vroot.File] = (*SftpFs)(nil)
 
-// SftpFs implements [vroot.Unrooted] over a *sftp.Client. It is rooted
-// at Base (an absolute peer-side path); incoming paths are cleaned,
-// checked for traversal, then joined with Base before being passed to
-// the SFTP client. Paths are POSIX (forward slashes).
-//
-// Like [osfs.Unrooted], path traversal via ".." or absolute paths is
-// rejected with [vroot.ErrPathEscapes]. Symlink-based escapes are NOT
-// prevented — that is the remote SFTP server's responsibility (e.g.
-// sshd's ChrootDirectory or internal-sftp restrictions). Like the
-// js/wasm *os.Root, this implementation is also vulnerable to TOCTOU.
 type SftpFs struct {
 	client      *sftp.Client
 	posixRename bool
@@ -37,8 +27,8 @@ type SftpFs struct {
 
 // New returns an [*SftpFs] rooted at base. base must be an absolute
 // peer-side POSIX path; it is not validated against the remote.
-func New(c *sftp.Client, base string) *SftpFs {
-	return &SftpFs{client: c, base: base}
+func New(c *sftp.Client, posixRename bool, base string) *SftpFs {
+	return &SftpFs{client: c, posixRename: posixRename, base: base}
 }
 
 // Client returns the underlying *sftp.Client (for advanced use).
@@ -161,7 +151,7 @@ func (s *SftpFs) Mkdir(name string, perm fs.FileMode) error {
 		return fsutil.WrapPathErr("mkdir", name, err)
 	}
 	if err := s.client.Mkdir(abs); err != nil {
-		return err
+		return mapSftpErr(err)
 	}
 	if perm != 0 {
 		_ = s.client.Chmod(abs, perm)
@@ -194,6 +184,10 @@ func (s *SftpFs) Open(name string) (vroot.File, error) {
 
 // OpenFile implements [vroot.Fs]. perm is best-effort applied via
 // Chmod after the open succeeds.
+//
+// O_APPEND is honored by seeking to end of file after open because pkg/sftp's
+// stock Server does not implement append-on-write — it ignores SSH_FXF_APPEND
+// and expects the client to track offsets. See pkg/sftp/server.go:494.
 func (s *SftpFs) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, error) {
 	abs, err := s.resolvePath(name)
 	if err != nil {
@@ -201,12 +195,18 @@ func (s *SftpFs) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, 
 	}
 	f, err := s.client.OpenFile(abs, flag)
 	if err != nil {
-		return nil, err
+		return nil, mapSftpErr(err)
+	}
+	if flag&os.O_APPEND != 0 {
+		if _, err := f.Seek(0, io.SeekEnd); err != nil {
+			_ = f.Close()
+			return nil, fsutil.WrapPathErr("open", name, err)
+		}
 	}
 	if perm != 0 && (flag&os.O_CREATE != 0) {
 		_ = s.client.Chmod(abs, perm)
 	}
-	return &sftpFile{File: f}, nil
+	return &sftpFile{File: f, client: s.client}, nil
 }
 
 // ReadLink implements [vroot.Fs].
@@ -221,16 +221,13 @@ func (s *SftpFs) ReadLink(name string) (string, error) {
 	return s.client.ReadLink(abs)
 }
 
-// Remove implements [vroot.Fs]. ENOENT is not an error.
+// Remove implements [vroot.Fs].
 func (s *SftpFs) Remove(name string) error {
 	abs, err := s.resolvePath(name)
 	if err != nil {
 		return fsutil.WrapPathErr("remove", name, err)
 	}
-	if err := s.client.Remove(abs); err != nil && !isSFTPNotExist(err) {
-		return err
-	}
-	return nil
+	return s.client.Remove(abs)
 }
 
 // RemoveAll implements [vroot.Fs] via a recursive walk. The common
@@ -245,12 +242,12 @@ func (s *SftpFs) RemoveAll(name string) error {
 	}
 	if err := s.client.Remove(abs); err == nil {
 		return nil
-	} else if isSFTPNotExist(err) {
+	} else if isSftpNotExist(err) {
 		return nil
 	}
 	fi, err := s.client.Lstat(abs)
 	if err != nil {
-		if isSFTPNotExist(err) {
+		if isSftpNotExist(err) {
 			return nil
 		}
 		return err
@@ -311,7 +308,7 @@ func (s *SftpFs) Symlink(oldname, newname string) error {
 	if err != nil {
 		return fsutil.WrapLinkErr("symlink", oldname, newname, err)
 	}
-	return s.client.Symlink(oldname, newAbs)
+	return mapSftpErr(s.client.Symlink(oldname, newAbs))
 }
 
 // ReadDir implements the [vroot.ReadDirFs] optional optimization,
@@ -325,35 +322,103 @@ func (s *SftpFs) ReadDir(name string) ([]fs.DirEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return slices.Collect(
-		hiter.Map(func(fi os.FileInfo) fs.DirEntry {
-			return sftpDirEntry{fi: fi}
-		},
-			slices.Values(fis),
-		),
-	), nil
+	out := make([]fs.DirEntry, len(fis))
+	for i, fi := range fis {
+		out[i] = sftpDirEntry{fi: fi}
+	}
+	return out, nil
 }
 
-// sftpFile wraps *sftp.File to satisfy [vroot.File]. Methods that
-// pkg/sftp does not expose return [vroot.ErrOpNotSupported].
-type sftpFile struct{ *sftp.File }
+// sftpFile wraps *sftp.File to satisfy [vroot.File]. Directory iteration is
+// implemented out-of-band via Client.ReadDir(path), since pkg/sftp's File
+// does not expose Readdir.
+type sftpFile struct {
+	*sftp.File
+	client *sftp.Client
 
-func (f *sftpFile) Chown(uid, gid int) error { return vroot.ErrOpNotSupported }
-func (f *sftpFile) Fd() uintptr              { return ^uintptr(0) }
-func (f *sftpFile) ReadDir(n int) ([]fs.DirEntry, error) {
-	return nil, vroot.ErrOpNotSupported
+	dirMu      sync.Mutex
+	dirEntries []os.FileInfo
+	dirLoaded  bool
+	dirErr     error
 }
 
-func (f *sftpFile) Readdir(n int) ([]fs.FileInfo, error) {
-	return nil, vroot.ErrOpNotSupported
-}
-
-func (f *sftpFile) Readdirnames(n int) ([]string, error) {
-	return nil, vroot.ErrOpNotSupported
-}
+func (f *sftpFile) Fd() uintptr { return ^uintptr(0) }
 
 func (f *sftpFile) WriteString(s string) (int, error) {
 	return f.Write([]byte(s))
+}
+
+// Sync forwards to *sftp.File.Sync. Servers that lack the fsync@openssh.com
+// extension (notably pkg/sftp's stock NewServer; OpenSSH's sftp-server has it)
+// surface that as SSH_FX_OP_UNSUPPORTED — treat that as a successful no-op
+// rather than an error, matching how in-memory file systems behave.
+func (f *sftpFile) Sync() error {
+	err := f.File.Sync()
+	if err == nil {
+		return nil
+	}
+	stErr, ok := errors.AsType[*sftp.StatusError](err)
+	if ok && stErr.FxCode() == sftp.ErrSSHFxOpUnsupported {
+		return nil
+	}
+	return err
+}
+
+// loadDir fetches the directory listing once and caches it for paginated
+// readers below.
+func (f *sftpFile) loadDir() error {
+	f.dirMu.Lock()
+	defer f.dirMu.Unlock()
+	if f.dirLoaded {
+		return f.dirErr
+	}
+	fis, err := f.client.ReadDir(f.Name())
+	f.dirLoaded = true
+	f.dirEntries = fis
+	f.dirErr = err
+	return err
+}
+
+// Readdir mirrors [os.File.Readdir] semantics: n>0 returns up to n entries
+// (io.EOF when exhausted); n<=0 returns all remaining entries at once.
+func (f *sftpFile) Readdir(n int) ([]fs.FileInfo, error) {
+	if err := f.loadDir(); err != nil {
+		return nil, err
+	}
+	f.dirMu.Lock()
+	defer f.dirMu.Unlock()
+	if n <= 0 {
+		out := f.dirEntries
+		f.dirEntries = nil
+		return out, nil
+	}
+	if len(f.dirEntries) == 0 {
+		return nil, io.EOF
+	}
+	if n > len(f.dirEntries) {
+		n = len(f.dirEntries)
+	}
+	out := f.dirEntries[:n]
+	f.dirEntries = f.dirEntries[n:]
+	return out, nil
+}
+
+func (f *sftpFile) Readdirnames(n int) ([]string, error) {
+	fis, err := f.Readdir(n)
+	names := make([]string, len(fis))
+	for i, fi := range fis {
+		names[i] = fi.Name()
+	}
+	return names, err
+}
+
+func (f *sftpFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	fis, err := f.Readdir(n)
+	out := make([]fs.DirEntry, len(fis))
+	for i, fi := range fis {
+		out[i] = sftpDirEntry{fi: fi}
+	}
+	return out, err
 }
 
 // sftpDirEntry adapts os.FileInfo to fs.DirEntry.
@@ -364,10 +429,10 @@ func (e sftpDirEntry) IsDir() bool                { return e.fi.IsDir() }
 func (e sftpDirEntry) Type() fs.FileMode          { return e.fi.Mode().Type() }
 func (e sftpDirEntry) Info() (fs.FileInfo, error) { return e.fi, nil }
 
-// isSFTPNotExist returns true if err represents a missing-file
+// isSftpNotExist returns true if err represents a missing-file
 // status, regardless of whether it was wrapped via fs.PathError or
 // surfaced as a sftp.StatusError.
-func isSFTPNotExist(err error) bool {
+func isSftpNotExist(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -379,4 +444,26 @@ func isSFTPNotExist(err error) bool {
 		return true
 	}
 	return false
+}
+
+// mapSftpErr normalizes server-side errors that the pkg/sftp protocol cannot
+// represent precisely (SFTP v3 has no SSH_FX_FILE_ALREADY_EXISTS), so callers
+// can use [errors.Is] against [fs.ErrExist].
+//
+// The detection looks at the server-supplied message because pkg/sftp's
+// statusFromError loses errno fidelity for EEXIST: it collapses to
+// SSH_FX_FAILURE with the os.PathError text preserved verbatim.
+func mapSftpErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	stErr, ok := errors.AsType[*sftp.StatusError](err)
+	if !ok || stErr.FxCode() != sftp.ErrSSHFxFailure {
+		return err
+	}
+	msg := stErr.Error()
+	if strings.Contains(msg, "file exists") || strings.Contains(msg, "file already exists") {
+		return errors.Join(err, fs.ErrExist)
+	}
+	return err
 }

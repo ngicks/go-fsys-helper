@@ -108,7 +108,7 @@ func (r *Root) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, erro
 }
 
 func (r *Root) ReadLink(name string) (string, error) {
-	target, err := r.Root.Readlink(name)
+	target, err := r.Readlink(name)
 	return target, translateEscape(err)
 }
 

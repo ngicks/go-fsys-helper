@@ -49,6 +49,9 @@ func RunFsReadWrite[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) 
 	t.Run("Remove", func(t *testing.T) { TestRemove(t, s) })
 	t.Run("RemoveAll", func(t *testing.T) { TestRemoveAll(t, s) })
 	t.Run("Rename", func(t *testing.T) { TestRename(t, s) })
+	if s.Option.Os == OsUnix {
+		t.Run("RenameUnix", func(t *testing.T) { TestRenameUnix(t, s) })
+	}
 	t.Run("Symlink", func(t *testing.T) { TestSymlink(t, s) })
 
 	t.Run("File/Chmod", func(t *testing.T) { TestFileChmod(t, s) })
@@ -75,14 +78,14 @@ func RunFs[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 // RunRootReadOnly runs the read-only subset of [vroot.Root] acceptance tests,
 // including the Fs read-only subset.
 func RunRootReadOnly[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot[F, R]) {
-	RunFsReadOnly(t, Setup[F, R]{Make: s.Make, Option: s.Option})
+	RunFsReadOnly(t, Setup[F, R](s))
 	t.Run("OpenRoot", func(t *testing.T) { TestOpenRoot(t, s) })
 }
 
 // RunRootReadWrite runs the read-write subset of [vroot.Root] acceptance tests,
 // including the Fs read-write subset.
 func RunRootReadWrite[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot[F, R]) {
-	RunFsReadWrite(t, Setup[F, R]{Make: s.Make, Option: s.Option})
+	RunFsReadWrite(t, Setup[F, R](s))
 	t.Run("Escapes", func(t *testing.T) { TestRootEscapes(t, s) })
 }
 
