@@ -119,7 +119,7 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	t.Run("symlink not follow", func(t *testing.T) {
 		var seen []pathSeen
@@ -205,7 +205,7 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	t.Run("symlink not follow", func(t *testing.T) {
 		var seen []pathSeen
@@ -300,7 +300,7 @@ func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	err = vroot.WalkDir(
 		r,
 		".",
@@ -420,7 +420,7 @@ func TestWalk_Rooted_loop(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 			var seen []pathSeen
 			err = vroot.WalkDir(
 				r,
@@ -508,7 +508,7 @@ func TestWalk_Unrooted_loop(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 			var seen []pathSeen
 			err = vroot.WalkDir(
 				r,

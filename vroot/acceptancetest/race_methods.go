@@ -51,16 +51,16 @@ func TestRaceMethods[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs])
 				counter++
 
 				if err := vroot.WriteFile(fsys, name, []byte("body"), 0o644); err != nil {
-					return fmt.Errorf("WriteFile %s: %w", name, err)
+					return fmt.Errorf("write file %s: %w", name, err)
 				}
 				if _, err := fsys.Stat(name); err != nil {
-					return fmt.Errorf("Stat %s: %w", name, err)
+					return fmt.Errorf("stat %s: %w", name, err)
 				}
 				if _, err := fsys.Lstat(name); err != nil {
-					return fmt.Errorf("Lstat %s: %w", name, err)
+					return fmt.Errorf("lstat %s: %w", name, err)
 				}
 				if err := fsys.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					return fmt.Errorf("Remove %s: %w", name, err)
+					return fmt.Errorf("remove %s: %w", name, err)
 				}
 				ops.Add(1)
 			}

@@ -22,7 +22,7 @@ func ReadDir[F File](fsys Fs[F], name string) ([]fs.DirEntry, error) {
 	if err != nil {
 		return []fs.DirEntry{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	// fs.ReadDir does this thing.
 	dirents, err := f.ReadDir(-1)
 	if len(dirents) >= 2 {
@@ -45,7 +45,7 @@ func ReadFile[F File](fsys Fs[F], name string) ([]byte, error) {
 	if err != nil {
 		return []byte{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return io.ReadAll(f)
 }
 

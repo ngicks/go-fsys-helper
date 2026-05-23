@@ -49,7 +49,7 @@ func RunFsReadWrite[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) 
 	t.Run("Remove", func(t *testing.T) { TestRemove(t, s) })
 	t.Run("RemoveAll", func(t *testing.T) { TestRemoveAll(t, s) })
 	t.Run("Rename", func(t *testing.T) { TestRename(t, s) })
-	if s.Option.Os == OsUnix {
+	if s.Option.Os.resolve(t) == OsUnix {
 		t.Run("RenameUnix", func(t *testing.T) { TestRenameUnix(t, s) })
 	}
 	t.Run("Symlink", func(t *testing.T) { TestSymlink(t, s) })

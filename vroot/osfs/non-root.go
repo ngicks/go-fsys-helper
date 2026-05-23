@@ -216,15 +216,34 @@ func (u *Fs) Remove(name string) error {
 }
 
 func (u *Fs) RemoveAll(name string) error {
+	// Reject paths whose final element is "." before cleaning, matching
+	// os.RemoveAll / *os.Root.RemoveAll which return EINVAL (rmdir(2) refuses
+	// to remove "."). resolvePath would otherwise filepath.Clean "tree/." down
+	// to "tree" and remove it.
+	if endsWithDot(name) {
+		return fsutil.WrapPathErr("RemoveAll", name, syscall.EINVAL)
+	}
 	path, err := u.resolvePath(name)
 	if err != nil {
 		return fsutil.WrapPathErr("RemoveAll", name, err)
 	}
 	if path == u.root {
 		// consistency to os.RemoveAll and *os.Root.RemoveAll
-		return fsutil.WrapPathErr("RemoveAll", ".", fs.ErrInvalid)
+		return fsutil.WrapPathErr("RemoveAll", ".", syscall.EINVAL)
 	}
 	return os.RemoveAll(path)
+}
+
+// endsWithDot reports whether the final path element of name is ".". It mirrors
+// the check in the standard library's os.RemoveAll (os/removeall_*.go).
+func endsWithDot(name string) bool {
+	if name == "." {
+		return true
+	}
+	if len(name) >= 2 && name[len(name)-1] == '.' && os.IsPathSeparator(name[len(name)-2]) {
+		return true
+	}
+	return false
 }
 
 func (u *Fs) Rename(oldname string, newname string) error {

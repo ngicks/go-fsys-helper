@@ -10,16 +10,10 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
 
-func hostOs() acceptancetest.Os {
-	if runtime.GOOS == "windows" {
-		return acceptancetest.OsWindows
-	}
-	return acceptancetest.OsUnix
-}
-
 func newOption() acceptancetest.Option {
+	// Os is left as the zero value (acceptancetest.OsEnv) so the suite
+	// auto-detects unix/windows behavior from runtime.GOOS.
 	return acceptancetest.Option{
-		Os:          hostOs(),
 		SkipSymlink: runtime.GOOS == "windows" && os.Getenv("GITHUB_ACTIONS") != "true",
 		SkipChown:   runtime.GOOS == "windows",
 		ChownUid:    os.Getuid(),

@@ -18,6 +18,8 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		t.Skip("SkipChmod is set")
 	}
 
+	osFamily := s.Option.Os.resolve(t)
+
 	fsys := makeFs(t, s)
 	c := newC(t, fsys)
 
@@ -28,7 +30,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	t.Run("on file", func(t *testing.T) {
 		var want fs.FileMode
-		switch s.Option.Os {
+		switch osFamily {
 		case OsUnix:
 			want = 0o755
 		case OsWindows:
@@ -38,7 +40,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 		info, err := fsys.Stat("file.txt")
 		testhelper.NilErr(t, err)
-		switch s.Option.Os {
+		switch osFamily {
 		case OsUnix:
 			if got := info.Mode().Perm(); got != want {
 				t.Errorf("file mode after Chmod: got %#o, want %#o", got, want)
@@ -53,7 +55,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	t.Run("on directory", func(t *testing.T) {
 		var want fs.FileMode
-		switch s.Option.Os {
+		switch osFamily {
 		case OsUnix:
 			want = 0o700
 		case OsWindows:
@@ -66,7 +68,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		if !info.IsDir() {
 			t.Errorf("dir lost directory mode after Chmod")
 		}
-		if s.Option.Os == OsUnix {
+		if osFamily == OsUnix {
 			if got := info.Mode().Perm(); got != want {
 				t.Errorf("dir mode after Chmod: got %#o, want %#o", got, want)
 			}
@@ -78,7 +80,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		testhelper.ErrIs(t, err, fs.ErrNotExist)
 	})
 
-	if s.Option.Os == OsWindows {
+	if osFamily == OsWindows {
 		t.Run("readonly toggle", func(t *testing.T) {
 			c.Chmod("file.txt", 0o444)
 			c.Chmod("file.txt", 0o666)

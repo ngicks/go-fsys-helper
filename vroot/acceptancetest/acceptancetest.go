@@ -5,6 +5,7 @@
 package acceptancetest
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
@@ -14,20 +15,48 @@ import (
 type Os int
 
 const (
+	// OsEnv is the zero value: OS-specific behavior is auto-detected from
+	// [runtime.GOOS] at test time. POSIX-like targets resolve to [OsUnix],
+	// windows to [OsWindows]; plan9 and other non-POSIX targets are rejected
+	// (the test fails) so an unsupported platform never silently runs the
+	// wrong assertions. Set [OsUnix] or [OsWindows] explicitly to override.
+	OsEnv Os = iota
 	// OsUnix means unix-like behavior: chmod respects bits, symlinks freely allowed, etc.
-	OsUnix Os = iota
+	OsUnix
 	// OsWindows means Windows behavior: chmod only flips the read-only bit, symlinks may require privileges, etc.
 	OsWindows
 )
 
 func (o Os) String() string {
 	switch o {
+	case OsEnv:
+		return "env"
 	case OsUnix:
 		return "unix"
 	case OsWindows:
 		return "windows"
 	}
 	return "unknown"
+}
+
+// resolve returns the concrete OS family. When o is [OsEnv] it consults
+// [runtime.GOOS]: windows -> [OsWindows], POSIX-like -> [OsUnix], anything
+// else fails the test (plan9, js, wasip1, …) since the acceptance assertions
+// only model the unix and windows families.
+func (o Os) resolve(t *testing.T) Os {
+	t.Helper()
+	if o != OsEnv {
+		return o
+	}
+	switch runtime.GOOS {
+	case "windows":
+		return OsWindows
+	case "aix", "android", "darwin", "dragonfly", "freebsd", "hurd", "illumos", "ios", "linux", "netbsd", "openbsd", "solaris":
+		return OsUnix
+	default:
+		t.Fatalf("acceptancetest: GOOS %q is neither POSIX-like nor windows; set Option.Os explicitly", runtime.GOOS)
+		return OsEnv
+	}
 }
 
 // Option describes capabilities and expected behavior of the implementation under test.
@@ -62,6 +91,14 @@ type Option struct {
 	SkipChtimes bool
 	// SkipRename skips tests of Rename.
 	SkipRename bool
+	// SkipRemoveAllDotComponent skips the RemoveAll sub-test that asserts a
+	// path whose final element is "." (e.g. "." or "tree/.") fails with EINVAL.
+	//
+	// Thin path-normalizing wrappers (separator converters, prefix wrappers)
+	// run filepath.Clean before delegating, collapsing "tree/." to "tree", so
+	// they cannot observe the trailing dot. Such wrappers should set this;
+	// real filesystem implementations must leave it false.
+	SkipRemoveAllDotComponent bool
 }
 
 // Setup describes how to build a fresh [vroot.Fs] for a test.
