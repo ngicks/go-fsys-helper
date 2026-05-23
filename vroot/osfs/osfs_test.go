@@ -20,7 +20,7 @@ func hostOs() acceptancetest.Os {
 func newOption() acceptancetest.Option {
 	return acceptancetest.Option{
 		Os:          hostOs(),
-		SkipSymlink: runtime.GOOS == "windows" && os.Getenv("CLAUDE_TEST_SYMLINKS") != "1",
+		SkipSymlink: runtime.GOOS == "windows" && os.Getenv("GITHUB_ACTIONS") != "true",
 		SkipChown:   runtime.GOOS == "windows",
 		ChownUid:    os.Getuid(),
 		ChownGid:    os.Getgid(),
