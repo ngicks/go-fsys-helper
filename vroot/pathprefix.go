@@ -3,6 +3,7 @@ package vroot
 import (
 	"io/fs"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/ngicks/go-fsys-helper/fsutil"
@@ -10,39 +11,43 @@ import (
 
 var _ Fs[File] = (*PathPrefixFs[File])(nil)
 
-// PathPrefixFs wraps an [Fs] and exposes it as if rooted at the configured
-// prefix. Incoming paths are validated with [filepath.IsLocal] (so traversal
-// like ".." or an absolute path yields [ErrPathEscapes]) and then joined with
-// the prefix before being forwarded to the inner Fs.
-//
-// Path resolution mirrors the approach used by [osfs.Fs]: paths are
-// [filepath.Clean]-ed, "." resolves to the prefix, and any non-local cleaned
-// path is rejected.
+// PathPrefixFs prefixes file paths in every method.
+// It effectively creates sub Fs hoever it is not security feature.
+// Also it is vulnerable to TOC-TOU race.
 type PathPrefixFs[F File] struct {
 	inner  Fs[F]
 	prefix string
 }
 
 // NewPathPrefixFs wraps inner so all paths are resolved relative to prefix.
-// prefix is forwarded to inner verbatim and is not validated here; callers
-// must supply a path meaningful to the underlying Fs.
-func NewPathPrefixFs[F File](inner Fs[F], prefix string) *PathPrefixFs[F] {
-	return &PathPrefixFs[F]{inner: inner, prefix: prefix}
+//
+// Like [osfs.NewFs], the prefix is validated up front: it must name an
+// existing directory in inner, otherwise the inner Stat error (or
+// [syscall.ENOTDIR] for a non-directory) is returned. An empty prefix is
+// rejected with [fs.ErrInvalid] — an inner Fs would clean it to "." (its
+// root), making the wrapper a no-op.
+func NewPathPrefixFs[F File](inner Fs[F], prefix string) (*PathPrefixFs[F], error) {
+	if prefix == "" {
+		return nil, fsutil.WrapPathErr("stat", prefix, fs.ErrInvalid)
+	}
+	prefix = filepath.Clean(prefix)
+	info, err := inner.Stat(prefix)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fsutil.WrapPathErr("stat", prefix, syscall.ENOTDIR)
+	}
+	return &PathPrefixFs[F]{inner: inner, prefix: prefix}, nil
 }
 
 func (w *PathPrefixFs[F]) resolvePath(p string) (string, error) {
 	p = filepath.Clean(p)
 	if p == "." {
-		if w.prefix == "" {
-			return ".", nil
-		}
 		return w.prefix, nil
 	}
 	if !filepath.IsLocal(p) {
 		return "", ErrPathEscapes
-	}
-	if w.prefix == "" {
-		return p, nil
 	}
 	return filepath.Join(w.prefix, p), nil
 }
@@ -128,12 +133,10 @@ func (w *PathPrefixFs[F]) MkdirAll(name string, perm fs.FileMode) error {
 	return w.inner.MkdirAll(p, perm)
 }
 
-// Name returns the configured prefix; if empty, it returns the inner Fs name.
+// Name reports the prefix together with the inner Fs's name, in the form
+// "prefix=<prefix>: <inner name>".
 func (w *PathPrefixFs[F]) Name() string {
-	if w.prefix == "" {
-		return w.inner.Name()
-	}
-	return w.prefix
+	return "prefix=" + w.prefix + ": " + w.inner.Name()
 }
 
 func (w *PathPrefixFs[F]) Open(name string) (F, error) {
@@ -171,6 +174,12 @@ func (w *PathPrefixFs[F]) Remove(name string) error {
 }
 
 func (w *PathPrefixFs[F]) RemoveAll(name string) error {
+	// Removing the prefixed root itself is refused with EINVAL, matching
+	// os.RemoveAll / *os.Root.RemoveAll. Otherwise resolvePath maps "." to the
+	// prefix and the call would delete the prefix directory.
+	if filepath.Clean(name) == "." {
+		return fsutil.WrapPathErr("RemoveAll", name, syscall.EINVAL)
+	}
 	p, err := w.resolvePath(name)
 	if err != nil {
 		return fsutil.WrapPathErr("RemoveAll", name, err)

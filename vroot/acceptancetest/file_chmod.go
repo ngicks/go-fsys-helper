@@ -14,8 +14,6 @@ func TestFileChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		t.Skip("SkipChmod is set")
 	}
 
-	osFamily := s.Option.Os.resolve(t)
-
 	fsys := makeFs(t, s)
 	c := newC(t, fsys)
 
@@ -25,7 +23,7 @@ func TestFileChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	defer func() { _ = f.Close() }()
 
 	var want fs.FileMode
-	switch osFamily {
+	switch s.Option.Os {
 	case OsUnix:
 		want = 0o600
 	case OsWindows:
@@ -36,7 +34,7 @@ func TestFileChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	info, err := fsys.Stat("f.txt")
 	testhelper.NilErr(t, err)
-	if osFamily == OsUnix {
+	if s.Option.Os == OsUnix {
 		if got := info.Mode().Perm(); got != want {
 			t.Errorf("after File.Chmod, mode: got %#o, want %#o", got, want)
 		}

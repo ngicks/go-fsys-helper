@@ -29,6 +29,8 @@ func RunFsReadOnly[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	t.Run("File/Readdirnames", func(t *testing.T) { TestFileReaddirnames(t, s) })
 	t.Run("File/Seek", func(t *testing.T) { TestFileSeek(t, s) })
 	t.Run("File/Stat", func(t *testing.T) { TestFileStat(t, s) })
+
+	t.Run("Race/ReadReadAt", func(t *testing.T) { TestRaceReadReadAt(t, s) })
 }
 
 // RunFsReadWrite runs the read-write subset of [vroot.Fs] acceptance tests.
@@ -37,6 +39,10 @@ func RunFsReadOnly[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 // alongside [RunFsReadOnly] for an implementation that supports both, or call
 // [RunFs] which combines them.
 func RunFsReadWrite[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
+	// Resolve OsEnv once here; the Test* functions in the read-write suite are
+	// the only ones that branch on Option.Os and they read it directly.
+	s.Option.Os = s.Option.Os.Resolve(t)
+
 	t.Run("Chmod", func(t *testing.T) { TestChmod(t, s) })
 	t.Run("Chown", func(t *testing.T) { TestChown(t, s) })
 	t.Run("Chtimes", func(t *testing.T) { TestChtimes(t, s) })
@@ -49,7 +55,7 @@ func RunFsReadWrite[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) 
 	t.Run("Remove", func(t *testing.T) { TestRemove(t, s) })
 	t.Run("RemoveAll", func(t *testing.T) { TestRemoveAll(t, s) })
 	t.Run("Rename", func(t *testing.T) { TestRename(t, s) })
-	if s.Option.Os.resolve(t) == OsUnix {
+	if s.Option.Os == OsUnix {
 		t.Run("RenameUnix", func(t *testing.T) { TestRenameUnix(t, s) })
 	}
 	t.Run("Symlink", func(t *testing.T) { TestSymlink(t, s) })

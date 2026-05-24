@@ -39,11 +39,15 @@ func (o Os) String() string {
 	return "unknown"
 }
 
-// resolve returns the concrete OS family. When o is [OsEnv] it consults
+// Resolve returns the concrete OS family. When o is [OsEnv] it consults
 // [runtime.GOOS]: windows -> [OsWindows], POSIX-like -> [OsUnix], anything
 // else fails the test (plan9, js, wasip1, …) since the acceptance assertions
 // only model the unix and windows families.
-func (o Os) resolve(t *testing.T) Os {
+//
+// The Run* entrypoints call this once and propagate the concrete value, so
+// individual Test* functions can read Option.Os directly. It is exported for
+// implementations that dispatch the Test* functions themselves.
+func (o Os) Resolve(t *testing.T) Os {
 	t.Helper()
 	if o != OsEnv {
 		return o
@@ -91,14 +95,6 @@ type Option struct {
 	SkipChtimes bool
 	// SkipRename skips tests of Rename.
 	SkipRename bool
-	// SkipRemoveAllDotComponent skips the RemoveAll sub-test that asserts a
-	// path whose final element is "." (e.g. "." or "tree/.") fails with EINVAL.
-	//
-	// Thin path-normalizing wrappers (separator converters, prefix wrappers)
-	// run filepath.Clean before delegating, collapsing "tree/." to "tree", so
-	// they cannot observe the trailing dot. Such wrappers should set this;
-	// real filesystem implementations must leave it false.
-	SkipRemoveAllDotComponent bool
 }
 
 // Setup describes how to build a fresh [vroot.Fs] for a test.

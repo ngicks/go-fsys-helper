@@ -41,25 +41,21 @@ func TestRemoveAll[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		testhelper.NilErr(t, fsys.RemoveAll("never-existed"))
 	})
 
-	// A path whose final element is "." must be refused with EINVAL, matching
-	// os.RemoveAll / *os.Root.RemoveAll (rmdir(2) cannot remove "."). The tree
-	// must survive. Path-normalizing wrappers that filepath.Clean before
-	// delegating cannot observe the trailing dot and set SkipRemoveAllDotComponent.
-	if !s.Option.SkipRemoveAllDotComponent {
-		t.Run("last component is dot returns EINVAL", func(t *testing.T) {
-			c.SetupLines(
-				"keep/",
-				`keep/leaf.txt: "x"`,
-			)
-			for _, name := range []string{".", "keep/."} {
-				err := fsys.RemoveAll(name)
-				if !errors.Is(err, syscall.EINVAL) {
-					t.Errorf("RemoveAll(%q): want errors.Is EINVAL, got %v", name, err)
-				}
-			}
-			if _, err := fsys.Stat("keep"); err != nil {
-				t.Errorf("tree removed despite dot-component RemoveAll: %v", err)
-			}
-		})
-	}
+	// Consistency with os.RemoveAll, RemoveAll must return when trying to
+	// remove paths with ending `.` component, e.g. `./foo/.` or `.`.
+	// However actually test below is relaxed to just only do it against `.`
+	// because some wrappers with filepath.Clean may remove ending dot before it
+	// reaches actual implementations.
+	t.Run("removing root returns EINVAL", func(t *testing.T) {
+		c.SetupLines(
+			"keep/",
+			`keep/leaf.txt: "x"`,
+		)
+		if err := fsys.RemoveAll("."); !errors.Is(err, syscall.EINVAL) {
+			t.Errorf(`RemoveAll("."): want errors.Is EINVAL, got %v`, err)
+		}
+		if _, err := fsys.Stat("keep"); err != nil {
+			t.Errorf("tree removed despite RemoveAll(\".\"): %v", err)
+		}
+	})
 }

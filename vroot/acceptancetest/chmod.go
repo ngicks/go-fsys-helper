@@ -18,7 +18,7 @@ func TestChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		t.Skip("SkipChmod is set")
 	}
 
-	osFamily := s.Option.Os.resolve(t)
+	osFamily := s.Option.Os // pre-resolved by RunFsReadWrite
 
 	fsys := makeFs(t, s)
 	c := newC(t, fsys)

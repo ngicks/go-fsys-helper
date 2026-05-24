@@ -23,9 +23,6 @@ func pathnormOption() acceptancetest.Option {
 		SkipChown:   runtime.GOOS == "windows",
 		ChownUid:    os.Getuid(),
 		ChownGid:    os.Getgid(),
-		// PathNormalizer/PathLocalizer filepath.Clean before delegating,
-		// collapsing "tree/." to "tree", so the trailing-dot case is invisible.
-		SkipRemoveAllDotComponent: true,
 	}
 }
 
