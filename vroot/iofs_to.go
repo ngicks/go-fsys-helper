@@ -13,6 +13,7 @@ func _[F File]() {
 	var _ fs.ReadFileFS = (*ioFs[F])(nil)
 	var _ fs.ReadLinkFS = (*ioFs[F])(nil)
 	var _ fs.StatFS = (*ioFs[F])(nil)
+	var _ fs.SubFS = (*ioFs[F])(nil)
 }
 
 func _[F File, R Root[F, R]]() {
@@ -25,9 +26,9 @@ func _[F File, R Root[F, R]]() {
 }
 
 // ioFs adapts an [Fs] to [fs.FS]. The returned [fs.FS] satisfies
-// [fs.ReadDirFS], [fs.ReadFileFS], [fs.ReadLinkFS] and [fs.StatFS]. It does
-// not implement [fs.SubFS] because [Fs] has no scoping operation; use
-// [ioFsRoot] (which wraps a [Root]) when Sub is required.
+// [fs.ReadDirFS], [fs.ReadFileFS], [fs.ReadLinkFS], [fs.StatFS] and
+// [fs.SubFS]. Sub is implemented through [Sub] (a native SubFs when the inner
+// supports it, otherwise a [PathPrefixFs] view).
 //
 // ioFs does not translate path separators. Paths arriving from [fs.FS]
 // callers are forward-slash form per [fs.ValidPath]; they are forwarded to
@@ -39,8 +40,8 @@ type ioFs[F File] struct {
 }
 
 // ToIoFs wraps fsys as an [fs.FS]. The returned filesystem additionally
-// implements [fs.ReadDirFS], [fs.ReadFileFS], [fs.ReadLinkFS] and [fs.StatFS];
-// callers can type-assert as needed.
+// implements [fs.ReadDirFS], [fs.ReadFileFS], [fs.ReadLinkFS], [fs.StatFS] and
+// [fs.SubFS]; callers can type-assert as needed.
 func ToIoFs[F File](fsys Fs[F]) fs.FS {
 	return &ioFs[F]{inner: fsys}
 }
@@ -89,6 +90,19 @@ func (i *ioFs[F]) Stat(name string) (fs.FileInfo, error) {
 		return nil, err
 	}
 	return i.inner.Stat(name)
+}
+
+// Sub implements [fs.SubFS] via [Sub]: a native SubFs on the inner Fs if it
+// has one, otherwise a [PathPrefixFs] view rooted at dir.
+func (i *ioFs[F]) Sub(dir string) (fs.FS, error) {
+	if err := validFsPath("sub", dir); err != nil {
+		return nil, err
+	}
+	sub, err := Sub(i.inner, dir)
+	if err != nil {
+		return nil, err
+	}
+	return ToIoFs(sub), nil
 }
 
 // ioFsRoot adapts a [Root] to [fs.FS]. In addition to what [ioFs] supports,

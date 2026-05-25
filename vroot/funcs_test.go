@@ -42,6 +42,17 @@ func (f recordReadFileFs) ReadFile(string) ([]byte, error) {
 	return []byte("sentinel"), nil
 }
 
+// recordSubFs satisfies vroot.SubFs[*os.File].
+type recordSubFs struct {
+	vroot.Fs[*os.File]
+	called *bool
+}
+
+func (f recordSubFs) Sub(string) (vroot.Fs[*os.File], error) {
+	*f.called = true
+	return f.Fs, nil
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -267,5 +278,48 @@ func TestReadFile_Fallback(t *testing.T) {
 	// Open failure in the fallback must propagate.
 	if _, err := vroot.ReadFile[*os.File](noExtFs{inner}, "missing.txt"); err == nil {
 		t.Error("fallback ReadFile on missing file: want error, got nil")
+	}
+}
+
+// TestSub_FastPath verifies vroot.Sub delegates to SubFs.Sub when implemented.
+func TestSub_FastPath(t *testing.T) {
+	called := false
+	if _, err := vroot.Sub[*os.File](recordSubFs{called: &called}, "dir"); err != nil {
+		t.Fatalf("Sub: %v", err)
+	}
+	if !called {
+		t.Error("Sub did not use the SubFs fast path")
+	}
+}
+
+// TestSub_Fallback verifies vroot.Sub falls back to a PathPrefixFs view when
+// the Fs has no native Sub, and that the result is scoped to dir.
+func TestSub_Fallback(t *testing.T) {
+	tempDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tempDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	writeFile(t, filepath.Join(tempDir, "sub", "f.txt"), "hi")
+
+	fsys, err := osfs.NewFs(tempDir)
+	if err != nil {
+		t.Fatalf("NewFs: %v", err)
+	}
+	// osfs.Fs has OpenRoot, not Sub, so it does not satisfy SubFs -> fallback.
+	sub, err := vroot.Sub[*os.File](fsys, "sub")
+	if err != nil {
+		t.Fatalf("Sub: %v", err)
+	}
+	got, err := vroot.ReadFile(sub, "f.txt")
+	if err != nil {
+		t.Fatalf("ReadFile in sub: %v", err)
+	}
+	if string(got) != "hi" {
+		t.Errorf("sub-fs content = %q, want %q", got, "hi")
+	}
+
+	// Sub onto a non-existent dir is rejected by the PathPrefixFs validation.
+	if _, err := vroot.Sub[*os.File](fsys, "missing"); err == nil {
+		t.Error("Sub onto missing dir: want error, got nil")
 	}
 }

@@ -100,8 +100,18 @@ func TestToIoFs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := iofs.(fs.SubFS); ok {
-		t.Error("ToIoFs result should not implement fs.SubFS (Fs has no scoping op)")
+	// ToIoFs implements fs.SubFS via vroot.Sub (PathPrefixFs fallback for an
+	// Fs without a native Sub).
+	subFS, ok := iofs.(fs.SubFS)
+	if !ok {
+		t.Fatal("ToIoFs result should implement fs.SubFS")
+	}
+	sub, err := subFS.Sub("subdir")
+	if err != nil {
+		t.Fatalf("Sub: %v", err)
+	}
+	if err := fstest.TestFS(sub, "nested.txt"); err != nil {
+		t.Fatal(err)
 	}
 }
 

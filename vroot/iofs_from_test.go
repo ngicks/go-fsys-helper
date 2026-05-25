@@ -55,55 +55,6 @@ func TestFromIoFs(t *testing.T) {
 	acceptancetest.RunFsReadOnly(t, s)
 }
 
-// TestFromIoFsRoot runs the read-only Fs acceptance suite against the Root
-// adapter (which also satisfies Fs[vroot.File]); RunRootReadOnly itself can't
-// be used because its R type parameter would have to name the unexported
-// concrete type. OpenRoot is covered separately by TestFromIoFsRoot_OpenRoot.
-func TestFromIoFsRoot(t *testing.T) {
-	s := acceptancetest.Setup[vroot.File, vroot.Fs[vroot.File]]{
-		Make: func(t *testing.T, lines []string) vroot.Fs[vroot.File] {
-			return vroot.FromIoFsRoot(materializeDirFS(t, lines), "fs.FS")
-		},
-		Option: iofsFromOption(),
-	}
-	acceptancetest.RunFsReadOnly(t, s)
-}
-
-// TestFromIoFsRoot_OpenRoot covers the Root-specific OpenRoot path: a sub-root
-// is scoped to the requested directory and remains read-only.
-func TestFromIoFsRoot_OpenRoot(t *testing.T) {
-	dirFS := materializeDirFS(t, []string{
-		"sub/",
-		`sub/inner.txt: "inner"`,
-		`top.txt: "top"`,
-	})
-	r := vroot.FromIoFsRoot(dirFS, "fs.FS")
-
-	sub, err := r.OpenRoot("sub")
-	if err != nil {
-		t.Fatalf("OpenRoot: %v", err)
-	}
-	defer func() { _ = sub.Close() }()
-
-	data, err := vroot.ReadFile(sub, "inner.txt")
-	if err != nil {
-		t.Fatalf("ReadFile(inner.txt) in sub-root: %v", err)
-	}
-	if string(data) != "inner" {
-		t.Errorf("sub-root content = %q, want %q", data, "inner")
-	}
-
-	// top.txt lives in the parent, so it must not be visible from the sub-root.
-	if _, err := sub.Stat("top.txt"); err == nil {
-		t.Error("sub-root leaked parent file top.txt")
-	}
-
-	// Sub-root stays read-only.
-	if _, err := sub.Create("new.txt"); err == nil {
-		t.Error("sub-root Create unexpectedly succeeded; want read-only error")
-	}
-}
-
 // TestFromIoFs_RoundTrip adapts an fs.FS into vroot via FromIoFs and back into
 // fs.FS via ToIoFs, then validates the surface with fstest.TestFS. ToIoFs
 // (not ToIoFsRoot) is used so it only needs the Fs[F] interface, sidestepping

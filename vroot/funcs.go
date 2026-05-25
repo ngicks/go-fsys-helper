@@ -49,6 +49,31 @@ func ReadFile[F File](fsys Fs[F], name string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
+// SubFs is the extension interface for [Fs] implementations that can return a
+// sub-filesystem rooted at a directory natively (e.g. more cheaply than path
+// prefixing). [Sub] uses it when present.
+type SubFs[F File] interface {
+	Fs[F]
+	Sub(dir string) (Fs[F], error)
+}
+
+// Sub returns an [Fs] rooted at dir within fsys.
+//
+// If fsys implements [SubFs], its Sub is used. Otherwise Sub falls back to
+// [NewPathPrefixFs], which prefixes every path with dir and blocks traversal
+// above it. dir must name an existing directory (the fallback validates it via
+// [NewPathPrefixFs]). [ToIoFs] uses Sub to implement [io/fs.SubFS].
+func Sub[F File](fsys Fs[F], dir string) (Fs[F], error) {
+	if subFsys, ok := fsys.(SubFs[F]); ok {
+		return subFsys.Sub(dir)
+	}
+	w, err := NewPathPrefixFs(fsys, dir)
+	if err != nil {
+		return nil, err
+	}
+	return w, nil
+}
+
 type fdFile interface {
 	Fd() uintptr
 }

@@ -2,10 +2,8 @@ package vroot
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
-	"path"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -16,32 +14,20 @@ import (
 )
 
 var (
-	_ Fs[File]                = (*ioFsAsFs)(nil)
-	_ Root[File, *ioFsAsRoot] = (*ioFsAsRoot)(nil)
-	_ File                    = (*expandedFile)(nil)
+	_ Fs[File] = (*ioFsAsFs)(nil)
+	_ File     = (*expandedFile)(nil)
 )
-
-// pathConverter adapts an fs.ReadLinkFS so its Lstat/ReadLink accept OS-style
-// paths. fsutil.ResolvePath drives traversal in OS-style form; we route the
-// individual lookups back through cleanToSlash so the underlying fs.FS sees
-// fs.ValidPath form.
-type pathConverter struct {
-	fsys fs.ReadLinkFS
-}
-
-func (c pathConverter) ReadLink(name string) (string, error) {
-	return c.fsys.ReadLink(cleanToSlash(name))
-}
-
-func (c pathConverter) Lstat(name string) (fs.FileInfo, error) {
-	return c.fsys.Lstat(cleanToSlash(name))
-}
 
 // ioFsAsFs adapts an [fs.ReadLinkFS] to a read-only [Fs]. Write operations
 // (Chmod, Create, Remove, …) fail with errdef.EROFS. Path traversal via ".."
-// or absolute paths is rejected with [ErrPathEscapes]. Symlinks pointing
-// outside the wrapped FS are honored verbatim — use [ioFsAsRoot] if you need
-// containment enforced against symlink targets.
+// or an absolute path is rejected with [ErrPathEscapes], but this is not a
+// containment boundary: a symlink whose target points outside the wrapped FS
+// is honored verbatim.
+//
+// No confined Root variant is provided. fs.FS exposes no openat-style
+// primitive, so confinement against symlink targets could only be emulated by
+// a TOCTOU-prone sequence of Lstat/ReadLink calls — a guarantee this package
+// declines to make falsely.
 //
 // External callers use OS-style paths; the wrapper converts them to
 // fs.ValidPath (forward slash) before calling into the underlying fs.FS.
@@ -163,155 +149,6 @@ func (f *ioFsAsFs) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (f *ioFsAsFs) Symlink(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("symlink", oldname, newname, errdef.EROFS)
-}
-
-// ioFsAsRoot adapts an [fs.ReadLinkFS] to a read-only [Root]. Stricter than
-// [ioFsAsFs]: paths are resolved component-by-component via [fsutil.ResolvePath]
-// so any symlink target that would escape the wrapped FS produces
-// [ErrPathEscapes]. OpenRoot uses [fs.Sub] on the underlying FS.
-//
-// Like [ioFsAsFs] it is read-only; write operations fail with errdef.EROFS, and
-// it is still vulnerable to TOCTOU races because resolution is a sequence of
-// Lstat and ReadLink calls (unlike *os.Root, which uses openat-style APIs).
-type ioFsAsRoot struct {
-	fsys fs.ReadLinkFS
-	name string
-}
-
-// FromIoFsRoot wraps fsys as a read-only [Root]. name is returned by Name.
-// The concrete return type is unexported; callers bind it with := or assign
-// to vroot.[Fs] / vroot.[Root] when the type parameter is otherwise needed.
-func FromIoFsRoot(fsys fs.ReadLinkFS, name string) Root[File, *ioFsAsRoot] {
-	return &ioFsAsRoot{fsys: fsys, name: name}
-}
-
-func (f *ioFsAsRoot) IsRoot() {}
-
-func (f *ioFsAsRoot) resolvePath(name string, skipLastElement bool) (string, error) {
-	s, err := fsutil.ResolvePath(pathConverter{f.fsys}, name, skipLastElement)
-	return cleanToSlash(s), err
-}
-
-func (f *ioFsAsRoot) Chmod(name string, mode fs.FileMode) error {
-	return fsutil.WrapPathErr("chmod", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Chown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("chown", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return fsutil.WrapPathErr("chtimes", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Close() error {
-	return nil
-}
-
-func (f *ioFsAsRoot) Create(name string) (File, error) {
-	return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Lchown(name string, uid int, gid int) error {
-	return fsutil.WrapPathErr("lchown", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Link(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("link", oldname, newname, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Lstat(name string) (fs.FileInfo, error) {
-	p, err := f.resolvePath(name, true)
-	if err != nil {
-		return nil, fsutil.WrapPathErr("lstat", name, err)
-	}
-	return f.fsys.Lstat(p)
-}
-
-func (f *ioFsAsRoot) Mkdir(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) MkdirAll(name string, perm fs.FileMode) error {
-	return fsutil.WrapPathErr("mkdir", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Name() string {
-	return f.name
-}
-
-func (f *ioFsAsRoot) Open(name string) (File, error) {
-	p, err := f.resolvePath(name, false)
-	if err != nil {
-		return nil, fsutil.WrapPathErr("open", name, err)
-	}
-	file, err := f.fsys.Open(p)
-	if err != nil {
-		return nil, err
-	}
-	return ExpandFsFile(file, p), nil
-}
-
-func (f *ioFsAsRoot) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
-	if openflag.WriteOp(flag) {
-		return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
-	}
-	return f.Open(name)
-}
-
-func (f *ioFsAsRoot) OpenRoot(name string) (*ioFsAsRoot, error) {
-	subPath, err := f.resolvePath(name, false)
-	if err != nil {
-		return nil, fsutil.WrapPathErr("open", name, err)
-	}
-
-	subFsys, err := fs.Sub(f.fsys, subPath)
-	if err != nil {
-		return nil, err
-	}
-
-	readLinkFsys, ok := subFsys.(fs.ReadLinkFS)
-	if !ok {
-		return nil, fmt.Errorf("*ioFsAsRoot.OpenRoot: sub fsys does not implement fs.ReadLinkFS")
-	}
-
-	return &ioFsAsRoot{fsys: readLinkFsys, name: path.Join(f.name, cleanToSlash(name))}, nil
-}
-
-func (f *ioFsAsRoot) ReadLink(name string) (string, error) {
-	resolved, err := f.resolvePath(name, true)
-	if err != nil {
-		return "", fsutil.WrapPathErr("readlink", name, err)
-	}
-	s, err := f.fsys.ReadLink(resolved)
-	if err != nil {
-		return "", err
-	}
-	return filepath.FromSlash(s), nil
-}
-
-func (f *ioFsAsRoot) Remove(name string) error {
-	return fsutil.WrapPathErr("remove", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) RemoveAll(name string) error {
-	return fsutil.WrapPathErr("RemoveAll", name, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Rename(oldname string, newname string) error {
-	return fsutil.WrapLinkErr("rename", oldname, newname, errdef.EROFS)
-}
-
-func (f *ioFsAsRoot) Stat(name string) (fs.FileInfo, error) {
-	p, err := f.resolvePath(name, false)
-	if err != nil {
-		return nil, fsutil.WrapPathErr("stat", name, err)
-	}
-	return fs.Stat(f.fsys, p)
-}
-
-func (f *ioFsAsRoot) Symlink(oldname string, newname string) error {
 	return fsutil.WrapLinkErr("symlink", oldname, newname, errdef.EROFS)
 }
 
