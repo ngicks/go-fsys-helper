@@ -1,9 +1,9 @@
 # synthfs redesign — PLAN
 
-- **Status:** Draft for review. OQ1–OQ3 resolved; 2 low-stakes confirms remain (§3), then ready to implement.
+- **Status:** Implemented (2026-05-29). All acceptance + ingest + race tests pass; `go test -race ./vroot/...` clean.
 - **Target module:** `github.com/ngicks/go-fsys-helper/vroot/synthfs` (+ thin `vroot/memfs`)
 - **Branch:** `feat-rewrite-vroot`
-- **Last updated:** 2026-05-27
+- **Last updated:** 2026-05-29
 
 ## How to use this doc
 
@@ -90,10 +90,10 @@ mkdir.go:38     Mkdir("missing-parent/child", …)               → fs.ErrNotEx
 - **OQ2 — action set. ✅ RESOLVED:** `Merge` removed — `AddDecisionKeep` on a directory now means merge (reuse/create + descend). With `Merge` gone, `Ignore` and `SkipDir` were identical (drop + don't descend), so they collapse into a single zero-value `AddDecisionSkip`. Final set: `AddDecisionSkip`(0) / `AddDecisionKeep` / `AddDecisionOverride` (decision 11). *Shout if you'd rather keep `Ignore`/`SkipDir` separate.*
 - **OQ3 — `AddFile` default (nil cb). ✅ RESOLVED:** Aligned with `AddFS` — both use the same default resolver (`MergeOverwrite`), so nil cb overwrites an existing leaf (decision 12).
 
-### Resolved-but-confirm
+### Resolved-but-confirm — locked to defaults
 
-- **Scaffolding parent perm** = `0o755` masked by `Umask` (proposed in chat, not explicitly confirmed). Switch to literal `0o755`?
-- **memfs timing** — build the thin `memfs` wrapper in the same pass, or land `synthfs` first? (Default assumption: same pass, it's ~10 lines.)
+- **Scaffolding parent perm** = `0o755 &^ Umask`. Matches the rest of the perm rules (`Mkdir`/`Create` also `perm &^ Umask`); avoids the special case of a literal that ignores process intent. Override per ingest by pre-`MkdirAll` then `AddDecisionKeep`.
+- **memfs timing** — built in the same pass. The wrapper is ~10 lines (`func New(name string) *synthfs.Root { return synthfs.NewRoot(name, nil) }`); landing it together saves a follow-up commit and exercises the default-Option path.
 
 ---
 
@@ -306,3 +306,5 @@ vroot/memfs/
 - 2026-05-27: OQ1 resolved (decision 10) — `AddFunc` returns `(AddDecision, error)`; added `FailOnConflict` built-in resolver.
 - 2026-05-27: OQ2 resolved (decision 11) — `Merge` removed (`Keep`-on-dir = merge); `Ignore`+`SkipDir` collapsed into zero-value `Skip`; action set now `Skip`/`Keep`/`Override`. OQ3 resolved (decision 12) — `AddFile` shares `AddFS`'s `MergeOverwrite` default.
 - 2026-05-27: Renamed `AddAction` → `AddDecision`; enum members prefixed with the type name → `AddDecisionSkip` / `AddDecisionKeep` / `AddDecisionOverride`.
+- 2026-05-29: Locked the two §3 confirms to their proposed defaults (scaffolding perm = `0o755 &^ Umask`; memfs landed in the same pass). Implementation starting.
+- 2026-05-29: Implementation landed. Files: `vroot/synthfs/{doc,option,stat,node,tree,view,view_mem,view_bytes,view_fs,handle,root,add,share_violation_other,share_violation_windows}.go` + `vroot/synthfs/{root_test,add_test}.go` + `vroot/memfs/{memfs,memfs_test}.go`. Notable deviations from §7: the per-GOOS `chmod_mask_*.go` files were skipped — the default `MaskChmodMode` is just `mode & fs.ModePerm`; callers wanting OS emulation pass `fsutil.MaskChmodMode`. Acceptance suite runs via `RunRoot` and `RunFs`; `fstest.TestFS` covers `fs.FS` conformance through `vroot.ToIoFsRoot`. Tests pass with `-race`.
