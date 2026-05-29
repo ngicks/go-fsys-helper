@@ -2,6 +2,7 @@ package acceptancetest
 
 import (
 	"io/fs"
+	"os"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
@@ -19,7 +20,8 @@ func TestFileChmod[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 
 	c.SetupLines(`f.txt: "x"`)
 
-	f := c.Open("f.txt")
+	// Read-Write because of windows not permitting chmod on read-only file
+	f := c.OpenFile("f.txt", os.O_RDWR, 0)
 	defer func() { _ = f.Close() }()
 
 	var want fs.FileMode

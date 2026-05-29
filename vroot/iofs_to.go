@@ -3,6 +3,8 @@ package vroot
 import (
 	"errors"
 	"io/fs"
+	"path"
+	"path/filepath"
 )
 
 // Compile-time interface checks. Written as generic helpers so we don't have
@@ -54,7 +56,11 @@ func (i *ioFs[F]) Open(name string) (fs.File, error) {
 	if err := validFsPath("open", name); err != nil {
 		return nil, err
 	}
-	return narrowFile(i.inner.Open(name))
+	file, err := i.inner.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return narrowFsFile(&fsFile{f: file, dirPath: name, lstat: i.inner.Lstat}), nil
 }
 
 func (i *ioFs[F]) ReadDir(name string) ([]fs.DirEntry, error) {
@@ -127,7 +133,11 @@ func (i *ioFsRoot[F, R]) Open(name string) (fs.File, error) {
 	if err := validFsPath("open", name); err != nil {
 		return nil, err
 	}
-	return narrowFile(i.inner.Open(name))
+	file, err := i.inner.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return narrowFsFile(&fsFile{f: file, dirPath: name, lstat: i.inner.Lstat}), nil
 }
 
 func (i *ioFsRoot[F, R]) ReadDir(name string) ([]fs.DirEntry, error) {
@@ -184,12 +194,28 @@ func validFsPath(op, name string) error {
 	if !fs.ValidPath(name) {
 		return &fs.PathError{Op: op, Path: name, Err: fs.ErrInvalid}
 	}
+	// fs.ValidPath treats bytes like '\' and ':' as ordinary filename
+	// characters, but the wrapped Fs (osfs, synthfs, …) may reinterpret them as
+	// path separators or drive markers on some platforms — so a path fstest
+	// expects to fail (e.g. "subdir\\nested.txt" on Windows) would otherwise
+	// resolve to a real file. filepath.Localize rejects exactly the inputs that
+	// cannot map to a single OS path element, mirroring os.DirFS so the fs.FS
+	// boundary stays platform-consistent. On Unix it only rejects embedded NUL.
+	if _, err := filepath.Localize(name); err != nil {
+		return &fs.PathError{Op: op, Path: name, Err: fs.ErrInvalid}
+	}
 	return nil
 }
 
 // fsFile narrows a [File] to [fs.File] capability.
+//
+// dirPath and lstat carry the context needed to return handle-consistent
+// DirEntry.Info() values from ReadDir; they are nil/zero for files opened
+// outside the [ToIoFs]/[ToIoFsRoot] bridge (e.g. via the exported [NarrowFile]).
 type fsFile struct {
-	f File
+	f       File
+	dirPath string
+	lstat   func(name string) (fs.FileInfo, error)
 }
 
 // fsFileReaderAt is [fsFile] additionally exposing [io.ReaderAt] and
@@ -205,22 +231,19 @@ type fsFileReaderAt struct {
 // empty file) are ignored so that ReaderAt-capable files keep their full
 // capability surface.
 func NarrowFile(f File) fs.File {
-	var b [1]byte
-	_, readAtErr := f.ReadAt(b[:], 0)
-	if !errors.Is(readAtErr, ErrOpNotSupported) {
-		return &fsFileReaderAt{&fsFile{f: f}}
-	}
-	return &fsFile{f: f}
+	return narrowFsFile(&fsFile{f: f})
 }
 
-func narrowFile(f File, err error) (fs.File, error) {
-	// Check err first: an Fs whose File type is a pointer (e.g. *os.File)
-	// returns a typed-nil on failure, which is a non-nil File interface here.
-	// Testing f == nil would therefore wrap the nil and hide the error.
-	if err != nil {
-		return nil, err
+// narrowFsFile selects the capability surface for base: an [fsFileReaderAt] when
+// a probe ReadAt succeeds (i.e. does not report [ErrOpNotSupported]), otherwise
+// base itself.
+func narrowFsFile(base *fsFile) fs.File {
+	var b [1]byte
+	_, readAtErr := base.f.ReadAt(b[:], 0)
+	if !errors.Is(readAtErr, ErrOpNotSupported) {
+		return &fsFileReaderAt{base}
 	}
-	return NarrowFile(f), nil
+	return base
 }
 
 func (r *fsFile) Close() error {
@@ -236,7 +259,26 @@ func (r *fsFile) Read(b []byte) (n int, err error) {
 }
 
 func (r *fsFile) ReadDir(n int) ([]fs.DirEntry, error) {
-	return r.f.ReadDir(n)
+	entries, err := r.f.ReadDir(n)
+	if r.lstat == nil {
+		return entries, err
+	}
+	// Re-stat each child so Info() reflects a handle stat rather than the
+	// metadata carried by directory enumeration. On Windows the enumeration
+	// timestamps can lag a handle stat for recently-modified entries, which
+	// otherwise makes entry.Info() disagree with Stat()/Lstat() and trips
+	// fstest.TestFS. Mirrors the eager per-entry stat *os.Root performs.
+	for idx, e := range entries {
+		info, serr := r.lstat(path.Join(r.dirPath, e.Name()))
+		if serr != nil {
+			// A child removed between enumeration and stat is tolerated: keep
+			// the original entry so its name still surfaces, matching the
+			// fs.DirEntry.Info() contract that permits an ErrNotExist here.
+			continue
+		}
+		entries[idx] = fs.FileInfoToDirEntry(info)
+	}
+	return entries, err
 }
 
 func (r *fsFile) Readdir(n int) ([]fs.FileInfo, error) {
