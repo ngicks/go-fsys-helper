@@ -230,48 +230,83 @@ func (s *SftpFs) Remove(name string) error {
 	return s.client.Remove(abs)
 }
 
-// RemoveAll implements [vroot.Fs] via a recursive walk. The common
-// case (Remove on a regular file) hits the fast path.
+// RemoveAll implements [vroot.Fs], mirroring [os.RemoveAll]: it removes
+// the path tree recursively, treats a missing path as success, and rejects
+// a trailing "." component with EINVAL.
+//
+// Unlike a pre-order [sftp.Client.Walk] that buffers every path before
+// deleting any, this descends depth-first and lets each directory listing
+// go out of scope as it unwinds, so peak memory is bounded by the depth of
+// the deepest branch rather than the size of the whole tree.
 func (s *SftpFs) RemoveAll(name string) error {
+	// Reject a trailing "." up front, before resolvePath's path.Clean can
+	// rewrite "foo/." down to "foo" and remove the wrong thing. Mirrors the
+	// guard in os.RemoveAll.
+	if endsWithDot(name) {
+		return fsutil.WrapPathErr("removeall", name, syscall.EINVAL)
+	}
 	abs, err := s.resolvePath(name)
 	if err != nil {
 		return fsutil.WrapPathErr("removeall", name, err)
 	}
 	if abs == s.base {
-		return fsutil.WrapPathErr("removeall", ".", fs.ErrInvalid)
+		// Consistency with os.RemoveAll / *os.Root.RemoveAll.
+		return fsutil.WrapPathErr("removeall", ".", syscall.EINVAL)
 	}
-	if err := s.client.Remove(abs); err == nil {
-		return nil
-	} else if isSftpNotExist(err) {
+	return s.removeAll(abs)
+}
+
+// removeAll recursively removes the already-resolved peer-side path abs,
+// following os.RemoveAll's structure.
+func (s *SftpFs) removeAll(abs string) error {
+	// Simple case: if Remove works, we're done. sftp's Client.Remove falls
+	// back from unlink to rmdir, so a single call also clears empty
+	// directories and removes symlinks without following them.
+	err := s.client.Remove(abs)
+	if err == nil || isSftpNotExist(err) {
 		return nil
 	}
-	fi, err := s.client.Lstat(abs)
-	if err != nil {
-		if isSftpNotExist(err) {
+
+	// Otherwise, is this a directory we need to recurse into? Lstat (not
+	// Stat) so a symlink is described, never traversed.
+	fi, lerr := s.client.Lstat(abs)
+	if lerr != nil {
+		if isSftpNotExist(lerr) {
 			return nil
 		}
-		return err
+		return lerr
 	}
 	if !fi.IsDir() {
-		return s.client.Remove(abs)
+		// Not a directory; surface the original Remove failure (e.g. EACCES).
+		return err
 	}
-	w := s.client.Walk(abs)
-	var paths []string
-	for w.Step() {
-		paths = append(paths, w.Path())
+
+	// Remove the contents one level at a time, then the now-empty directory,
+	// returning the first error encountered.
+	entries, firstErr := s.client.ReadDir(abs)
+	if firstErr != nil && isSftpNotExist(firstErr) {
+		return nil
 	}
-	for i := len(paths) - 1; i >= 0; i-- {
-		fi, err := s.client.Lstat(paths[i])
-		if err != nil {
-			continue
-		}
-		if fi.IsDir() {
-			_ = s.client.RemoveDirectory(paths[i])
-		} else {
-			_ = s.client.Remove(paths[i])
+	for _, e := range entries {
+		if err1 := s.removeAll(abs + "/" + e.Name()); err1 != nil && firstErr == nil {
+			firstErr = err1
 		}
 	}
-	return nil
+	if err1 := s.client.Remove(abs); err1 != nil && !isSftpNotExist(err1) && firstErr == nil {
+		firstErr = err1
+	}
+	return firstErr
+}
+
+// endsWithDot reports whether the final POSIX path element of name is ".".
+// It mirrors the guard in os.RemoveAll: a trailing "." must be rejected
+// before path.Clean rewrites "foo/." to "foo". sftp paths are always
+// slash-separated, so only "/" is treated as the separator.
+func endsWithDot(name string) bool {
+	if name == "." {
+		return true
+	}
+	return len(name) >= 2 && name[len(name)-1] == '.' && name[len(name)-2] == '/'
 }
 
 // Rename implements [vroot.Fs] using POSIX rename when supported.

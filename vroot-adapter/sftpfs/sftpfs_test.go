@@ -155,7 +155,7 @@ func serveSsh(conn net.Conn, cfg *ssh.ServerConfig, record func(error)) {
 		_ = conn.Close()
 		return
 	}
-	defer sshConn.Close()
+	defer func() { _ = sshConn.Close() }()
 	go ssh.DiscardRequests(reqs)
 
 	for newChan := range chans {
