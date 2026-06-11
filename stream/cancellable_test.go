@@ -30,7 +30,7 @@ func TestCancellable(t *testing.T) {
 		_, err := cancellable.Read(buf)
 		testhelper.AssertErrorsIs(t, err, nil)
 		cancel()
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			_, err = cancellable.Read(buf)
 			testhelper.AssertErrorsIs(t, err, ctx.Err())
 		}

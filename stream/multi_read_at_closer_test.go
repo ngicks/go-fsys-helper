@@ -27,7 +27,12 @@ func TestMultiReadAtSeekCloser_Close(t *testing.T) {
 		err := r.Close()
 		testhelper.AssertErrorsIs(t, err, nil)
 		for i, r := range sized {
-			testhelper.AssertTrue(t, r.R.(*closable[*bytes.Reader]).Closed.Load(), "Closed returned index %d", i)
+			testhelper.AssertTrue(
+				t,
+				r.R.(*closable[*bytes.Reader]).Closed.Load(),
+				"Closed returned index %d",
+				i,
+			)
 		}
 	}
 }
@@ -47,7 +52,11 @@ func TestMultiReadAtSeekCloser_read_all(t *testing.T) {
 				"src len = %d, dst len = %d",
 				len(randomBytes), out.Len(),
 			)
-			testhelper.AssertTrue(t, bytes.Equal(randomBytes, out.Bytes()), "bytes.Equal returned false")
+			testhelper.AssertTrue(
+				t,
+				bytes.Equal(randomBytes, out.Bytes()),
+				"bytes.Equal returned false",
+			)
 		})
 	}
 }
@@ -89,9 +98,11 @@ func TestMultiReadAtSeekCloser_ReadAt_reads_over_upper_limit(t *testing.T) {
 
 func TestMultiReadAtSeekCloser_wrong_size(t *testing.T) {
 	type testCase struct {
-		name      string // case name
-		diff      int    // difference between actual read size and alleged in []SizedReaderAt. will be added to index 3.
-		readAtLoc int64  // ReadAt offset where ReadAt return an error specified by err.
+		name string // case name
+		// difference between actual read size and alleged in
+		// []SizedReaderAt. will be added to index 3.
+		diff      int
+		readAtLoc int64 // ReadAt offset where ReadAt return an error specified by err.
 		err       error
 	}
 	for _, tc := range []testCase{

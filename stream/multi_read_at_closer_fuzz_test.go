@@ -34,10 +34,18 @@ func FuzzMultiReadAtSeekCloser_Read(f *testing.F) {
 			t.Skip()
 		}
 		t.Logf("seed: %d, %d, %d", len1, len2, len3)
-		r := NewMultiReadAtSeekCloser(prepareSizedReader(randomBytes, []int{len1, len2, len3}, false))
+		r := NewMultiReadAtSeekCloser(
+			prepareSizedReader(randomBytes, []int{len1, len2, len3}, false),
+		)
 		dst, err := io.ReadAll(r)
 		testhelper.AssertNilInterface(t, err)
-		testhelper.AssertTrue(t, len(randomBytes) == len(dst), "src len = %d, dst len = %d", len(randomBytes), len(dst))
+		testhelper.AssertTrue(
+			t,
+			len(randomBytes) == len(dst),
+			"src len = %d, dst len = %d",
+			len(randomBytes),
+			len(dst),
+		)
 		testhelper.AssertTrue(t, bytes.Equal(randomBytes, dst), "bytes.Equal returned false")
 	})
 }
@@ -70,7 +78,13 @@ func FuzzMultiReadAtSeekCloser_ReadAt(f *testing.F) {
 					split = split[:1024]
 				}
 				testhelper.AssertTrue(t, n == len(split), "left = %d, right = %d", n, len(split))
-				testhelper.AssertTrue(t, bytes.Equal(buf, split), "left = %s, right = %s", hex.EncodeToString(buf), hex.EncodeToString(split))
+				testhelper.AssertTrue(
+					t,
+					bytes.Equal(buf, split),
+					"left = %s, right = %s",
+					hex.EncodeToString(buf),
+					hex.EncodeToString(split),
+				)
 			}
 		}
 	})
@@ -89,7 +103,7 @@ func FuzzMultiReadAtSeekCloser_Seek(f *testing.F) {
 		locs := [...]int{loc1, loc2, loc3}
 
 		for _, loc := range locs {
-			for i := 0; i < 6; i++ {
+			for i := range 6 {
 				off := int64(loc)
 				if i >= 3 {
 					off *= -1
@@ -116,7 +130,13 @@ func FuzzMultiReadAtSeekCloser_Seek(f *testing.F) {
 
 				_, rErr := io.ReadFull(mult, buf1)
 				_, orgErr := io.ReadFull(org, buf1)
-				testhelper.AssertTrue(t, rErr == nil && orgErr == nil || rErr != nil && orgErr != nil, "left = %v, right = %v", rErr, orgErr)
+				testhelper.AssertTrue(
+					t,
+					rErr == nil && orgErr == nil || rErr != nil && orgErr != nil,
+					"left = %v, right = %v",
+					rErr,
+					orgErr,
+				)
 
 				n, err := mult.Seek(off, whence)
 				bufN, bufErr := org.Seek(off, whence)
@@ -128,7 +148,13 @@ func FuzzMultiReadAtSeekCloser_Seek(f *testing.F) {
 
 				_, rErr = io.ReadFull(mult, buf1)
 				_, orgErr = io.ReadFull(org, buf2)
-				testhelper.AssertTrue(t, rErr == nil && orgErr == nil || rErr != nil && orgErr != nil, "left = %v, right = %v", rErr, orgErr)
+				testhelper.AssertTrue(
+					t,
+					rErr == nil && orgErr == nil || rErr != nil && orgErr != nil,
+					"left = %v, right = %v",
+					rErr,
+					orgErr,
+				)
 				if rErr == io.EOF {
 					testhelper.AssertErrorsIs(t, rErr, orgErr)
 				}
