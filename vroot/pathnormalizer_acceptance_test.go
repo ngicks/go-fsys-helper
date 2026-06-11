@@ -118,9 +118,13 @@ func TestPathLocalizerRoot_ForwardSlash(t *testing.T) {
 // paths again. On Linux the conversions are effectively no-ops (both
 // separators are "/"), but the test still exercises every wrapper method.
 func TestPathNormalizerRoot_RoundTrip(t *testing.T) {
+	type normLocOsRoot = vroot.PathNormalizerRoot[
+		*os.File,
+		*vroot.PathLocalizerRoot[*os.File, *osfs.Root],
+	]
 	opt := pathnormOption()
-	s := acceptancetest.SetupRoot[*os.File, *vroot.PathNormalizerRoot[*os.File, *vroot.PathLocalizerRoot[*os.File, *osfs.Root]]]{
-		Make: func(t *testing.T, lines []string) *vroot.PathNormalizerRoot[*os.File, *vroot.PathLocalizerRoot[*os.File, *osfs.Root]] {
+	s := acceptancetest.SetupRoot[*os.File, *normLocOsRoot]{
+		Make: func(t *testing.T, lines []string) *normLocOsRoot {
 			dir := t.TempDir()
 			setupFs, err := osfs.NewFs(dir)
 			if err != nil {

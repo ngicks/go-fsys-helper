@@ -74,7 +74,7 @@ func TestFsWrapper(t *testing.T) {
 	defer fsFile.Close()
 
 	// Verify it returns fs.File
-	var _ fs.File = fsFile
+	var _ = fsFile
 
 	// Test reading
 	data := make([]byte, 12)
@@ -122,7 +122,7 @@ func TestBasicWrapper(t *testing.T) {
 	defer fsFile.Close()
 
 	// Verify it returns fs.File
-	var _ fs.File = fsFile
+	var _ = fsFile
 
 	// Test reading
 	data := make([]byte, 12)

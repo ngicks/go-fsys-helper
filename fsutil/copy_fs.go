@@ -52,7 +52,8 @@ func (opt CopyFsOption[Fsys, File]) maskPerm(perm fs.FileMode) fs.FileMode {
 	return perm & fs.ModePerm
 }
 
-// CopyAll performs recursive copy from src filesystem to dst filesystem under the specified root path.
+// CopyAll performs recursive copy from src filesystem to dst filesystem under the specified root
+// path.
 func (opt CopyFsOption[Fsys, File]) CopyAll(dst Fsys, src fs.FS, root string) error {
 	srcLstat, hasLstat := src.(interface {
 		Lstat(name string) (fs.FileInfo, error)
@@ -84,7 +85,12 @@ func (opt CopyFsOption[Fsys, File]) CopyAll(dst Fsys, src fs.FS, root string) er
 
 // CopyPath copies only the specified paths from src filesystem to dst filesystem.
 // Paths must be
-func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, paths ...string) error {
+func (opt CopyFsOption[Fsys, File]) CopyPath(
+	dst Fsys,
+	src fs.FS,
+	root string,
+	paths ...string,
+) error {
 	root = filepath.Clean(root)
 
 	if filepath.IsAbs(root) {
@@ -164,7 +170,13 @@ func (opt CopyFsOption[Fsys, File]) CopyPath(dst Fsys, src fs.FS, root string, p
 }
 
 // copyEntry performs the actual copy operation for a single entry
-func (opt CopyFsOption[Fsys, File]) copyEntry(dst Fsys, src fs.FS, dstPath, srcPath string, info fs.FileInfo, walkErr error) error {
+func (opt CopyFsOption[Fsys, File]) copyEntry(
+	dst Fsys,
+	src fs.FS,
+	dstPath, srcPath string,
+	info fs.FileInfo,
+	walkErr error,
+) error {
 	if walkErr != nil {
 		return walkErr
 	}

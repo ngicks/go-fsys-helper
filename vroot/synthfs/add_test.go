@@ -93,7 +93,10 @@ func TestAddFS_FailOnConflict(t *testing.T) {
 	r := newEmpty(t)
 	src := fstest.MapFS{"f.txt": &fstest.MapFile{Data: []byte("first"), Mode: 0o644}}
 
-	testhelper.NilErr(t, r.AddFile("pkg/f.txt", synthfs.NewBytesView([]byte("preset"), 0o644, time.Now()), nil))
+	testhelper.NilErr(
+		t,
+		r.AddFile("pkg/f.txt", synthfs.NewBytesView([]byte("preset"), 0o644, time.Now()), nil),
+	)
 
 	err := r.AddFS("pkg", src, synthfs.FailOnConflict)
 	if err == nil {
@@ -106,7 +109,10 @@ func TestAddFS_FailOnConflict(t *testing.T) {
 
 func TestAddFS_OverrideReplacesLeaf(t *testing.T) {
 	r := newEmpty(t)
-	testhelper.NilErr(t, r.AddFile("pkg/f.txt", synthfs.NewBytesView([]byte("preset"), 0o644, time.Now()), nil))
+	testhelper.NilErr(
+		t,
+		r.AddFile("pkg/f.txt", synthfs.NewBytesView([]byte("preset"), 0o644, time.Now()), nil),
+	)
 
 	src := fstest.MapFS{"f.txt": &fstest.MapFile{Data: []byte("override"), Mode: 0o644}}
 	override := func(_, _ synthfs.AddEntry) (synthfs.AddDecision, error) {
@@ -123,7 +129,10 @@ func TestAddFS_OverrideReplacesLeaf(t *testing.T) {
 
 func TestAddFS_MergeKeepPreservesExisting(t *testing.T) {
 	r := newEmpty(t)
-	testhelper.NilErr(t, r.AddFile("pkg/f.txt", synthfs.NewBytesView([]byte("preset"), 0o644, time.Now()), nil))
+	testhelper.NilErr(
+		t,
+		r.AddFile("pkg/f.txt", synthfs.NewBytesView([]byte("preset"), 0o644, time.Now()), nil),
+	)
 
 	src := fstest.MapFS{"f.txt": &fstest.MapFile{Data: []byte("override"), Mode: 0o644}}
 	testhelper.NilErr(t, r.AddFS("pkg", src, synthfs.MergeKeep))

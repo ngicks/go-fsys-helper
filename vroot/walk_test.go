@@ -65,8 +65,14 @@ func assertPathSeen(t *testing.T, expected, actual []pathSeen) {
 		convertedExpected,
 		convertedActual,
 	) {
-		onlyInExpected := slices.DeleteFunc(slices.Clone(convertedExpected), func(p pathSeen) bool { return slices.Contains(convertedActual, p) })
-		onlyInActual := slices.DeleteFunc(slices.Clone(convertedActual), func(p pathSeen) bool { return slices.Contains(convertedExpected, p) })
+		onlyInExpected := slices.DeleteFunc(
+			slices.Clone(convertedExpected),
+			func(p pathSeen) bool { return slices.Contains(convertedActual, p) },
+		)
+		onlyInActual := slices.DeleteFunc(
+			slices.Clone(convertedActual),
+			func(p pathSeen) bool { return slices.Contains(convertedExpected, p) },
+		)
 		t.Fatalf(
 			"not equal:\n"+
 				"expected: %#v\n"+
@@ -148,7 +154,10 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 			{path: "subdir/symlink_upward_escapes", realPath: "subdir/symlink_upward_escapes"},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "subdir/double_nested", realPath: "subdir/double_nested"},
-			{path: "subdir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "subdir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "subdir/symlink_upward", realPath: "subdir/symlink_upward"},
 			{path: "file2.txt", realPath: "file2.txt"},
 			{path: "symlink_escapes", realPath: "symlink_escapes"},
@@ -181,14 +190,20 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 			{path: "symlink_inner_dir/symlink_upward_escapes", realPath: ""},
 			{path: "symlink_inner_dir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "symlink_inner_dir/double_nested", realPath: "subdir/double_nested"},
-			{path: "symlink_inner_dir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "symlink_inner_dir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "symlink_inner_dir/symlink_upward", realPath: "file1.txt"},
 			{path: "symlink_inner", realPath: "file1.txt"},
 			{path: "subdir", realPath: "subdir"},
 			{path: "subdir/symlink_upward_escapes", realPath: ""},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "subdir/double_nested", realPath: "subdir/double_nested"},
-			{path: "subdir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "subdir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "subdir/symlink_upward", realPath: "file1.txt"},
 			{path: "file2.txt", realPath: "file2.txt"},
 			{path: "symlink_escapes", realPath: ""},
@@ -234,7 +249,10 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			{path: "subdir/symlink_upward_escapes", realPath: "subdir/symlink_upward_escapes"},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "subdir/double_nested", realPath: "subdir/double_nested"},
-			{path: "subdir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "subdir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "subdir/symlink_upward", realPath: "subdir/symlink_upward"},
 			{path: "file2.txt", realPath: "file2.txt"},
 			{path: "symlink_escapes", realPath: "symlink_escapes"},
@@ -275,13 +293,19 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			{path: "symlink_inner_dir", realPath: "subdir"},
 			{path: "symlink_inner_dir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "symlink_inner_dir/double_nested", realPath: "subdir/double_nested"},
-			{path: "symlink_inner_dir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "symlink_inner_dir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "symlink_inner_dir/symlink_upward", realPath: "file1.txt"},
 			{path: "symlink_inner", realPath: "file1.txt"},
 			{path: "subdir", realPath: "subdir"},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "subdir/double_nested", realPath: "subdir/double_nested"},
-			{path: "subdir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "subdir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "subdir/symlink_upward", realPath: "file1.txt"},
 			{path: "file2.txt", realPath: "file2.txt"},
 		}

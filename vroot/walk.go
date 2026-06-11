@@ -37,7 +37,11 @@ type walkState[F File, Fsys Fs[F]] struct {
 
 var logUniqueness = false
 
-func (s *walkState[F, Fsys]) recordVisited(fsys Fsys, virtualPath, realPath string, info fs.FileInfo) (visited bool) {
+func (s *walkState[F, Fsys]) recordVisited(
+	fsys Fsys,
+	virtualPath, realPath string,
+	info fs.FileInfo,
+) (visited bool) {
 	ident, ok := fileIdentFromSys(fsys, virtualPath, realPath, info)
 	if logUniqueness {
 		fmt.Printf("%q: %#v\n", realPath, ident)
@@ -72,7 +76,11 @@ func (s *walkState[F, Fsys]) recordVisited(fsys Fsys, virtualPath, realPath stri
 	}
 }
 
-func (s *walkState[F, Fsys]) removeVisited(fsys Fsys, virtualPath, realPath string, info fs.FileInfo) {
+func (s *walkState[F, Fsys]) removeVisited(
+	fsys Fsys,
+	virtualPath, realPath string,
+	info fs.FileInfo,
+) {
 	ident, ok := fileIdentFromSys(fsys, virtualPath, realPath, info)
 	if ok {
 		delete(s.visitedInodes, ident)
@@ -121,7 +129,11 @@ func walkDir_[F File, Fsys Fs[F]](
 		info, err = fsys.Stat(path)
 		if err == nil && realPath != "" {
 			var numResolved int
-			realPath_, numResolved, err = fsutil.ResolveSymlink(fsys, realPath, state.symlinkResolveRemaining)
+			realPath_, numResolved, err = fsutil.ResolveSymlink(
+				fsys,
+				realPath,
+				state.symlinkResolveRemaining,
+			)
 			state.symlinkResolveRemaining -= numResolved
 			defer func() {
 				state.symlinkResolveRemaining += numResolved

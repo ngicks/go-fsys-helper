@@ -55,7 +55,12 @@ type resolveResult struct {
 //
 // Caller must hold state.mu (read lock is sufficient — resolve never
 // mutates the tree).
-func (s *state) resolve(boundary, start *dir, name string, followLast bool, op string) (resolveResult, error) {
+func (s *state) resolve(
+	boundary, start *dir,
+	name string,
+	followLast bool,
+	op string,
+) (resolveResult, error) {
 	slash, err := normalize(name)
 	if err != nil {
 		return resolveResult{}, fsutil.WrapPathErr(op, name, err)
@@ -130,7 +135,10 @@ func (s *state) resolve(boundary, start *dir, name string, followLast bool, op s
 // resolveParent splits name into (parent, base) and resolves the parent dir.
 // The trailing base component is not looked up. Used by operations that
 // create or remove a leaf at a known parent.
-func (s *state) resolveParent(boundary, start *dir, name, op string) (parent *dir, base string, err error) {
+func (s *state) resolveParent(
+	boundary, start *dir,
+	name, op string,
+) (parent *dir, base string, err error) {
 	slash, err := normalize(name)
 	if err != nil {
 		return nil, "", fsutil.WrapPathErr(op, name, err)
@@ -174,7 +182,9 @@ func chmodApply(opt *resolvedOption, m *metadata, mode fs.FileMode) {
 	// Preserve type bits; recompute everything else through MaskChmodMode so
 	// platform emulation (e.g. fsutil.MaskChmodModeWindows) gets the chance
 	// to widen or narrow as it sees fit.
-	typeBits := m.mode & ^fs.ModePerm & ^(fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky | fs.ModeAppend | fs.ModeExclusive | fs.ModeTemporary)
+	const extraBits = fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky |
+		fs.ModeAppend | fs.ModeExclusive | fs.ModeTemporary
+	typeBits := m.mode & ^fs.ModePerm & ^extraBits
 	m.mode = typeBits | opt.maskChmodMode(mode)
 }
 

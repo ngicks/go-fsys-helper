@@ -1,3 +1,5 @@
+// Package pathutil provides iterators over path components, allowing callers
+// to walk a filesystem path from its head (outermost) or tail (innermost) segment.
 package pathutil
 
 import (

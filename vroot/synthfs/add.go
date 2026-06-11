@@ -123,7 +123,14 @@ func (r *Root) AddFS(name string, fsys fs.FS, cb AddFunc) error {
 // dst is the dir under which the entry will land (parent of base in the
 // synth tree); base is the basename; mountSlash is the slash path of the
 // entry; src is the path in fsys.
-func (r *Root) addFSWalk(dst *dir, base, mountSlash string, fsys fs.FS, rl fs.ReadLinkFS, src string, cb AddFunc) error {
+func (r *Root) addFSWalk(
+	dst *dir,
+	base, mountSlash string,
+	fsys fs.FS,
+	rl fs.ReadLinkFS,
+	src string,
+	cb AddFunc,
+) error {
 	var (
 		info fs.FileInfo
 		err  error
@@ -166,7 +173,11 @@ func (r *Root) addFSWalk(dst *dir, base, mountSlash string, fsys fs.FS, rl fs.Re
 			return nil
 		}
 		if rl == nil {
-			return fsutil.WrapPathErr("AddFS", mountSlash, errors.New("synthfs: source fs does not implement fs.ReadLinkFS"))
+			return fsutil.WrapPathErr(
+				"AddFS",
+				mountSlash,
+				errors.New("synthfs: source fs does not implement fs.ReadLinkFS"),
+			)
 		}
 		target, err := rl.ReadLink(src)
 		if err != nil {
@@ -225,7 +236,13 @@ func (r *Root) addFSWalk(dst *dir, base, mountSlash string, fsys fs.FS, rl fs.Re
 // existing entry when possible. If override is true, an existing dir is
 // replaced (its contents are pruned first). Returns the resulting dir.
 // Caller holds state.mu (write).
-func (r *Root) materializeDir(dst *dir, base string, info fs.FileInfo, existing node, override bool) *dir {
+func (r *Root) materializeDir(
+	dst *dir,
+	base string,
+	info fs.FileInfo,
+	existing node,
+	override bool,
+) *dir {
 	if d, ok := existing.(*dir); ok && !override {
 		return d
 	}
@@ -242,7 +259,14 @@ func (r *Root) materializeDir(dst *dir, base string, info fs.FileInfo, existing 
 
 // descend visits the children of src inside fsys and dispatches each through
 // addFSWalk.
-func (r *Root) descend(d *dir, parentSlash string, fsys fs.FS, rl fs.ReadLinkFS, src string, cb AddFunc) error {
+func (r *Root) descend(
+	d *dir,
+	parentSlash string,
+	fsys fs.FS,
+	rl fs.ReadLinkFS,
+	src string,
+	cb AddFunc,
+) error {
 	entries, err := fs.ReadDir(fsys, src)
 	if err != nil {
 		return err

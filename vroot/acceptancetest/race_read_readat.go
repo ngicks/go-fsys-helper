@@ -69,7 +69,12 @@ func TestRaceReadReadAt[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, F
 					return err
 				}
 				if n == readLen && string(buf) != want {
-					return fmt.Errorf("ReadAt(%d) = %q, want %q: concurrent Read corrupted ReadAt's offset", fixedOff, buf, want)
+					return fmt.Errorf(
+						"ReadAt(%d) = %q, want %q: concurrent Read corrupted ReadAt's offset",
+						fixedOff,
+						buf,
+						want,
+					)
 				}
 				readAts.Add(1)
 			}

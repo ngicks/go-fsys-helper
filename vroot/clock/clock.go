@@ -1,3 +1,5 @@
+// Package clock abstracts wall-clock access so that consumers can be tested
+// with a controlled time source instead of the real system clock.
 package clock
 
 import "time"

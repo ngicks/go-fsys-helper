@@ -27,7 +27,11 @@ func makeFs[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs], lines ..
 // makeRoot creates a new Root from the SetupRoot and registers Close() via t.Cleanup.
 //
 // lines, when non-empty, are pre-applied to the Root by SetupRoot.Make.
-func makeRoot[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot[F, R], lines ...string) R {
+func makeRoot[F vroot.File, R vroot.Root[F, R]](
+	t *testing.T,
+	s SetupRoot[F, R],
+	lines ...string,
+) R {
 	t.Helper()
 	r := s.Make(t, lines)
 	t.Cleanup(func() {

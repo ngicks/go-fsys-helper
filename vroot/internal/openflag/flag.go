@@ -1,3 +1,5 @@
+// Package openflag provides helpers for interpreting os.OpenFile flag combinations,
+// such as determining whether a flag combination implies a read, write, or read-write operation.
 package openflag
 
 import (

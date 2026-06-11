@@ -112,7 +112,11 @@ func TestCopyFsOption_MaskChmodMode(t *testing.T) {
 
 			expectedFilePerm := tc.expectedFileMode
 			if fileInfo.Mode().Perm() != expectedFilePerm {
-				t.Errorf("file permissions: not equal: expected(%o) != actual(%o)", expectedFilePerm, fileInfo.Mode().Perm())
+				t.Errorf(
+					"file permissions: not equal: expected(%o) != actual(%o)",
+					expectedFilePerm,
+					fileInfo.Mode().Perm(),
+				)
 			}
 
 			// Verify directory permissions
@@ -123,7 +127,11 @@ func TestCopyFsOption_MaskChmodMode(t *testing.T) {
 
 			expectedDirPerm := tc.expectedDirMode
 			if dirInfo.Mode().Perm() != expectedDirPerm {
-				t.Errorf("directory permissions: not equal: expected(%o) != actual(%o)", expectedDirPerm, dirInfo.Mode().Perm())
+				t.Errorf(
+					"directory permissions: not equal: expected(%o) != actual(%o)",
+					expectedDirPerm,
+					dirInfo.Mode().Perm(),
+				)
 			}
 		})
 	}
@@ -222,7 +230,11 @@ func TestCopyFsOption_MaskChmodModeCopyPath(t *testing.T) {
 
 			expectedFilePerm := MaskChmodMode(tc.expectedFileMode)
 			if fileInfo.Mode().Perm() != (expectedFilePerm) {
-				t.Errorf("file permissions: not equal: expected(%o) != actual(%o)", expectedFilePerm, fileInfo.Mode().Perm())
+				t.Errorf(
+					"file permissions: not equal: expected(%o) != actual(%o)",
+					expectedFilePerm,
+					fileInfo.Mode().Perm(),
+				)
 			}
 
 			// Verify that the nested directory was created and has appropriate permissions

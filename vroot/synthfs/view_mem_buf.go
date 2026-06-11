@@ -236,10 +236,18 @@ func (h *memHandle) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekEnd:
 		offset += int64(h.buf.length())
 	default:
-		return 0, fsutil.WrapPathErr("seek", h.name, fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid))
+		return 0, fsutil.WrapPathErr(
+			"seek",
+			h.name,
+			fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid),
+		)
 	}
 	if offset < 0 {
-		return 0, fsutil.WrapPathErr("seek", h.name, fmt.Errorf("negative offset %d: %w", offset, fs.ErrInvalid))
+		return 0, fsutil.WrapPathErr(
+			"seek",
+			h.name,
+			fmt.Errorf("negative offset %d: %w", offset, fs.ErrInvalid),
+		)
 	}
 	h.off = offset
 	return h.off, nil

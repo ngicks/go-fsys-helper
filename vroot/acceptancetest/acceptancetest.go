@@ -23,7 +23,8 @@ const (
 	OsEnv Os = iota
 	// OsUnix means unix-like behavior: chmod respects bits, symlinks freely allowed, etc.
 	OsUnix
-	// OsWindows means Windows behavior: chmod only flips the read-only bit, symlinks may require privileges, etc.
+	// OsWindows means Windows behavior: chmod only flips the read-only bit, symlinks may require
+	// privileges, etc.
 	OsWindows
 )
 
@@ -55,10 +56,24 @@ func (o Os) Resolve(t *testing.T) Os {
 	switch runtime.GOOS {
 	case "windows":
 		return OsWindows
-	case "aix", "android", "darwin", "dragonfly", "freebsd", "hurd", "illumos", "ios", "linux", "netbsd", "openbsd", "solaris":
+	case "aix",
+		"android",
+		"darwin",
+		"dragonfly",
+		"freebsd",
+		"hurd",
+		"illumos",
+		"ios",
+		"linux",
+		"netbsd",
+		"openbsd",
+		"solaris":
 		return OsUnix
 	default:
-		t.Fatalf("acceptancetest: GOOS %q is neither POSIX-like nor windows; set Option.Os explicitly", runtime.GOOS)
+		t.Fatalf(
+			"acceptancetest: GOOS %q is neither POSIX-like nor windows; set Option.Os explicitly",
+			runtime.GOOS,
+		)
 		return OsEnv
 	}
 }

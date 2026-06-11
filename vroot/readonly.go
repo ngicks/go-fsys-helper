@@ -175,7 +175,11 @@ func (r *ReadOnlyRoot[F, R]) Open(name string) (*ReadOnlyFile, error) {
 	return NewReadOnlyFile(r.inner.Open(name))
 }
 
-func (r *ReadOnlyRoot[F, R]) OpenFile(name string, flag int, perm fs.FileMode) (*ReadOnlyFile, error) {
+func (r *ReadOnlyRoot[F, R]) OpenFile(
+	name string,
+	flag int,
+	perm fs.FileMode,
+) (*ReadOnlyFile, error) {
 	if openflag.WriteOp(flag) {
 		return nil, fsutil.WrapPathErr("open", name, errdef.EROFS)
 	}

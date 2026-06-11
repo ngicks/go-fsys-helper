@@ -41,7 +41,10 @@ var RootFsys = []string{
 //
 // Set readable=true to include the read-only tree under root/readable/.
 // Set writable=true to include the writable tree under root/writable/.
-func MakeOsFsys[T testhelper.Test[T], F testhelper.File, Fs testhelper.Fsys[F]](c *testhelper.C[T, F, Fs], readable, writable bool) {
+func MakeOsFsys[T testhelper.Test[T], F testhelper.File, Fs testhelper.Fsys[F]](
+	c *testhelper.C[T, F, Fs],
+	readable, writable bool,
+) {
 	lines := make([]string, 0, len(RootFsys))
 	for _, line := range RootFsys {
 		if !readable && strings.HasPrefix(line, "root/readable") {

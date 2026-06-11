@@ -26,7 +26,10 @@ func ReadDir[F File](fsys Fs[F], name string) ([]fs.DirEntry, error) {
 	// fs.ReadDir does this thing.
 	dirents, err := f.ReadDir(-1)
 	if len(dirents) >= 2 {
-		slices.SortFunc(dirents, func(i, j fs.DirEntry) int { return cmp.Compare(i.Name(), j.Name()) })
+		slices.SortFunc(
+			dirents,
+			func(i, j fs.DirEntry) int { return cmp.Compare(i.Name(), j.Name()) },
+		)
 	}
 	return dirents, err
 }

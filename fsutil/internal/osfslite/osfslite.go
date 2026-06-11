@@ -1,3 +1,5 @@
+// Package osfslite provides a lightweight OS filesystem wrapper that exposes
+// common file operations (open, stat, chmod, symlink, …) relative to a base directory.
 package osfslite
 
 import (
@@ -125,4 +127,3 @@ func (w *BasicWrapper) Open(name string) (fs.File, error) {
 func (w *BasicWrapper) Stat(name string) (fs.FileInfo, error) {
 	return w.osfsLite.Stat(name)
 }
-

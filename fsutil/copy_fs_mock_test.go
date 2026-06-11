@@ -22,13 +22,11 @@ type mockErrorFs struct {
 }
 
 // Create a type alias for testing
-type (
-	testMockErrorFs      = mockErrorFs
-	testMockCopyFsOption = CopyFsOption[*mockErrorFs, *os.File]
-)
+type testMockCopyFsOption = CopyFsOption[*mockErrorFs, *os.File]
 
 func (m *mockErrorFs) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) {
-	if m.openFileError != nil && (m.openFileErrorPath == "" || strings.Contains(name, m.openFileErrorPath)) {
+	if m.openFileError != nil &&
+		(m.openFileErrorPath == "" || strings.Contains(name, m.openFileErrorPath)) {
 		return nil, m.openFileError
 	}
 	return m.OsfsLite.OpenFile(name, flag, perm)
@@ -49,7 +47,8 @@ func (m *mockErrorFs) Chmod(name string, mode fs.FileMode) error {
 }
 
 func (m *mockErrorFs) Symlink(oldname, newname string) error {
-	if m.symlinkError != nil && (m.symlinkErrorTarget == "" || strings.Contains(newname, m.symlinkErrorTarget)) {
+	if m.symlinkError != nil &&
+		(m.symlinkErrorTarget == "" || strings.Contains(newname, m.symlinkErrorTarget)) {
 		return m.symlinkError
 	}
 	return m.OsfsLite.Symlink(oldname, newname)
@@ -71,27 +70,6 @@ func (m *mockErrorSrcFs) Open(name string) (fs.File, error) {
 		return nil, m.openError
 	}
 	return m.base.Open(name)
-}
-
-// mockErrorFile wraps a file and injects read errors
-type mockErrorFile struct {
-	base      fs.File
-	readError error
-}
-
-func (m *mockErrorFile) Read(b []byte) (int, error) {
-	if m.readError != nil {
-		return 0, m.readError
-	}
-	return m.base.Read(b)
-}
-
-func (m *mockErrorFile) Close() error {
-	return m.base.Close()
-}
-
-func (m *mockErrorFile) Stat() (fs.FileInfo, error) {
-	return m.base.Stat()
 }
 
 // mockErrorDirFs creates a filesystem that always fails on specific directory operations

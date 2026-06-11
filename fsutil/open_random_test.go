@@ -55,7 +55,7 @@ func TestMkdirRandom(t *testing.T) {
 
 func testOpenRandom(
 	t *testing.T,
-	opener func(fsys osfslite.OsfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
+	opener func(fsys osfslite.OsfsLite, dir, pattern string, perm fs.FileMode) (*os.File, error),
 	tc openFileRandomTestCase,
 ) {
 	t.Helper()
@@ -116,7 +116,7 @@ func TestMkdirRandom_BadPattern(t *testing.T) {
 
 func testOpenRandomBadPattern(
 	t *testing.T,
-	opener func(fsys osfslite.OsfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
+	opener func(fsys osfslite.OsfsLite, dir, pattern string, perm fs.FileMode) (*os.File, error),
 ) {
 	t.Helper()
 
@@ -147,7 +147,7 @@ func TestMkdirRandom_MultipleFiles(t *testing.T) {
 
 func testOpenRandomMultipleFiles(
 	t *testing.T,
-	opener func(fsys osfslite.OsfsLite, dir string, pattern string, perm fs.FileMode) (*os.File, error),
+	opener func(fsys osfslite.OsfsLite, dir, pattern string, perm fs.FileMode) (*os.File, error),
 ) {
 	t.Helper()
 
@@ -186,7 +186,9 @@ func testOpenRandomMultipleFiles(
 		if len(before) != len(strconv.FormatUint(uint64(math.MaxUint32), 10)) {
 			t.Errorf("invalid name %q", name)
 		}
-		if len(strings.TrimLeftFunc(before, func(r rune) bool { return '0' <= r && r <= '9' })) != 0 {
+		if len(
+			strings.TrimLeftFunc(before, func(r rune) bool { return '0' <= r && r <= '9' }),
+		) != 0 {
 			t.Errorf("invalid name %q", name)
 		}
 	}
@@ -260,7 +262,8 @@ func TestOpenRandom_ErrorPaths(t *testing.T) {
 	})
 }
 
-// mockFsAlwaysExists is a mock filesystem that always returns fs.ErrExist for file/directory creation,
+// mockFsAlwaysExists is a mock filesystem that always returns fs.ErrExist for file/directory
+// creation,
 // used to test max retry behavior that results in ErrMaxRetry
 type mockFsAlwaysExists struct{}
 

@@ -54,7 +54,12 @@ func translateEscape(err error) error {
 		return &fs.PathError{Op: pathErr.Op, Path: pathErr.Path, Err: vroot.ErrPathEscapes}
 	}
 	if linkErr, ok := errors.AsType[*os.LinkError](err); ok {
-		return &os.LinkError{Op: linkErr.Op, Old: linkErr.Old, New: linkErr.New, Err: vroot.ErrPathEscapes}
+		return &os.LinkError{
+			Op:  linkErr.Op,
+			Old: linkErr.Old,
+			New: linkErr.New,
+			Err: vroot.ErrPathEscapes,
+		}
 	}
 	return vroot.ErrPathEscapes
 }

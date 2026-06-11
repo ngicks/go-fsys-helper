@@ -77,7 +77,10 @@ func ParseSetupProcLine[F File, Fs Fsys[F]](line string) (SetupProc[F, Fs], erro
 			}
 			content = unquoted
 		} else if strings.Contains(content, " ") {
-			return nil, fmt.Errorf("invalid file setup line %q: unquoted content must not contain spaces", line)
+			return nil, fmt.Errorf(
+				"invalid file setup line %q: unquoted content must not contain spaces",
+				line,
+			)
 		}
 		return &CreateFile[F, Fs]{
 			Name:    filepath.FromSlash(path),

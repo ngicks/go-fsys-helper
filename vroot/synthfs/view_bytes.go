@@ -85,7 +85,11 @@ func (h *bytesHandle) Seek(offset int64, whence int) (int64, error) {
 		}
 		return off, nil
 	default:
-		return 0, fsutil.WrapPathErr("seek", h.Name(), fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid))
+		return 0, fsutil.WrapPathErr(
+			"seek",
+			h.Name(),
+			fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid),
+		)
 	}
 }
 

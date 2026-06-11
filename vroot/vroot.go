@@ -22,7 +22,8 @@ var (
 
 // Fs represents capablities [*os.Root] has as an interface.
 //
-// Methods are encouraged to return [*os.LinkError] wrapping an appropriate error for Rename, Link and Symlink,
+// Methods are encouraged to return [*os.LinkError] wrapping an appropriate error for Rename, Link
+// and Symlink,
 // [*fs.PathError] for others,
 type Fs[F File] interface {
 	Chmod(name string, mode fs.FileMode) error

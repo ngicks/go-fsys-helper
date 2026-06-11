@@ -88,7 +88,11 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(srcDir, "subdir"), fs.ModePerm); err != nil {
 			t.Fatalf("failed to create source subdir: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(srcDir, "subdir", "file.txt"), []byte("content"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(srcDir, "subdir", "file.txt"),
+			[]byte("content"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create source file: %v", err)
 		}
 
@@ -145,7 +149,14 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			openError: fs.ErrPermission,
 			openPath:  "unreadable.txt",
 		}
-		err = opt.copyEntry(osfslite.New(dstDir), mockSrcFs, "unreadable.txt", "unreadable.txt", info, nil)
+		err = opt.copyEntry(
+			osfslite.New(dstDir),
+			mockSrcFs,
+			"unreadable.txt",
+			"unreadable.txt",
+			info,
+			nil,
+		)
 		if err == nil {
 			t.Error("expected error when copying unreadable file")
 		}
@@ -277,7 +288,8 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Fatalf("failed to lstat symlink: %v", err)
 		}
 
-		// Set up filesystems where src doesn't support ReadLink (BasicWrapper doesn't implement ReadLinkFs)
+		// Set up filesystems where src doesn't support ReadLink (BasicWrapper doesn't implement
+		// ReadLinkFs)
 		srcFs := osfslite.NewBasicWrapper(srcDir)
 		dstFs := osfslite.New(dstDir)
 
@@ -292,7 +304,10 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 
 		// Verify symlink was NOT copied (since src doesn't support ReadLink)
 		if _, err := os.Lstat(filepath.Join(dstDir, "link.txt")); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("symlink should not have been copied when src doesn't support ReadLink: %v", err)
+			t.Errorf(
+				"symlink should not have been copied when src doesn't support ReadLink: %v",
+				err,
+			)
 		}
 	})
 
@@ -388,7 +403,11 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 			t.Errorf("failed to read copied file: %v", err)
 		}
 		if string(copiedContent) != "content" {
-			t.Errorf("copied file content mismatch: expected %q, got %q", "content", string(copiedContent))
+			t.Errorf(
+				"copied file content mismatch: expected %q, got %q",
+				"content",
+				string(copiedContent),
+			)
 		}
 	})
 

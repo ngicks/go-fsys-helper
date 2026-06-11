@@ -1,3 +1,5 @@
+// Package osfs provides [vroot.Fs] and [vroot.Root] implementations backed
+// by the real operating-system filesystem via [os.OpenRoot].
 package osfs
 
 import (

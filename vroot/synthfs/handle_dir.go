@@ -84,7 +84,11 @@ func (h *dirHandle) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
 		if offset < 0 {
-			return 0, fsutil.WrapPathErr("seek", h.name, fmt.Errorf("negative offset %d: %w", offset, fs.ErrInvalid))
+			return 0, fsutil.WrapPathErr(
+				"seek",
+				h.name,
+				fmt.Errorf("negative offset %d: %w", offset, fs.ErrInvalid),
+			)
 		}
 		h.cursor = 0
 	case io.SeekCurrent:
@@ -93,13 +97,21 @@ func (h *dirHandle) Seek(offset int64, whence int) (int64, error) {
 		}
 	case io.SeekEnd:
 		if offset > 0 {
-			return 0, fsutil.WrapPathErr("seek", h.name, fmt.Errorf("positive offset %d: %w", offset, fs.ErrInvalid))
+			return 0, fsutil.WrapPathErr(
+				"seek",
+				h.name,
+				fmt.Errorf("positive offset %d: %w", offset, fs.ErrInvalid),
+			)
 		}
 		h.st.mu.RLock()
 		h.cursor = h.node.ordered.Len()
 		h.st.mu.RUnlock()
 	default:
-		return 0, fsutil.WrapPathErr("seek", h.name, fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid))
+		return 0, fsutil.WrapPathErr(
+			"seek",
+			h.name,
+			fmt.Errorf("unknown whence %d: %w", whence, fs.ErrInvalid),
+		)
 	}
 	return 0, nil
 }

@@ -18,25 +18,36 @@ var (
 )
 
 // OpenFileRandom creates a new file with a randomly generated name matching the given pattern.
-// The pattern may contain a single '*' wildcard which will be replaced with a random 10-digit number.
+// The pattern may contain a single '*' wildcard which will be replaced with a random 10-digit
+// number.
 // If pattern contains no '*', the entire pattern is used as a prefix.
 //
 // Returns ErrBadPattern if pattern contains path separators.
 // Returns ErrMaxRetry if max retry attempts (10000) are exceeded due to name collisions.
-func OpenFileRandom[FS OpenFileFs[File], File any](fsys FS, dir string, pattern string, perm fs.FileMode) (File, error) {
+func OpenFileRandom[FS OpenFileFs[File], File any](
+	fsys FS,
+	dir string,
+	pattern string,
+	perm fs.FileMode,
+) (File, error) {
 	return openRandom(
 		fsys,
 		dir,
 		pattern,
 		perm,
 		func(fsys FS, name string, perm fs.FileMode) (File, error) {
-			return fsys.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, perm|0o200) // at least writable
+			return fsys.OpenFile(
+				name,
+				os.O_RDWR|os.O_CREATE|os.O_EXCL,
+				perm|0o200,
+			) // at least writable
 		},
 	)
 }
 
 // MkdirRandom creates a new directory with a randomly generated name matching the given pattern.
-// The pattern may contain a single '*' wildcard which will be replaced with a random 10-digit number.
+// The pattern may contain a single '*' wildcard which will be replaced with a random 10-digit
+// number.
 // If pattern contains no '*', the entire pattern is used as a prefix.
 // Returns a file handle to the created directory.
 //
