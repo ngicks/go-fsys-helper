@@ -3,7 +3,7 @@
 | Entry | Title | Status | Commit |
 |-------|-------|--------|--------|
 | V1 | acceptance escape-suite expansion (all methods, real targets) | done | - |
-| V2 | synthfs Rename subtree-cycle rejection | planned | - |
+| V2 | synthfs Rename subtree-cycle rejection | done | - |
 | V3 | synthfs mode ownership + uniform removal guard | planned | - |
 | V4 | WalkDir sibling-loop fix + escape-safety docs | planned | - |
 | V5 | internal/paths iterator hardening | planned | - |

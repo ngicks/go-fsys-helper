@@ -3,6 +3,8 @@ package acceptancetest
 import (
 	"bytes"
 	"io/fs"
+	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
@@ -72,4 +74,29 @@ func TestRenameUnix[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) 
 			t.Errorf("dst content after overwrite: got %q, want %q", got, "fresh")
 		}
 	})
+
+	// Moving a directory into its own subtree must fail with EINVAL, matching
+	// POSIX rename(2). A naive re-parent would detach the parent chain into a
+	// cycle, so this also guards against ".."-walk hangs. Pairs with plan 01 V2.
+	t.Run("directory into own subtree", func(t *testing.T) {
+		c.SetupLines(
+			"mvdir/",
+			"mvdir/inner/",
+			`mvdir/inner/keep.txt: "k"`,
+		)
+		// Direct child and deeper descendant are both rejected.
+		err := fsys.Rename("mvdir", filepath.Join("mvdir", "inner", "moved"))
+		testhelper.ErrIs(t, err, syscall.EINVAL)
+		err = fsys.Rename("mvdir", filepath.Join("mvdir", "child"))
+		testhelper.ErrIs(t, err, syscall.EINVAL)
+		// The tree must remain intact and walkable after the rejection.
+		_, err = fsys.Stat(filepath.Join("mvdir", "inner", "keep.txt"))
+		testhelper.NilErr(t, err)
+	})
+
+	// NOTE: "rename a path onto itself" is intentionally NOT asserted here.
+	// It is not a portable contract: Linux rename(2) of a *directory* onto
+	// itself returns EEXIST through plain os.Rename (the osfs.Fs path), while
+	// *os.Root.Rename and synthfs treat it as a no-op. synthfs's own no-op
+	// guarantee is covered by synthfs/rename_test.go (plan 01 V2).
 }
