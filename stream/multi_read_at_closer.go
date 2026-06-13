@@ -39,8 +39,8 @@ type MultiReadError struct {
 
 func (e *MultiReadError) Error() string {
 	return fmt.Sprintf(
-		"MultiReadError: idx = %d, off = %d, err = %v, cause = %s",
-		e.Index, e.ReaderOff, e.Err, e.Cause,
+		"MultiReadError: idx = %d, off = %d, totalOff = %d, bufLen = %d, err = %v, cause = %s",
+		e.Index, e.ReaderOff, e.TotalOff, e.BufLen, e.Err, e.Cause,
 	)
 }
 
@@ -148,45 +148,19 @@ func (r *multiReadAtSeekCloser) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
+	// search is performed on the tail r.r[r.idx:], so the returned index is
+	// relative; idx is the absolute segment index the read targets.
 	i := search(r.off, r.r[r.idx:])
-	rr := r.r[r.idx:][i]
+	idx := r.idx + i
 
-	off := r.off
-	readerOff := r.off - rr.headOff
-	n, err := rr.R.ReadAt(p, readerOff)
+	n, isEOF, err := r.readSegment(idx, p, r.off)
 
-	// Classify EOF with errors.Is so that a segment returning a wrapped EOF
-	// (e.g. fmt.Errorf("...: %w", io.EOF)) is treated as a clean end-of-segment
-	// rather than a hard error. This cannot mask a short read because the
-	// rem-based validation below converts a too-short read into
-	// io.ErrUnexpectedEOF. Normalize to the canonical io.EOF so a wrapped EOF
-	// surfaced from the final segment does not leak to callers (e.g. io.ReadAll)
-	// that compare against io.EOF.
-	isEOF := errors.Is(err, io.EOF)
-	if isEOF {
-		err = io.EOF
-	}
-
+	// Advance the cursor whenever bytes were produced or the segment was fully
+	// consumed (EOF). This uses the absolute index so state stays consistent
+	// even when zero-length segments made search skip forward (i > 0).
 	if n > 0 || isEOF {
-		r.idx += i // i could be 0.
+		r.idx = idx
 		r.off += int64(n)
-	}
-
-	wrapErr := func(err error, cause string) error {
-		return &MultiReadError{r.idx, readerOff, off, len(p), err, cause}
-	}
-
-	if err != nil && !isEOF {
-		return n, wrapErr(err, "read error")
-	}
-
-	switch rem := rr.Size - readerOff; {
-	case int64(n) > rem:
-		return n, wrapErr(ErrInvalidSize, "read more")
-	case isEOF && n == 0 && rem > 0:
-		return n, wrapErr(io.ErrUnexpectedEOF, "read less")
-	case isEOF && len(r.r)-1 > r.idx:
-		err = nil
 	}
 
 	return n, err
@@ -248,40 +222,64 @@ func (r *multiReadAtSeekCloser) readAt(p []byte, off int64) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	i := search(off, r.r)
-	if i < 0 {
+	idx := search(off, r.r)
+	if idx < 0 {
 		return 0, io.EOF
 	}
 
-	rr := r.r[i]
+	n, _, err = r.readSegment(idx, p, off)
+	return n, err
+}
+
+// readSegment performs a single ReadAt against the segment at the absolute
+// index idx, where off is the virtual offset within the whole concatenation.
+// It is the one place that reads a segment and validates the result; both Read
+// and readAt delegate to it so the error classification, size validation, and
+// (crucially) the absolute segment index recorded in any MultiReadError stay in
+// one implementation.
+//
+// It returns the number of bytes read, whether the segment reached EOF (so the
+// caller may advance its cursor), and the classified error:
+//   - a *MultiReadError on a hard read error, a too-large read (ErrInvalidSize),
+//     or a too-short read (io.ErrUnexpectedEOF), always carrying the absolute
+//     index idx;
+//   - nil when the segment hit EOF but a later segment still has data (so the
+//     concatenation should continue);
+//   - io.EOF when the final segment hit EOF.
+func (r *multiReadAtSeekCloser) readSegment(idx int, p []byte, off int64) (n int, isEOF bool, err error) {
+	rr := r.r[idx]
 	readerOff := off - rr.headOff
 	n, err = rr.R.ReadAt(p, readerOff)
 
-	// Classify EOF with errors.Is so a wrapped EOF from a user-supplied segment
-	// is treated as a clean end-of-segment, and normalize to the canonical
-	// io.EOF (see Read for the rationale).
-	isEOF := errors.Is(err, io.EOF)
+	// Classify EOF with errors.Is so a segment returning a wrapped EOF
+	// (e.g. fmt.Errorf("...: %w", io.EOF)) is treated as a clean end-of-segment
+	// rather than a hard error. Normalize to the canonical io.EOF so a wrapped
+	// EOF surfaced from the final segment does not leak to callers (e.g.
+	// io.ReadAll) that compare against io.EOF. This cannot mask a short read
+	// because the rem-based validation below converts a too-short read into
+	// io.ErrUnexpectedEOF.
+	isEOF = errors.Is(err, io.EOF)
 	if isEOF {
 		err = io.EOF
 	}
 
 	wrapErr := func(err error, cause string) error {
-		return &MultiReadError{i, readerOff, off, len(p), err, cause}
+		return &MultiReadError{idx, readerOff, off, len(p), err, cause}
 	}
 
 	if err != nil && !isEOF {
-		return n, wrapErr(err, "read error")
+		return n, isEOF, wrapErr(err, "read error")
 	}
 
 	switch rem := rr.Size - readerOff; {
 	case int64(n) > rem:
-		return n, wrapErr(ErrInvalidSize, "read more")
+		return n, isEOF, wrapErr(ErrInvalidSize, "read more")
 	case isEOF && n == 0 && rem > 0:
-		return n, wrapErr(io.ErrUnexpectedEOF, "read less")
-	case isEOF && len(r.r)-1 > i:
+		return n, isEOF, wrapErr(io.ErrUnexpectedEOF, "read less")
+	case isEOF && len(r.r)-1 > idx:
 		err = nil
 	}
-	return n, err
+	return n, isEOF, err
 }
 
 func (r *multiReadAtSeekCloser) Close() error {

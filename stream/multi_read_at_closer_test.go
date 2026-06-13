@@ -2,6 +2,7 @@ package stream
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -186,6 +187,87 @@ func TestMultiReadAtSeekCloser_wrapped_eof(t *testing.T) {
 		testhelper.AssertEq(t, len(randomBytes), n)
 		testhelper.AssertTrue(t, bytes.Equal(randomBytes, buf), "bytes.Equal returned false")
 	})
+}
+
+// hardErrReaderAt is an io.ReaderAt whose ReadAt always fails with (0, err).
+// It models a segment that errors immediately (e.g. a network read that fails
+// before any byte arrives).
+type hardErrReaderAt struct {
+	err error
+}
+
+func (r hardErrReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	return 0, r.err
+}
+
+// TestMultiReadAtSeekCloser_error_index_after_zero_length verifies that a
+// MultiReadError carries the ABSOLUTE index of the failing segment even when a
+// preceding zero-length segment caused search to skip forward (i > 0). Before
+// the fix the Read path reported the stale base r.idx (0) instead of the real
+// failing index (1) because the n==0 hard-error guard skipped the cursor
+// advance. Both Read and ReadAt are asserted; ReadAt was already correct, Read
+// was not.
+func TestMultiReadAtSeekCloser_error_index_after_zero_length(t *testing.T) {
+	sentinel := errors.New("boom")
+	type testCase struct {
+		name        string
+		readAtLoc   int64
+		wantReadOff int64 // expected MultiReadError.ReaderOff
+	}
+	for _, tc := range []testCase{
+		{name: "at_segment_start", readAtLoc: 0, wantReadOff: 0},
+	} {
+		build := func() ReadAtReadSeekCloser {
+			// Segment 0 is zero-length; segment 1 fails immediately with sentinel.
+			// Both have headOff 0, so search(0) skips segment 0 and returns
+			// relative index 1.
+			return NewMultiReadAtSeekCloser([]SizedReaderAt{
+				{R: bytes.NewReader(nil), Size: 0},
+				{R: hardErrReaderAt{err: sentinel}, Size: 8},
+			})
+		}
+		t.Run("Read_"+tc.name, func(t *testing.T) {
+			r := build()
+			buf := make([]byte, 8)
+			_, err := r.Read(buf)
+			e := testhelper.AssertErrorsAs[*MultiReadError](t, err)
+			testhelper.AssertErrorsIs(t, err, sentinel)
+			testhelper.AssertEq(t, 1, e.Index) // absolute index, not stale 0
+			testhelper.AssertEq(t, tc.wantReadOff, e.ReaderOff)
+			testhelper.AssertEq(t, tc.readAtLoc, e.TotalOff)
+			testhelper.AssertEq(t, len(buf), e.BufLen)
+			t.Logf("err = %s", e.Error())
+		})
+		t.Run("ReadAt_"+tc.name, func(t *testing.T) {
+			r := build()
+			buf := make([]byte, 8)
+			_, err := r.ReadAt(buf, tc.readAtLoc)
+			e := testhelper.AssertErrorsAs[*MultiReadError](t, err)
+			testhelper.AssertErrorsIs(t, err, sentinel)
+			testhelper.AssertEq(t, 1, e.Index)
+			testhelper.AssertEq(t, tc.wantReadOff, e.ReaderOff)
+			testhelper.AssertEq(t, tc.readAtLoc, e.TotalOff)
+			testhelper.AssertEq(t, len(buf), e.BufLen)
+		})
+	}
+}
+
+// TestMultiReadError_Error_includes_totalOff_bufLen verifies the Error() string
+// now surfaces TotalOff and BufLen, the most useful fields for locating a fault
+// in a concatenated stream.
+func TestMultiReadError_Error_includes_totalOff_bufLen(t *testing.T) {
+	e := &MultiReadError{
+		Index:     3,
+		ReaderOff: 7,
+		TotalOff:  4103,
+		BufLen:    1024,
+		Err:       ErrInvalidSize,
+		Cause:     "read more",
+	}
+	msg := e.Error()
+	testhelper.AssertTrue(t, strings.Contains(msg, "totalOff = 4103"), "missing totalOff: %q", msg)
+	testhelper.AssertTrue(t, strings.Contains(msg, "bufLen = 1024"), "missing bufLen: %q", msg)
+	testhelper.AssertTrue(t, strings.Contains(msg, "idx = 3"), "missing idx: %q", msg)
 }
 
 // TestMultiReadAtSeekCloser_negative_size verifies that a negative
