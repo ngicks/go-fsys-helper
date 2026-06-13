@@ -134,5 +134,20 @@ type Setup[F vroot.File, Fs vroot.Fs[F]] struct {
 type SetupRoot[F vroot.File, R vroot.Root[F, R]] struct {
 	Make func(t *testing.T, lines []string) R
 
+	// SetupExternal, when non-nil, is invoked by [TestRootEscapes] before the
+	// Root is built and exercised. Implementations backed by a real filesystem
+	// should use it to materialize the genuine out-of-root targets the escape
+	// symlinks point at — created relative to the same host directory the
+	// subsequent [Make] call will root at (e.g. a "../outside" file and a
+	// "../outsidedir/" directory). A regression that follows an escaping
+	// symlink then reads real out-of-root bytes — a detectable failure —
+	// instead of a benign ErrNotExist.
+	//
+	// Implementations typically share a per-test base directory between
+	// SetupExternal and Make via a closure. Pure in-memory implementations
+	// (synthfs/memfs) have nothing outside the root and leave this nil; for them
+	// the escapes are rejected lexically.
+	SetupExternal func(t *testing.T)
+
 	Option Option
 }

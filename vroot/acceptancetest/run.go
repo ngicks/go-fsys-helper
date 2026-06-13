@@ -81,17 +81,23 @@ func RunFs[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 	RunFsReadWrite(t, s)
 }
 
+// asFsSetup projects a [SetupRoot] onto the [Setup] it embeds, dropping the
+// Root-only fields (SetupExternal) so the Fs-level subsuites can run against it.
+func asFsSetup[F vroot.File, R vroot.Root[F, R]](s SetupRoot[F, R]) Setup[F, R] {
+	return Setup[F, R]{Make: s.Make, Option: s.Option}
+}
+
 // RunRootReadOnly runs the read-only subset of [vroot.Root] acceptance tests,
 // including the Fs read-only subset.
 func RunRootReadOnly[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot[F, R]) {
-	RunFsReadOnly(t, Setup[F, R](s))
+	RunFsReadOnly(t, asFsSetup(s))
 	t.Run("OpenRoot", func(t *testing.T) { TestOpenRoot(t, s) })
 }
 
 // RunRootReadWrite runs the read-write subset of [vroot.Root] acceptance tests,
 // including the Fs read-write subset.
 func RunRootReadWrite[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot[F, R]) {
-	RunFsReadWrite(t, Setup[F, R](s))
+	RunFsReadWrite(t, asFsSetup(s))
 	t.Run("Escapes", func(t *testing.T) { TestRootEscapes(t, s) })
 }
 

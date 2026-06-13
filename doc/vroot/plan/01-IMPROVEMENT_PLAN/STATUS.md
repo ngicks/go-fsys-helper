@@ -2,7 +2,7 @@
 
 | Entry | Title | Status | Commit |
 |-------|-------|--------|--------|
-| V1 | acceptance escape-suite expansion (all methods, real targets) | planned | - |
+| V1 | acceptance escape-suite expansion (all methods, real targets) | done | - |
 | V2 | synthfs Rename subtree-cycle rejection | planned | - |
 | V3 | synthfs mode ownership + uniform removal guard | planned | - |
 | V4 | WalkDir sibling-loop fix + escape-safety docs | planned | - |
@@ -11,3 +11,7 @@
 
 Baseline: all module tests green (2026-06-13).
 Per-entry summaries: `SUMMARY-<entry>.md` in this directory.
+
+Order note: V1's "dir-into-own-subtree rename" acceptance vector was deferred to
+V2 (it fails against synthfs until the V2 fix lands); it is added together with
+the synthfs Rename fix in the V2 commit.
