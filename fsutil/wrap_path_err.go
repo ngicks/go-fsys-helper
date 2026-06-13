@@ -9,21 +9,24 @@ import (
 //
 // If err is nil, WrapPathErr also returns nil.
 //
-// If err is already a PathError, each field of PathError is overwritten
-// by non zero op and/or path.
+// If err is already a PathError, a copy is returned with each field overwritten
+// by non zero op and/or path; the input error value is never mutated.
 func WrapPathErr(op, path string, err error) error {
 	if err == nil {
 		return nil
 	}
 	pathErr, ok := err.(*fs.PathError)
 	if ok {
+		// Copy-on-write: never mutate the caller's error value (it may be a
+		// shared sentinel, stored, or observed by another goroutine).
+		cp := *pathErr
 		if op != "" {
-			pathErr.Op = op
+			cp.Op = op
 		}
 		if path != "" {
-			pathErr.Path = path
+			cp.Path = path
 		}
-		return err
+		return &cp
 	}
 	return &fs.PathError{Op: op, Path: path, Err: err}
 }
@@ -32,24 +35,27 @@ func WrapPathErr(op, path string, err error) error {
 //
 // If err is nil, WrapLinkErr also returns nil.
 //
-// If err is already a LinkError, each field of LinkError is overwritten
-// by non zero op, old and/or new.
+// If err is already a LinkError, a copy is returned with each field overwritten
+// by non zero op, old and/or new; the input error value is never mutated.
 func WrapLinkErr(op, old, new string, err error) error {
 	if err == nil {
 		return nil
 	}
 	linkErr, ok := err.(*os.LinkError)
 	if ok {
+		// Copy-on-write: never mutate the caller's error value (it may be a
+		// shared sentinel, stored, or observed by another goroutine).
+		cp := *linkErr
 		if op != "" {
-			linkErr.Op = op
+			cp.Op = op
 		}
 		if old != "" {
-			linkErr.Old = old
+			cp.Old = old
 		}
 		if new != "" {
-			linkErr.New = new
+			cp.New = new
 		}
-		return err
+		return &cp
 	}
 	return &os.LinkError{Op: op, Old: old, New: new, Err: err}
 }

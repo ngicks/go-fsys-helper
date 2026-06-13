@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -199,7 +198,7 @@ func ResolveSymlink(
 		if err != nil {
 			return "", i, err
 		}
-		if info.Mode()&os.ModeSymlink == 0 {
+		if info.Mode()&fs.ModeSymlink == 0 {
 			return resolved, i + 1, nil
 		}
 	}
