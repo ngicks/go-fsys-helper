@@ -3,7 +3,7 @@
 | Entry | Title | Status | Commit |
 |-------|-------|--------|--------|
 | F1 | WrapPathErr/WrapLinkErr copy-on-write | done | - |
-| F2 | copyEntry surfaces destination Close error | planned | - |
+| F2 | copyEntry surfaces destination Close error | done | - |
 | F3 | resumable part/sidecar dedup | planned | - |
 | F4 | SafeWriteOption struct-only hooks | planned | - |
 | F5 | decideResume pure-function extraction | planned | - |

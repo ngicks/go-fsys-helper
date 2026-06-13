@@ -116,3 +116,37 @@ func (m *mockLstatFs) Lstat(name string) (fs.FileInfo, error) {
 	// Fallback to regular stat if the underlying FS doesn't support Lstat
 	return fs.Stat(m.base, name)
 }
+
+// closeErrFile wraps an *os.File and returns a preset error from Close after
+// the data has been written, simulating a network/buffer-backed file whose
+// final flush fails only at Close time (plan 01 entry F2).
+type closeErrFile struct {
+	*os.File
+	closeErr error
+}
+
+func (f *closeErrFile) Close() error {
+	// Always close the real fd to avoid leaks, then surface the injected error.
+	_ = f.File.Close()
+	return f.closeErr
+}
+
+// closeErrFs wraps an osfslite.OsfsLite and returns closeErrFile values whose
+// Close fails for paths containing closeErrPath.
+type closeErrFs struct {
+	osfslite.OsfsLite
+	closeErr     error
+	closeErrPath string
+}
+
+func (m *closeErrFs) OpenFile(name string, flag int, perm fs.FileMode) (*closeErrFile, error) {
+	f, err := m.OsfsLite.OpenFile(name, flag, perm)
+	if err != nil {
+		return nil, err
+	}
+	var cerr error
+	if m.closeErr != nil && (m.closeErrPath == "" || strings.Contains(name, m.closeErrPath)) {
+		cerr = m.closeErr
+	}
+	return &closeErrFile{File: f, closeErr: cerr}, nil
+}

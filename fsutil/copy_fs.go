@@ -201,7 +201,8 @@ func (opt CopyFsOption[Fsys, File]) copyEntry(
 	case info.Mode().IsRegular():
 		// Copy regular file
 
-		// Open source file
+		// Open source file. The read side stays deferred (closing a reader on
+		// the failure path is enough); this asymmetry matches resumable_fs.go.
 		srcFile, err := src.Open(srcPath)
 		if err != nil {
 			return err
@@ -213,7 +214,14 @@ func (opt CopyFsOption[Fsys, File]) copyEntry(
 		if err != nil {
 			return err
 		}
-		defer dstFile.Close()
+		// closed tracks whether the success-path close already ran, so the
+		// failure-path close below does not double-close.
+		closed := false
+		defer func() {
+			if !closed {
+				_ = dstFile.Close()
+			}
+		}()
 
 		// Copy content using io.CopyBuffer
 		bufP := bufpool.GetBytes()
@@ -222,6 +230,14 @@ func (opt CopyFsOption[Fsys, File]) copyEntry(
 		buf := *bufP
 		_, err = io.CopyBuffer(dstFile, srcFile, buf)
 		if err != nil {
+			return err
+		}
+
+		// Explicitly close on the success path and surface the error: on
+		// network/buffer-backed Fsys the final flush during Close is the only
+		// signal of a lost write.
+		closed = true
+		if err = dstFile.Close(); err != nil {
 			return err
 		}
 

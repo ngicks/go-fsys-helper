@@ -411,6 +411,44 @@ func TestCopyFs_ErrorPaths(t *testing.T) {
 		}
 	})
 
+	t.Run("CopyAll surfaces destination close error", func(t *testing.T) {
+		// A destination file whose Close fails (e.g. a final flush error on a
+		// network/buffer-backed Fsys) must surface from CopyAll, not be
+		// silently discarded (plan 01 entry F2).
+		tempDir := t.TempDir()
+		srcDir := filepath.Join(tempDir, "src")
+		dstDir := filepath.Join(tempDir, "dst")
+
+		if err := os.Mkdir(srcDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create src dir: %v", err)
+		}
+		if err := os.Mkdir(dstDir, fs.ModePerm); err != nil {
+			t.Fatalf("failed to create dst dir: %v", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("content"), 0o644); err != nil {
+			t.Fatalf("failed to create source file: %v", err)
+		}
+
+		closeErr := errors.New("simulated flush-on-close failure")
+		srcFs := os.DirFS(srcDir)
+		dstFs := &closeErrFs{
+			OsfsLite:     *osfslite.New(dstDir),
+			closeErr:     closeErr,
+			closeErrPath: "file.txt",
+		}
+
+		opt := CopyFsOption[*closeErrFs, *closeErrFile]{}
+
+		err := opt.CopyAll(dstFs, srcFs, ".")
+		if err == nil {
+			t.Fatal("expected destination close error to surface from CopyAll")
+		}
+		if !errors.Is(err, closeErr) {
+			t.Errorf("expected close error %v, got %v", closeErr, err)
+		}
+	})
+
 	t.Run("CopyAll IgnoreErr filter specific walk errors", func(t *testing.T) {
 		// Create root directory
 		tempDir := t.TempDir()
