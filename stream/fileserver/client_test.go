@@ -443,3 +443,101 @@ func TestHTTPClient_redaction_404_still_ErrNotExist(t *testing.T) {
 	}
 	assertNoSecret(t, err, "secretpass", "SECRET")
 }
+
+// instrumentedBody is an io.ReadCloser that records whether it was read to EOF
+// (drained) and whether Close was called. It wraps a bytes.Reader over a fixed
+// payload.
+type instrumentedBody struct {
+	r        *bytes.Reader
+	drained  bool
+	closed   bool
+	closeErr error
+}
+
+func newInstrumentedBody(payload []byte) *instrumentedBody {
+	return &instrumentedBody{r: bytes.NewReader(payload)}
+}
+
+func (b *instrumentedBody) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	if errors.Is(err, io.EOF) {
+		b.drained = true
+	}
+	return n, err
+}
+
+func (b *instrumentedBody) Close() error {
+	b.closed = true
+	return b.closeErr
+}
+
+// cannedResponse builds an *http.Response with the given status and an
+// instrumented body, suitable for returning from a doerFunc.
+func cannedResponse(status int, body *instrumentedBody) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Status:     http.StatusText(status),
+		Header:     make(http.Header),
+		Body:       body,
+	}
+}
+
+// TestHTTPClient_drains_non2xx verifies that on every non-success branch of
+// Get and Put the response body is drained to EOF and closed (so keep-alive
+// connections are reusable). It uses an instrumented body and a custom Doer.
+func TestHTTPClient_drains_non2xx(t *testing.T) {
+	u, _ := url.Parse("http://stub.invalid/bucket")
+
+	t.Run("Get_404", func(t *testing.T) {
+		body := newInstrumentedBody([]byte("not found details"))
+		c := &fileserver.HTTPClient{BaseURL: u, Client: doerFunc(
+			func(*http.Request) (*http.Response, error) {
+				return cannedResponse(http.StatusNotFound, body), nil
+			},
+		)}
+		_, _, err := c.Get(context.Background(), "obj", 0)
+		testhelper.AssertErrorsIs(t, err, fs.ErrNotExist)
+		testhelper.AssertTrue(t, body.drained, "Get 404: body not drained to EOF")
+		testhelper.AssertTrue(t, body.closed, "Get 404: body not closed")
+	})
+
+	t.Run("Get_500_default", func(t *testing.T) {
+		body := newInstrumentedBody([]byte("internal error"))
+		c := &fileserver.HTTPClient{BaseURL: u, Client: doerFunc(
+			func(*http.Request) (*http.Response, error) {
+				return cannedResponse(http.StatusInternalServerError, body), nil
+			},
+		)}
+		_, _, err := c.Get(context.Background(), "obj", 0)
+		testhelper.AssertNonNilInterface(t, err)
+		testhelper.AssertTrue(t, body.drained, "Get 500: body not drained to EOF")
+		testhelper.AssertTrue(t, body.closed, "Get 500: body not closed")
+	})
+
+	t.Run("Get_200_ignored_range", func(t *testing.T) {
+		// offset > 0 but server replies 200 => ignored-range error branch.
+		body := newInstrumentedBody([]byte("full body the server should not have sent"))
+		c := &fileserver.HTTPClient{BaseURL: u, Client: doerFunc(
+			func(*http.Request) (*http.Response, error) {
+				return cannedResponse(http.StatusOK, body), nil
+			},
+		)}
+		_, _, err := c.Get(context.Background(), "obj", 10)
+		testhelper.AssertErrorContains(t, err, "server ignored range")
+		testhelper.AssertTrue(t, body.drained, "Get 200-ignored-range: body not drained")
+		testhelper.AssertTrue(t, body.closed, "Get 200-ignored-range: body not closed")
+	})
+
+	t.Run("Put_500", func(t *testing.T) {
+		body := newInstrumentedBody([]byte("put rejected"))
+		c := &fileserver.HTTPClient{BaseURL: u, Client: doerFunc(
+			func(*http.Request) (*http.Response, error) {
+				return cannedResponse(http.StatusInternalServerError, body), nil
+			},
+		)}
+		err := c.Put(context.Background(), "obj", 4, bytes.NewReader([]byte("data")))
+		testhelper.AssertNonNilInterface(t, err)
+		testhelper.AssertTrue(t, body.drained, "Put 500: body not drained to EOF")
+		testhelper.AssertTrue(t, body.closed, "Put 500: body not closed")
+	})
+}

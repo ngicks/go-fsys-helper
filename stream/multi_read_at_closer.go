@@ -7,8 +7,6 @@ import (
 	"io/fs"
 	"slices"
 	"syscall"
-
-	"github.com/ngicks/go-fsys-helper/stream/internal/serr"
 )
 
 var (
@@ -290,13 +288,15 @@ func (r *multiReadAtSeekCloser) readSegment(idx int, p []byte, off int64) (n int
 }
 
 func (r *multiReadAtSeekCloser) Close() error {
-	var errs []serr.PrefixErr
-	for i, rr := range r.r {
-		if c, ok := rr.R.(io.Closer); ok {
-			errs = append(errs, serr.PrefixErr{P: fmt.Sprintf("index %d: ", i), E: c.Close()})
+	return closeFanOut(r.r, func(rr sizedReaderAt) (error, bool) {
+		// A segment is closed only if its ReaderAt implements io.Closer;
+		// otherwise the index is skipped entirely.
+		c, ok := rr.R.(io.Closer)
+		if !ok {
+			return nil, false
 		}
-	}
-	return serr.GatherPrefixed(errs)
+		return c.Close(), true
+	})
 }
 
 var searchThreshold int = 32

@@ -111,6 +111,17 @@ func (c *HTTPClient) applyHeaders(req *http.Request) {
 	}
 }
 
+// drainClose drains body to EOF and then closes it. It is used on every
+// non-success path of Get/Stat/Put: draining the remaining bytes lets the
+// underlying transport reuse the keep-alive connection instead of discarding
+// it, and the subsequent Close releases the body. Errors from draining and
+// closing are intentionally ignored — the caller is already returning a more
+// meaningful error (a status-code or parse failure) for that branch.
+func drainClose(body io.ReadCloser) {
+	_, _ = io.Copy(io.Discard, body)
+	_ = body.Close()
+}
+
 // redactURLError sanitizes a *url.Error so that credentials and query
 // parameters embedded in the URL (e.g. presigned tokens in the query string
 // or userinfo) are not exposed in log output or error messages.
@@ -178,8 +189,7 @@ func (c *HTTPClient) Get(
 		if offset > 0 {
 			// Server returned 200 to a ranged request — it ignored the Range
 			// header. Drain and close the body to avoid leaking the connection.
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
+			drainClose(resp.Body)
 			return nil, 0, fmt.Errorf(
 				"fileserver Get %q at offset %d: server ignored range request"+
 					" (got 200, need 206); range support is required",
@@ -194,8 +204,7 @@ func (c *HTTPClient) Get(
 		// Total size is in Content-Range: bytes <from>-<to>/<total>.
 		total, err := parseTotalFromContentRange(resp.Header.Get("Content-Range"))
 		if err != nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
+			drainClose(resp.Body)
 			return nil, 0, fmt.Errorf(
 				"fileserver Get %q: parse Content-Range: %w", name, err,
 			)
@@ -203,15 +212,13 @@ func (c *HTTPClient) Get(
 		return resp.Body, total, nil
 
 	case http.StatusNotFound, http.StatusGone: // 404, 410
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
+		drainClose(resp.Body)
 		return nil, 0, fmt.Errorf(
 			"fileserver Get %q: %w", name, fs.ErrNotExist,
 		)
 
 	default:
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
+		drainClose(resp.Body)
 		return nil, 0, fmt.Errorf(
 			"fileserver Get %q: unexpected status %d", name, resp.StatusCode,
 		)
@@ -278,8 +285,10 @@ func (c *HTTPClient) Put(
 	if err != nil {
 		return fmt.Errorf("fileserver Put %q: %w", name, redactURLError(err))
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
-	_ = resp.Body.Close()
+	// The PUT response body carries no data the caller needs; drain it so the
+	// keep-alive connection can be reused, then close, on both the success and
+	// error branches below.
+	drainClose(resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf(

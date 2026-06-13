@@ -39,6 +39,37 @@ func TestMultiReadAtSeekCloser_Close(t *testing.T) {
 	}
 }
 
+// closeErrReaderAt is an io.ReaderAt + io.Closer whose Close returns err.
+type closeErrReaderAt struct {
+	*bytes.Reader
+	err error
+}
+
+func (c closeErrReaderAt) Close() error { return c.err }
+
+// TestMultiReadAtSeekCloser_Close_errors verifies the shared close fan-out:
+// only segments implementing io.Closer are closed (a plain *bytes.Reader is
+// skipped), and a failing Close is reported prefixed with the segment's true
+// index in r.r (not a compacted closer-only index).
+func TestMultiReadAtSeekCloser_Close_errors(t *testing.T) {
+	errA := errors.New("close A failed")
+	errC := errors.New("close C failed")
+	r := NewMultiReadAtSeekCloser([]SizedReaderAt{
+		{R: closeErrReaderAt{bytes.NewReader([]byte("aaa")), errA}, Size: 3}, // idx 0, closer (errors)
+		{R: bytes.NewReader([]byte("bbb")), Size: 3},                         // idx 1, NOT a closer
+		{R: closeErrReaderAt{bytes.NewReader([]byte("ccc")), errC}, Size: 3}, // idx 2, closer (errors)
+	})
+	err := r.Close()
+	testhelper.AssertNonNilInterface(t, err)
+	testhelper.AssertErrorsIs(t, err, errA)
+	testhelper.AssertErrorsIs(t, err, errC)
+	msg := err.Error()
+	testhelper.AssertTrue(t, strings.Contains(msg, "index 0: "), "missing index 0 prefix: %q", msg)
+	testhelper.AssertTrue(t, strings.Contains(msg, "index 2: "), "missing index 2 prefix: %q", msg)
+	// The non-closer segment at index 1 must not appear.
+	testhelper.AssertFalse(t, strings.Contains(msg, "index 1: "), "index 1 should be skipped: %q", msg)
+}
+
 func TestMultiReadAtSeekCloser_read_all(t *testing.T) {
 	for _, b := range []bool{false, true} {
 		t.Run(useEofReaderAtTestCaseName(b), func(t *testing.T) {
