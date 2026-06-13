@@ -152,7 +152,7 @@ func (opt ResumableCopyOption[Fsys, File]) partSuffix() string {
 	if opt.PartSuffix != "" {
 		return opt.PartSuffix
 	}
-	return ".part"
+	return defaultPartSuffix
 }
 
 func (opt ResumableCopyOption[Fsys, File]) bufSize() int {
@@ -162,9 +162,52 @@ func (opt ResumableCopyOption[Fsys, File]) bufSize() int {
 	return 256 * 1024
 }
 
+// Shared part/sidecar machinery.
+//
+// Pull (the local side of a download) and [FsSink] (the local side of an
+// upload) must keep their .part + ".part.etag" sidecar handling semantically
+// symmetric for resume interoperability.  The naming, sidecar read/write, and
+// part-file removal therefore live here as a single unexported helper set used
+// by both, rather than being implemented twice.
+//
+// The helpers are generic over deliberately narrow constraints
+// (partSidecarFsys / partSidecarFile) so any caller whose fsys/file satisfies
+// them — including [FsSink]'s wider fsSinkFsys/fsSinkFile — can reuse them.
+
+// defaultPartSuffix is the .part suffix used when none is configured.
+const defaultPartSuffix = ".part"
+
+// sidecarPerm is the file-creation mode for the ETag sidecar file.
+const sidecarPerm fs.FileMode = 0o644
+
+// partSidecarFile is the minimal file interface required by the shared
+// sidecar helpers: read for readSidecar, write for writeSidecar, close for
+// both.
+type partSidecarFile interface {
+	ReadFile
+	WriteFile
+	CloseFile
+}
+
+// partSidecarFsys is the minimal filesystem interface required by the shared
+// part/sidecar helpers.
+type partSidecarFsys[File partSidecarFile] interface {
+	OpenFileFs[File]
+	RemoveFs
+}
+
+// partPaths returns the part-file path and its ETag sidecar path for a target
+// name and part suffix.  suffix must already be resolved (non-empty); callers
+// use [defaultPartSuffix] for the zero case.
+func partPaths(name, suffix string) (partPath, sidecarPath string) {
+	partPath = name + suffix
+	sidecarPath = partPath + ".etag"
+	return partPath, sidecarPath
+}
+
 // removePartFiles removes the part file and its ETag sidecar, ignoring
 // not-exist errors.  It returns the first non-not-exist error encountered.
-func removePartFiles[Fsys resumableFsys[File], File resumableFile](
+func removePartFiles[Fsys partSidecarFsys[File], File partSidecarFile](
 	fsys Fsys,
 	partPath, sidecarPath string,
 ) error {
@@ -181,7 +224,7 @@ func removePartFiles[Fsys resumableFsys[File], File resumableFile](
 
 // readSidecar reads the ETag sidecar at sidecarPath, returning ("", nil) when
 // the file does not exist.
-func readSidecar[Fsys resumableFsys[File], File resumableFile](
+func readSidecar[Fsys partSidecarFsys[File], File partSidecarFile](
 	fsys Fsys,
 	sidecarPath string,
 ) (string, error) {
@@ -201,11 +244,11 @@ func readSidecar[Fsys resumableFsys[File], File resumableFile](
 }
 
 // writeSidecar writes etag to sidecarPath, truncating any previous content.
-func writeSidecar[Fsys resumableFsys[File], File resumableFile](
+func writeSidecar[Fsys partSidecarFsys[File], File partSidecarFile](
 	fsys Fsys,
 	sidecarPath, etag string,
 ) error {
-	f, err := fsys.OpenFile(sidecarPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	f, err := fsys.OpenFile(sidecarPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, sidecarPerm)
 	if err != nil {
 		return err
 	}
@@ -273,9 +316,7 @@ func (opt ResumableCopyOption[Fsys, File]) Pull(
 	expected ContentInfo,
 	perm fs.FileMode,
 ) error {
-	suffix := opt.partSuffix()
-	partPath := name + suffix
-	sidecarPath := partPath + ".etag"
+	partPath, sidecarPath := partPaths(name, opt.partSuffix())
 
 	// Step 1: check whether the final file already exists.
 	if fi, err := fsys.Stat(name); err == nil {

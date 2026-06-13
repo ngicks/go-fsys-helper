@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"strings"
 )
 
 // FsSource adapts a regular file inside a filesystem into a [ResumableSource].
@@ -132,43 +131,30 @@ func (s *FsSink[Fsys, File]) sfx() string {
 	if s.PartSuffix != "" {
 		return s.PartSuffix
 	}
-	return ".part"
+	return defaultPartSuffix
 }
 
-func (s *FsSink[Fsys, File]) partPath() string    { return s.name + s.sfx() }
-func (s *FsSink[Fsys, File]) sidecarPath() string { return s.partPath() + ".etag" }
+// partPath and sidecarPath delegate to the shared partPaths naming used by
+// Pull, keeping the two sides of a resumable transfer symmetric.
+func (s *FsSink[Fsys, File]) partPath() string {
+	pp, _ := partPaths(s.name, s.sfx())
+	return pp
+}
+
+func (s *FsSink[Fsys, File]) sidecarPath() string {
+	_, sc := partPaths(s.name, s.sfx())
+	return sc
+}
 
 // readSidecar reads the ETag sidecar, returning ("", nil) on not-exist.
 func (s *FsSink[Fsys, File]) readSidecar() (string, error) {
-	f, err := s.fsys.OpenFile(s.sidecarPath(), os.O_RDONLY, 0)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", nil
-		}
-		return "", err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(f)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(b)), nil
+	return readSidecar[Fsys, File](s.fsys, s.sidecarPath())
 }
 
-// writeSidecarFsSink writes etag to the sidecar through the fsys, truncating
-// any previous content.
+// writeSidecar writes etag to the sidecar through the fsys, truncating any
+// previous content.
 func (s *FsSink[Fsys, File]) writeSidecar(etag string) error {
-	sc := s.sidecarPath()
-	f, err := s.fsys.OpenFile(sc, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return err
-	}
-	_, werr := io.WriteString(f, etag)
-	cerr := f.Close()
-	if werr != nil {
-		return werr
-	}
-	return cerr
+	return writeSidecar[Fsys, File](s.fsys, s.sidecarPath(), etag)
 }
 
 // State implements [ResumableSink.State].
