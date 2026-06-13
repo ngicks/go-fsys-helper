@@ -20,6 +20,21 @@ type WalkOption struct {
 	ResolveSymlink bool
 }
 
+// WalkDir walks the file tree rooted at root, calling fn for each entry. It
+// mirrors [path/filepath.WalkDir]'s control flow: returning [SkipDir] from fn
+// skips the current directory's remaining entries (or, on a directory entry, its
+// subtree), [SkipAll] stops the whole walk, and any other non-nil error
+// terminates and is returned. A per-entry Lstat error is reported to fn; if fn
+// swallows it (returns nil) or returns SkipDir, the walk continues with the
+// remaining siblings rather than truncating the directory.
+//
+// Escape-safety bounds. With opt.ResolveSymlink, WalkDir follows symlinks. It is
+// escape-safe (cannot follow a symlink out of the tree) ONLY when fsys is a
+// confined [Root]: confinement is enforced by fsys, not by WalkDir. Over an
+// escapable [Fs] (e.g. [osfs.NewFs], [PathPrefixFs], a [Sub] fallback) a symlink
+// may resolve outside the tree and WalkDir will follow it. For a [Root], escape
+// attempts surface to fn as a [ErrPathEscapes] error on the offending entry; fn
+// can swallow it to continue.
 func WalkDir[F File, Fsys Fs[F]](fsys Fsys, root string, opt *WalkOption, fn WalkDirFunc) error {
 	return walkDir(fsys, root, opt, fn)
 }
@@ -180,11 +195,15 @@ func walkDir_[F File, Fsys Fs[F]](
 		}
 		info, err := fsys.Lstat(childPath)
 		if err != nil {
-			err = fn(childPath, childRealPath, nil, err)
-			if err == SkipDir && info != nil && info.IsDir() {
-				err = nil
+			// Mirror stdlib filepath.WalkDir: hand the error to fn and let it
+			// decide. If fn swallows it (returns nil) or asks to skip this entry
+			// (SkipDir — there is nothing to descend into here anyway), continue
+			// with the remaining siblings rather than truncating the directory.
+			// Any other error (including SkipAll) propagates and terminates.
+			if ferr := fn(childPath, childRealPath, nil, err); ferr != nil && ferr != SkipDir {
+				return ferr
 			}
-			return err
+			continue
 		}
 		err = walkDir_(fsys, childPath, childRealPath, info, state, opt, fn)
 		if err != nil {

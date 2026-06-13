@@ -11,9 +11,16 @@ import (
 
 var _ Fs[File] = (*PathPrefixFs[File])(nil)
 
-// PathPrefixFs prefixes file paths in every method.
-// It effectively creates sub Fs hoever it is not security feature.
-// Also it is vulnerable to TOC-TOU race.
+// PathPrefixFs prefixes file paths in every method, effectively creating a sub
+// Fs rooted at prefix.
+//
+// It is NOT a security boundary. Confinement is lexical only: resolvePath blocks
+// a ".." path *argument* from climbing above the prefix (via [filepath.IsLocal]),
+// but it does NOT confine symlink targets — a symlink stored inside the prefix
+// can still resolve to a path outside it when followed by the inner Fs. It is
+// also vulnerable to TOCTOU races. For an actual confinement boundary that
+// confines symlink targets too, use a [Root] (e.g. [osfs.NewRoot] /
+// [Root.OpenRoot]).
 type PathPrefixFs[F File] struct {
 	inner  Fs[F]
 	prefix string

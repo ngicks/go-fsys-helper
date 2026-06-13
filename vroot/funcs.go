@@ -63,9 +63,16 @@ type SubFs[F File] interface {
 // Sub returns an [Fs] rooted at dir within fsys.
 //
 // If fsys implements [SubFs], its Sub is used. Otherwise Sub falls back to
-// [NewPathPrefixFs], which prefixes every path with dir and blocks traversal
-// above it. dir must name an existing directory (the fallback validates it via
-// [NewPathPrefixFs]). [ToIoFs] uses Sub to implement [io/fs.SubFS].
+// [NewPathPrefixFs], which prefixes every path with dir and blocks ".."
+// traversal above it. dir must name an existing directory (the fallback
+// validates it via [NewPathPrefixFs]). [ToIoFs] uses Sub to implement
+// [io/fs.SubFS].
+//
+// Not a security boundary. The [NewPathPrefixFs] fallback confines only the
+// lexical path argument; it does NOT confine symlink targets and is subject to
+// TOCTOU, so a symlink inside the sub-tree can still resolve outside dir. For an
+// actual confinement boundary, derive the sub-filesystem from a [Root] (e.g.
+// [Root.OpenRoot]) rather than relying on Sub.
 func Sub[F File](fsys Fs[F], dir string) (Fs[F], error) {
 	if subFsys, ok := fsys.(SubFs[F]); ok {
 		return subFsys.Sub(dir)
