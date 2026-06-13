@@ -25,7 +25,7 @@ func TestSafeWrite_ErrorPaths(t *testing.T) {
 		nonExistentDir := filepath.Join(tempDir, "nonexistent", "nested")
 		roFsys := osfslite.New(nonExistentDir)
 		opt := testSafeWriteOption{}
-		err := opt.Copy(roFsys, "test.txt", strings.NewReader("content"), 0o644, nil, nil)
+		err := opt.Copy(roFsys, "test.txt", strings.NewReader("content"), 0o644)
 		if err == nil {
 			t.Error("expected error when creating file in non-existent directory")
 		}
@@ -37,7 +37,7 @@ func TestSafeWrite_ErrorPaths(t *testing.T) {
 		roFsys := osfslite.New(nonExistentDir)
 		srcFs := os.DirFS(tempDir)
 		opt := testSafeWriteOption{}
-		err := opt.CopyFs(roFsys, "test-dir", srcFs, 0o755, nil, nil)
+		err := opt.CopyFs(roFsys, "test-dir", srcFs, 0o755)
 		if err == nil {
 			t.Error("expected error when creating directory in non-existent path")
 		}
@@ -52,7 +52,7 @@ func TestSafeWrite_ErrorPaths(t *testing.T) {
 			TempFilePolicy: policy,
 		}
 
-		err := opt.Copy(roFsys, "test.txt", strings.NewReader("content"), 0o644, nil, nil)
+		err := opt.Copy(roFsys, "test.txt", strings.NewReader("content"), 0o644)
 		if err == nil {
 			t.Error("expected error when creating temp dir in non-existent path")
 		}
@@ -66,7 +66,7 @@ func TestSafeWrite_ErrorPaths(t *testing.T) {
 		}
 
 		opt := testSafeWriteOption{}
-		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644, nil, nil)
+		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644)
 		if err == nil {
 			t.Error("expected error when rename fails")
 		}
@@ -95,7 +95,7 @@ func TestSafeWrite_ErrorPaths(t *testing.T) {
 		}
 
 		// Try WriteFs - should fail when creating temp directory
-		err := opt.CopyFs(mockFs, "target", srcFs, 0o755, nil, nil)
+		err := opt.CopyFs(mockFs, "target", srcFs, 0o755)
 		if err == nil {
 			t.Error("expected error when MkdirRandom fails with mock permission denied")
 		}

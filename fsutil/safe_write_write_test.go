@@ -38,7 +38,7 @@ func TestSafeWrite(t *testing.T) {
 		targetPath := "test.txt"
 		content := "hello world"
 
-		err := opt.Copy(fsys, targetPath, strings.NewReader(content), 0o644, nil, nil)
+		err := opt.Copy(fsys, targetPath, strings.NewReader(content), 0o644)
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
@@ -66,59 +66,45 @@ func TestSafeWrite(t *testing.T) {
 		}
 	})
 
-	t.Run("copy with pre and post hooks", func(t *testing.T) {
+	t.Run("copy with struct pre and post hooks", func(t *testing.T) {
 		tempDir := t.TempDir()
 		fsys := osfslite.New(tempDir)
 
-		var preHookCalled, postHookCalled, optPreHookCalled, optPostHookCalled bool
 		var hookOrder []string
 
+		// Hooks live only on the struct (single source); multiple hooks per
+		// phase run in slice order, all PreHooks before the operation and all
+		// PostHooks after it.
 		opt := testSafeWriteOption{
 			PreHooks: []func(*os.File, string) error{
 				func(f *os.File, path string) error {
-					optPreHookCalled = true
-					hookOrder = append(hookOrder, "opt-pre")
+					hookOrder = append(hookOrder, "pre-1")
+					return nil
+				},
+				func(f *os.File, path string) error {
+					hookOrder = append(hookOrder, "pre-2")
 					return nil
 				},
 			},
 			PostHooks: []func(*os.File, string) error{
 				func(f *os.File, path string) error {
-					optPostHookCalled = true
-					hookOrder = append(hookOrder, "opt-post")
+					hookOrder = append(hookOrder, "post-1")
+					return nil
+				},
+				func(f *os.File, path string) error {
+					hookOrder = append(hookOrder, "post-2")
 					return nil
 				},
 			},
 		}
 
-		preHooks := []func(*os.File, string) error{
-			func(f *os.File, path string) error {
-				preHookCalled = true
-				hookOrder = append(hookOrder, "arg-pre")
-				return nil
-			},
-		}
-
-		postHooks := []func(*os.File, string) error{
-			func(f *os.File, path string) error {
-				postHookCalled = true
-				hookOrder = append(hookOrder, "arg-post")
-				return nil
-			},
-		}
-
 		targetPath := "test-hooks.txt"
-		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644, preHooks, postHooks)
+		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644)
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
 
-		// Verify all hooks were called
-		if !preHookCalled || !postHookCalled || !optPreHookCalled || !optPostHookCalled {
-			t.Error("not all hooks were called")
-		}
-
-		// Verify hook execution order: default pre -> arg pre -> arg post -> default post
-		expectedOrder := []string{"opt-pre", "arg-pre", "arg-post", "opt-post"}
+		expectedOrder := []string{"pre-1", "pre-2", "post-1", "post-2"}
 		if len(hookOrder) != len(expectedOrder) {
 			t.Fatalf("not equal: expected(%d) != actual(%d)", len(expectedOrder), len(hookOrder))
 		}
@@ -145,7 +131,7 @@ func TestSafeWrite(t *testing.T) {
 		}
 
 		targetPath := "test-sync.txt"
-		err := opt.Copy(fsys, targetPath, strings.NewReader("synced content"), 0o644, nil, nil)
+		err := opt.Copy(fsys, targetPath, strings.NewReader("synced content"), 0o644)
 		if err != nil {
 			t.Fatalf("Write with sync hook failed: %v", err)
 		}
@@ -165,7 +151,7 @@ func TestSafeWrite(t *testing.T) {
 		}
 
 		targetPath := "test-pre-error.txt"
-		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644, nil, nil)
+		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644)
 		if err != hookErr {
 			t.Errorf(
 				"errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v",
@@ -198,7 +184,7 @@ func TestSafeWrite(t *testing.T) {
 		}
 
 		targetPath := "test-post-error.txt"
-		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644, nil, nil)
+		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644)
 		if err != hookErr {
 			t.Errorf(
 				"errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v",
@@ -227,7 +213,7 @@ func TestSafeWrite(t *testing.T) {
 		// Reader that always errors
 		errReader := &errorReader{err: io.ErrUnexpectedEOF}
 
-		err := opt.Copy(fsys, targetPath, errReader, 0o644, nil, nil)
+		err := opt.Copy(fsys, targetPath, errReader, 0o644)
 		if err != io.ErrUnexpectedEOF {
 			t.Errorf(
 				"errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v",
@@ -264,7 +250,7 @@ func TestSafeWrite(t *testing.T) {
 
 		// Overwrite with SafeWrite
 		newContent := "new content"
-		err := opt.Copy(fsys, targetPath, strings.NewReader(newContent), 0o644, nil, nil)
+		err := opt.Copy(fsys, targetPath, strings.NewReader(newContent), 0o644)
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
@@ -291,7 +277,7 @@ func TestSafeWrite(t *testing.T) {
 		}
 
 		targetPath := "test-policy-dir.txt"
-		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644, nil, nil)
+		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644)
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
@@ -322,7 +308,7 @@ func TestSafeWrite(t *testing.T) {
 		err := opt.Write(fsys, targetPath, func(w io.Writer) error {
 			_, err := w.Write([]byte(content))
 			return err
-		}, 0o644, nil, nil)
+		}, 0o644)
 		if err != nil {
 			t.Fatalf("Write failed: %v", err)
 		}
@@ -361,7 +347,7 @@ func TestSafeWrite(t *testing.T) {
 
 		err := opt.Write(fsys, targetPath, func(w io.Writer) error {
 			return expectedErr
-		}, 0o644, nil, nil)
+		}, 0o644)
 		if err != expectedErr {
 			t.Errorf("expected error %v, got %v", expectedErr, err)
 		}

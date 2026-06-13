@@ -41,12 +41,16 @@ type SafeWriteOption[Fsys safeWriteFsys[File], File safeWriteFile] struct {
 	// If nil, TempFilePolicyRandom will be used.
 	TempFilePolicy TempFilePolicy[Fsys, File]
 	CopyFsOption   CopyFsOption[Fsys, File]
-	// PreHooks and PostHooks are functions called before and after actually copying.
+	// PreHooks and PostHooks are functions called before and after actually
+	// copying. They are the single source of hooks (matching
+	// [ResumableCopyOption.PreCommitHooks]); per-call hooks are expressed by
+	// using a per-call option value.
 	//
-	// Hook invriatns:
+	// Hook invariants:
 	//  - should not Close the file.
-	// - must not Rename the file to other name. Doing so may cause undefined behvaior: concurrent
-	// safe-write fails or wrong files are wirtten to final destination.
+	//  - must not Rename the file to other name. Doing so may cause undefined
+	//    behavior: concurrent safe-write fails or wrong files are written to the
+	//    final destination.
 	//  - must not Remove the file. Instead just return a non-nil error.
 	PreHooks, PostHooks []func(f File, path string) error
 	// If true, Copy ignores error returned when closing temporary file.
@@ -60,7 +64,6 @@ func (opt SafeWriteOption[Fsys, File]) Write(
 	name string,
 	writeFunc func(w io.Writer) error,
 	perm fs.FileMode,
-	preHooks, postHooks []func(f File, path string) error,
 ) error {
 	policy := opt.TempFilePolicy
 	if policy == nil {
@@ -77,8 +80,6 @@ func (opt SafeWriteOption[Fsys, File]) Write(
 		name,
 		tempFile,
 		tempDir,
-		preHooks,
-		postHooks,
 		func(file File) error {
 			return writeFunc(file)
 		},
@@ -91,7 +92,6 @@ func (opt SafeWriteOption[Fsys, File]) Copy(
 	name string,
 	r io.Reader,
 	perm fs.FileMode,
-	preHooks, postHooks []func(f File, path string) error,
 ) error {
 	policy := opt.TempFilePolicy
 	if policy == nil {
@@ -108,8 +108,6 @@ func (opt SafeWriteOption[Fsys, File]) Copy(
 		name,
 		tempFile,
 		tempDir,
-		preHooks,
-		postHooks,
 		func(file File) error {
 			bufP := bufpool.GetBytes()
 			defer bufpool.PutBytes(bufP)
@@ -127,7 +125,6 @@ func (opt SafeWriteOption[Fsys, File]) CopyFs(
 	name string,
 	src fs.FS,
 	perm fs.FileMode,
-	preHooks, postHooks []func(f File, path string) error,
 ) error {
 	policy := opt.TempFilePolicy
 	if policy == nil {
@@ -144,8 +141,6 @@ func (opt SafeWriteOption[Fsys, File]) CopyFs(
 		name,
 		tempFile,
 		tempDir,
-		preHooks,
-		postHooks,
 		func(file File) error {
 			// Use base name from tempFile.Name() to get the temporary directory path
 			tempBaseName := filepath.Base(file.Name())
@@ -161,7 +156,6 @@ func (opt SafeWriteOption[Fsys, File]) safeOperation(
 	name string,
 	tempFile File,
 	tempDir string,
-	preHooks, postHooks []func(f File, path string) error,
 	operation func(File) error,
 ) error {
 	// Use base name from tempFile.Name() and join with tempDir
@@ -180,13 +174,8 @@ func (opt SafeWriteOption[Fsys, File]) safeOperation(
 		}
 	}()
 
-	// Run pre-hooks: default pre hooks first, then argument pre hooks
+	// Run pre-hooks (struct-only single source).
 	for _, hook := range opt.PreHooks {
-		if err = hook(tempFile, name); err != nil {
-			return err
-		}
-	}
-	for _, hook := range preHooks {
 		if err = hook(tempFile, name); err != nil {
 			return err
 		}
@@ -197,12 +186,7 @@ func (opt SafeWriteOption[Fsys, File]) safeOperation(
 		return err
 	}
 
-	// Run post-hooks: argument post hooks first, then default post hooks
-	for _, hook := range postHooks {
-		if err = hook(tempFile, name); err != nil {
-			return err
-		}
-	}
+	// Run post-hooks (struct-only single source).
 	for _, hook := range opt.PostHooks {
 		if err = hook(tempFile, name); err != nil {
 			return err

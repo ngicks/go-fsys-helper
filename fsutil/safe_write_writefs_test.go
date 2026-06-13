@@ -39,7 +39,7 @@ func TestSafeWriteCopyFs(t *testing.T) {
 		opt := testSafeWriteOption{}
 		targetPath := "test-dir"
 
-		err := opt.CopyFs(fsys, targetPath, srcFs, 0o755, nil, nil)
+		err := opt.CopyFs(fsys, targetPath, srcFs, 0o755)
 		if err != nil {
 			t.Fatalf("WriteFs failed: %v", err)
 		}
@@ -96,7 +96,7 @@ func TestSafeWriteCopyFs(t *testing.T) {
 		}
 
 		targetPath := "test-policy-dir"
-		err := opt.CopyFs(fsys, targetPath, srcFs, 0o755, nil, nil)
+		err := opt.CopyFs(fsys, targetPath, srcFs, 0o755)
 		if err != nil {
 			t.Fatalf("WriteFs failed: %v", err)
 		}
@@ -135,37 +135,24 @@ func TestSafeWriteCopyFs(t *testing.T) {
 
 		var hooksCalled []string
 
+		// Hooks live only on the struct (single source).
 		opt := testSafeWriteOption{
 			PreHooks: []func(*os.File, string) error{
 				func(f *os.File, path string) error {
-					hooksCalled = append(hooksCalled, "opt-pre")
+					hooksCalled = append(hooksCalled, "pre")
 					return nil
 				},
 			},
 			PostHooks: []func(*os.File, string) error{
 				func(f *os.File, path string) error {
-					hooksCalled = append(hooksCalled, "opt-post")
+					hooksCalled = append(hooksCalled, "post")
 					return nil
 				},
 			},
 		}
 
-		preHooks := []func(*os.File, string) error{
-			func(f *os.File, path string) error {
-				hooksCalled = append(hooksCalled, "arg-pre")
-				return nil
-			},
-		}
-
-		postHooks := []func(*os.File, string) error{
-			func(f *os.File, path string) error {
-				hooksCalled = append(hooksCalled, "arg-post")
-				return nil
-			},
-		}
-
 		targetPath := "test-hooks-dir"
-		err := opt.CopyFs(fsys, targetPath, srcFs, 0o755, preHooks, postHooks)
+		err := opt.CopyFs(fsys, targetPath, srcFs, 0o755)
 		if err != nil {
 			t.Fatalf("WriteFs failed: %v", err)
 		}
@@ -179,9 +166,8 @@ func TestSafeWriteCopyFs(t *testing.T) {
 			t.Errorf("not equal: expected(%q) != actual(%q)", "hooks test", string(data))
 		}
 
-		// Verify hooks were called in correct order: default pre -> arg pre -> arg post -> default
-		// post
-		expectedOrder := []string{"opt-pre", "arg-pre", "arg-post", "opt-post"}
+		// Verify struct hooks were called in order: pre (before op) -> post (after op).
+		expectedOrder := []string{"pre", "post"}
 		if len(hooksCalled) != len(expectedOrder) {
 			t.Fatalf("not equal: expected(%d) != actual(%d)", len(expectedOrder), len(hooksCalled))
 		}
