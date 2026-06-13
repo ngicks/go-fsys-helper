@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 )
 
 // ReadAtSizeCloser combines [io.ReaderAt], a Size method, and [io.Closer].
@@ -16,10 +17,19 @@ type ReadAtSizeCloser interface {
 
 // seqReaderAt is the concrete implementation returned by [NewSeqReaderAt].
 type seqReaderAt struct {
-	open    func(off int64) (io.ReadCloser, error)
-	size    int64
-	current io.ReadCloser // kept-open stream; nil when no stream is open
-	off     int64         // logical offset at which current is positioned
+	open func(off int64) (io.ReadCloser, error)
+	size int64
+
+	// mu guards the mutable stream state (current, off) so that ReadAt honors
+	// the io.ReaderAt contract, which permits concurrent calls. On the
+	// sequential hot path the lock is always uncontended.
+	mu sync.Mutex
+	// current is the kept-open stream; nil when no stream is open.
+	// Invariant: off is meaningful only while current != nil. Whenever current
+	// is set to nil, off is reset to 0 so a stale offset cannot be mistaken for
+	// a live stream position.
+	current io.ReadCloser
+	off     int64 // logical offset at which current is positioned
 }
 
 // NewSeqReaderAt returns a [ReadAtSizeCloser] backed by an offset-opener
@@ -31,14 +41,14 @@ type seqReaderAt struct {
 // forward jump (i.e. an offset greater than the current stream position)
 // closes the current stream and calls open at the new offset.
 //
-// NOT safe for concurrent use. This matches the sequential Read path of
-// [NewMultiReadAtSeekCloser]: the multiReadAtSeekCloser.Read method drives a
-// single offset forward and calls ReadAt on each segment once. Its ReadAt
-// method, however, is safe to call concurrently by users — callers who need
-// to use a SeqReaderAt as a segment inside a MultiReadAtSeekCloser and then
-// call ReadAt concurrently on the outer object must not use NewSeqReaderAt for
-// those segments; instead they should use a fully seekable source (e.g.
-// [io.SectionReader] over a local file).
+// Safe for concurrent use. ReadAt and Close serialize on an internal mutex, so
+// the returned value honors the [io.ReaderAt] contract (which permits
+// concurrent ReadAt calls) and may be composed as a segment of
+// [NewMultiReadAtSeekCloser] without making that composite's ReadAt racy. The
+// lock is uncontended on the sequential hot path. Note that concurrent ReadAt
+// calls at disjoint offsets still defeat the single-open optimization: every
+// non-contiguous offset reopens the stream, so concurrency trades open count
+// for safety.
 //
 // Errors from open are wrapped with the offset at which the open was
 // attempted, e.g.: "NewSeqReaderAt open at offset 1024: <underlying error>".
@@ -62,16 +72,20 @@ func NewSeqReaderAt(
 func (r *seqReaderAt) Size() int64 { return r.size }
 
 // Close closes the currently open stream, if any.
+// It is safe to call concurrently with ReadAt.
 func (r *seqReaderAt) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.current == nil {
 		return nil
 	}
 	err := r.current.Close()
 	r.current = nil
+	r.off = 0
 	return err
 }
 
-// ReadAt implements [io.ReaderAt].
+// ReadAt implements [io.ReaderAt]. It is safe for concurrent use.
 //
 // Reads starting at or past r.size return (0, io.EOF) immediately.
 // Reads that would extend past r.size are clamped to the available data and
@@ -91,14 +105,22 @@ func (r *seqReaderAt) ReadAt(p []byte, off int64) (int, error) {
 		maxExceeded = true
 	}
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	// Reopen if the requested offset is not the current stream position.
 	if r.current == nil || off != r.off {
 		if r.current != nil {
 			if err := r.current.Close(); err != nil {
 				r.current = nil
-				return 0, err
+				r.off = 0
+				return 0, fmt.Errorf(
+					"NewSeqReaderAt ReadAt: closing stale stream before reopen at offset %d: %w",
+					off, err,
+				)
 			}
 			r.current = nil
+			r.off = 0
 		}
 		rc, err := r.open(off)
 		if err != nil {
@@ -124,11 +146,13 @@ func (r *seqReaderAt) ReadAt(p []byte, off int64) (int, error) {
 				// stream is handled, and normalize to the canonical io.EOF.
 				_ = r.current.Close()
 				r.current = nil
+				r.off = 0
 				return total, io.EOF
 			}
 			// Propagate non-EOF errors; stream may be unusable.
 			_ = r.current.Close()
 			r.current = nil
+			r.off = 0
 			return total, err
 		}
 	}

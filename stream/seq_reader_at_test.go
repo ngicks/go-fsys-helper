@@ -3,8 +3,10 @@ package stream
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/stream/internal/testhelper"
@@ -217,6 +219,110 @@ func TestSeqReaderAt_wrapped_eof(t *testing.T) {
 
 	testhelper.AssertErrorsIs(t, ra.Close(), nil)
 }
+
+// TestSeqReaderAt_concurrent_ReadAt fires many concurrent ReadAt calls at
+// disjoint offsets and verifies every read returns the correct bytes. Before
+// the mutex was added this raced on r.current/r.off (run with -race to detect).
+// The opener returns a fresh reader over the shared immutable data on every
+// call, so it is itself safe for concurrent use.
+func TestSeqReaderAt_concurrent_ReadAt(t *testing.T) {
+	data := randomBytes32KiB
+	ra := NewSeqReaderAt(func(off int64) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data[off:])), nil
+	}, int64(len(data)))
+	defer func() { testhelper.AssertErrorsIs(t, ra.Close(), nil) }()
+
+	const (
+		chunk   = 256
+		workers = 32
+	)
+	nChunks := len(data) / chunk
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			buf := make([]byte, chunk)
+			// Each worker sweeps all chunks but starts at a different one so
+			// the offsets interleave across goroutines.
+			for k := 0; k < nChunks; k++ {
+				idx := (seed + k) % nChunks
+				off := int64(idx * chunk)
+				n, err := ra.ReadAt(buf, off)
+				if err != nil && !errors.Is(err, io.EOF) {
+					errCh <- fmt.Errorf("worker %d off %d: %w", seed, off, err)
+					return
+				}
+				if n != chunk {
+					errCh <- fmt.Errorf("worker %d off %d: short read n=%d", seed, off, n)
+					return
+				}
+				if !bytes.Equal(data[off:off+chunk], buf) {
+					errCh <- fmt.Errorf("worker %d off %d: data mismatch", seed, off)
+					return
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
+	}
+}
+
+// TestSeqReaderAt_stale_close_error verifies that a failure closing the stale
+// stream before a reopen is wrapped with context (and the offset), and that the
+// reader recovers (off reset to 0) so a subsequent read succeeds.
+func TestSeqReaderAt_stale_close_error(t *testing.T) {
+	data := []byte("abcdefghijklmnopqrstuvwxyz")
+	closeErr := errors.New("close failed")
+	failClose := true
+	ra := NewSeqReaderAt(func(off int64) (io.ReadCloser, error) {
+		return &errCloseReadCloser{
+			r: bytes.NewReader(data[off:]),
+			closeErr: func() error {
+				if failClose {
+					return closeErr
+				}
+				return nil
+			},
+		}, nil
+	}, int64(len(data)))
+
+	buf := make([]byte, 4)
+	// Open stream #1 at offset 0; stream advances to position 4.
+	_, err := ra.ReadAt(buf, 0)
+	testhelper.AssertErrorsIs(t, err, nil)
+
+	// Backward jump to 0 forces a reopen; closing the stale stream fails.
+	_, err = ra.ReadAt(buf, 0)
+	testhelper.AssertErrorsIs(t, err, closeErr)
+	testhelper.AssertErrorContains(t, err, "stale stream")
+	testhelper.AssertErrorContains(t, err, "0") // offset context
+
+	// Recovery: subsequent close succeeds now; reader must reopen cleanly.
+	failClose = false
+	n, err := ra.ReadAt(buf, 0)
+	testhelper.AssertErrorsIs(t, err, nil)
+	testhelper.AssertEq(t, 4, n)
+	testhelper.AssertTrue(t, bytes.Equal(data[0:4], buf), "recovery: data mismatch")
+
+	failClose = false
+	testhelper.AssertErrorsIs(t, ra.Close(), nil)
+}
+
+// errCloseReadCloser is an io.ReadCloser whose Close returns the result of
+// closeErr() each time it is called.
+type errCloseReadCloser struct {
+	r        *bytes.Reader
+	closeErr func() error
+}
+
+func (rc *errCloseReadCloser) Read(p []byte) (int, error) { return rc.r.Read(p) }
+func (rc *errCloseReadCloser) Close() error               { return rc.closeErr() }
 
 // TestSeqReaderAt_negative_size verifies that NewSeqReaderAt panics on a
 // negative size (D3: programmer error, no silent clamping).

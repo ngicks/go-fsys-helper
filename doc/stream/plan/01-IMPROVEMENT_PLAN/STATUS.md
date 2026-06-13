@@ -4,7 +4,7 @@
 |-------|-------|--------|--------|
 | S1 | errors.Is EOF + constructor validation | done | - |
 | S2 | MultiReadError index fix + segment-read dedup + Error() fields | done | - |
-| S3 | seqReaderAt mutex + reopen-path hardening | planned | - |
+| S3 | seqReaderAt mutex + reopen-path hardening | done | - |
 | S4 | close fan-out + drainClose dedup | planned | - |
 
 Baseline: all module tests green (2026-06-13).

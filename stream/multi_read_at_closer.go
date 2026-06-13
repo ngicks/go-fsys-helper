@@ -121,6 +121,13 @@ type multiReadAtSeekCloser struct {
 // Each [SizedReaderAt.Size] must be non-negative; a negative size is a
 // programmer error (it would corrupt the precomputed headOff/upperLimit math)
 // and NewMultiReadAtSeekCloser panics. See [NewSeqReaderAt] for the same policy.
+//
+// Concurrency: the returned value's ReadAt is safe to call concurrently only
+// when every segment's own ReadAt is. The composite forwards each ReadAt to the
+// segment that owns the offset, so a segment that is not concurrency-safe makes
+// the composite's ReadAt racy at that offset. Segments built with
+// [NewSeqReaderAt] and [io.SectionReader] are both safe for concurrent ReadAt.
+// The Read/Seek path is sequential and is not safe for concurrent use.
 func NewMultiReadAtSeekCloser(readers []SizedReaderAt) ReadAtReadSeekCloser {
 	translated := make([]sizedReaderAt, len(readers))
 	var accum = int64(0)
