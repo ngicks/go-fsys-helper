@@ -6,7 +6,7 @@
 | V2 | synthfs Rename subtree-cycle rejection | done | - |
 | V3 | synthfs mode ownership + uniform removal guard | done | - |
 | V4 | WalkDir sibling-loop fix + escape-safety docs | done | - |
-| V5 | internal/paths iterator hardening | planned | - |
+| V5 | internal/paths iterator hardening | done | - |
 | V6 | sftpfs error-convention conformance + doc fix | planned | - |
 
 Baseline: all module tests green (2026-06-13).
