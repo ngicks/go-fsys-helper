@@ -49,10 +49,13 @@ func (r *Root) Rename(oldname, newname string) error {
 		if d, ok := existing.(*dir); ok && d.ordered.Len() > 0 {
 			return fsutil.WrapLinkErr("rename", oldname, newname, errdef.ENOTEMPTY)
 		}
-		newParent.removeEntry(newBase)
-		if f, ok := existing.(*file); ok {
-			_ = f.view.Close()
+		// Rename-over unlinks the destination; honor DisableOpenFileRemoval so a
+		// still-open destination file is not closed out from under its handles.
+		if err := r.guardOpenRemoval(existing); err != nil {
+			return fsutil.WrapLinkErr("rename", oldname, newname, err)
 		}
+		newParent.removeEntry(newBase)
+		closeUnlinkedView(existing)
 	}
 
 	oldParent.removeEntry(oldBase)

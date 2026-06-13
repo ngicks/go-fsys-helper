@@ -64,10 +64,13 @@ func (r *Root) AddFile(name string, view FileView, cb AddFunc) error {
 		return nil
 	case AddDecisionOverride:
 		if existingNode != nil {
-			parent.removeEntry(base)
-			if f, ok := existingNode.(*file); ok {
-				_ = f.view.Close()
+			// Overriding unlinks the existing entry; honor DisableOpenFileRemoval
+			// so an open file is not closed out from under its handles.
+			if err := r.guardOpenRemoval(existingNode); err != nil {
+				return fsutil.WrapPathErr("AddFile", name, err)
 			}
+			parent.removeEntry(base)
+			closeUnlinkedView(existingNode)
 		}
 		parent.addEntry(base, &file{
 			metadata: metadata{
@@ -184,10 +187,11 @@ func (r *Root) addFSWalk(
 			return err
 		}
 		if decision == AddDecisionOverride && existingNode != nil {
-			dst.removeEntry(base)
-			if f, ok := existingNode.(*file); ok {
-				_ = f.view.Close()
+			if err := r.guardOpenRemoval(existingNode); err != nil {
+				return fsutil.WrapPathErr("AddFS", mountSlash, err)
 			}
+			dst.removeEntry(base)
+			closeUnlinkedView(existingNode)
 		}
 		if decision == AddDecisionKeep && existingNode != nil {
 			return nil
@@ -210,14 +214,21 @@ func (r *Root) addFSWalk(
 			return err
 		}
 		if decision == AddDecisionKeep && existingNode != nil {
+			// Keep discards the freshly-built incoming view (not an unlink of an
+			// existing open file), so no removal guard applies here.
 			_ = view.Close()
 			return nil
 		}
 		if existingNode != nil {
-			dst.removeEntry(base)
-			if f, ok := existingNode.(*file); ok {
-				_ = f.view.Close()
+			// Override unlinks the existing entry; honor DisableOpenFileRemoval.
+			// The incoming view is already built, so close it before aborting to
+			// avoid leaking it when the guard fires.
+			if err := r.guardOpenRemoval(existingNode); err != nil {
+				_ = view.Close()
+				return fsutil.WrapPathErr("AddFS", mountSlash, err)
 			}
+			dst.removeEntry(base)
+			closeUnlinkedView(existingNode)
 		}
 		dst.addEntry(base, &file{
 			metadata: metadata{

@@ -148,9 +148,12 @@ func (h *memHandle) Sync() error {
 }
 
 func (h *memHandle) Chmod(mode fs.FileMode) error {
-	h.buf.mu.Lock()
-	defer h.buf.mu.Unlock()
-	h.buf.mode = mode & fs.ModePerm
+	// The tree node owns mode/mtime (decision D10); the view is authoritative
+	// only for content/Size. A Chmod arriving here would otherwise write a
+	// buffer-local mode that diverges from what the tree's Stat composes from the
+	// node. In practice synthfs always wraps this handle in a *fileHandle, whose
+	// Chmod routes to the node and never delegates here, so this is a no-op kept
+	// only so a memHandle used standalone does not mutate a now-unowned field.
 	return nil
 }
 

@@ -20,13 +20,11 @@ func (r *Root) Remove(name string) error {
 		if d, ok := target.(*dir); ok && d.ordered.Len() > 0 {
 			return toPathErr("remove", name, errdef.ENOTEMPTY)
 		}
-		if r.st.opt.disableOpenFileRemoval && target.meta().refCount > 0 {
-			return toPathErr("remove", name, errSharingViolation)
+		if err := r.guardOpenRemoval(target); err != nil {
+			return toPathErr("remove", name, err)
 		}
 		parent.removeEntry(base)
-		if f, ok := target.(*file); ok {
-			_ = f.view.Close()
-		}
+		closeUnlinkedView(target)
 		return nil
 	})
 }
@@ -59,13 +57,20 @@ func (r *Root) removeAllLocked(name string) error {
 		// Mirror os.RemoveAll: a missing path is success.
 		return nil
 	}
+	// Honor DisableOpenFileRemoval across the WHOLE subtree before removing any
+	// of it, so a sharing violation deep in the tree aborts the operation
+	// atomically rather than after partial deletion.
+	if err := r.guardOpenRemoval(target); err != nil {
+		return toPathErr("RemoveAll", name, err)
+	}
 	r.removeSubtree(target)
 	parent.removeEntry(base)
 	return nil
 }
 
 // removeSubtree closes any FileView attached to target or its descendants and
-// unlinks all children. Caller holds state.mu (write).
+// unlinks all children. Caller holds state.mu (write). The DisableOpenFileRemoval
+// guard is applied by the caller (RemoveAll) before this runs.
 func (r *Root) removeSubtree(n node) {
 	switch nd := n.(type) {
 	case *dir:
@@ -76,7 +81,7 @@ func (r *Root) removeSubtree(n node) {
 		for k := range nd.index {
 			delete(nd.index, k)
 		}
-	case *file:
-		_ = nd.view.Close()
+	default:
+		closeUnlinkedView(nd)
 	}
 }
