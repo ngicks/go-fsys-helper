@@ -288,6 +288,77 @@ func ctxCopy(ctx context.Context, w io.Writer, r io.Reader, buf []byte) (int64, 
 	}
 }
 
+// resumeDecision is the result of [decideResume]: where a Pull should start
+// writing and whether the existing part file must be discarded first.
+type resumeDecision struct {
+	// startAt is the content offset to resume from: the existing part size
+	// when the part is trusted, or 0 when it must be re-fetched from scratch.
+	startAt int64
+	// discardPart is true when the existing part file (and its sidecar) must
+	// be removed before (re)starting, because it cannot be trusted.
+	discardPart bool
+}
+
+// decideResume is the pure, correctness-critical core of Pull's resume logic:
+// given the size of an existing part file, the ETag recorded in its sidecar,
+// the caller's expectation, and the source's observed identity, it decides
+// whether that part can be appended to (resume at partSize) or must be thrown
+// away and re-fetched from offset 0.
+//
+// It is a pure function (no I/O) so the whole trust matrix is unit-testable
+// without driving a real Pull. A wrong "resume" answer means silent corruption,
+// so the rules are explicit:
+//
+//   - Discard when the part is oversized: the caller declared a total size and
+//     the part already exceeds it.
+//   - Discard when the sidecar ETag conflicts with the caller's expected ETag
+//     (both known and different) — the part belongs to different content.
+//   - Discard when the source's ETag is known and contradicts what we hold: it
+//     matches neither the sidecar ETag nor (when the sidecar is absent) the
+//     caller's expected ETag.
+//   - Otherwise resume at partSize. A part can be trusted when the source
+//     advertises no ETag (size-based resume), the source ETag matches the
+//     sidecar, or the sidecar is absent but the source ETag matches what the
+//     caller expected.
+//
+// Passing the zero [ContentInfo] for src (unknown ETag, unknown size) yields
+// the pre-open guess Pull uses to choose the offset to open the source at:
+// the source-ETag trust check trivially passes, so only the oversize and
+// sidecar-conflict checks apply. This is what lets Pull open at the guessed
+// offset once and reopen at 0 only when the post-open source identity proves
+// the guess wrong — never an extra source round-trip.
+func decideResume(
+	partSize int64,
+	storedETag string,
+	expected ContentInfo,
+	src ContentInfo,
+) resumeDecision {
+	if partSize <= 0 {
+		return resumeDecision{startAt: 0, discardPart: false}
+	}
+
+	// Oversized partial: more bytes than the declared total can exist only if
+	// the part is stale.
+	if expected.Size >= 0 && partSize > expected.Size {
+		return resumeDecision{startAt: 0, discardPart: true}
+	}
+
+	// Sidecar ETag conflicts with what the caller expects.
+	if storedETag != "" && expected.ETag != "" && storedETag != expected.ETag {
+		return resumeDecision{startAt: 0, discardPart: true}
+	}
+
+	// Source identity trust check.
+	trusted := src.ETag == "" || // no-etag world: size-based resume
+		src.ETag == storedETag || // exact sidecar match
+		(storedETag == "" && expected.ETag != "" && src.ETag == expected.ETag)
+	if !trusted {
+		return resumeDecision{startAt: 0, discardPart: true}
+	}
+
+	return resumeDecision{startAt: partSize, discardPart: false}
+}
+
 // Pull downloads content described by expected from src into a file at name
 // inside fsys, using .part + sidecar + atomic-rename to support resuming
 // interrupted transfers.
@@ -331,12 +402,13 @@ func (opt ResumableCopyOption[Fsys, File]) Pull(
 	// Step 2: determine resume point.
 	var (
 		startAt    int64
+		partSize   int64
 		storedETag string
 	)
 
 	partFi, partErr := fsys.Stat(partPath)
 	if partErr == nil {
-		partSize := partFi.Size()
+		partSize = partFi.Size()
 		var sideErr error
 		storedETag, sideErr = readSidecar[Fsys, File](fsys, sidecarPath)
 		if sideErr != nil {
@@ -345,27 +417,23 @@ func (opt ResumableCopyOption[Fsys, File]) Pull(
 			return WrapPathErr("read-sidecar", sidecarPath, sideErr)
 		}
 
-		discard := false
-		if expected.Size >= 0 && partSize > expected.Size {
-			discard = true // oversized partial
-		}
-		if !discard && storedETag != "" && expected.ETag != "" && storedETag != expected.ETag {
-			discard = true // sidecar ETag conflicts with expected
-		}
-		if discard {
+		// Pre-open guess: decide using only what is knowable before the source
+		// is contacted (the zero ContentInfo makes the source-ETag trust check
+		// pass trivially, so only oversize and sidecar-conflict can discard).
+		guess := decideResume(partSize, storedETag, expected, ContentInfo{Size: -1})
+		if guess.discardPart {
 			if rerr := removePartFiles[Fsys, File](fsys, partPath, sidecarPath); rerr != nil {
 				return WrapPathErr("remove-part", partPath, rerr)
 			}
-			startAt = 0
+			partSize = 0
 			storedETag = ""
-		} else {
-			startAt = partSize
 		}
+		startAt = guess.startAt
 	} else if !errors.Is(partErr, fs.ErrNotExist) {
 		return WrapPathErr("stat", partPath, partErr)
 	}
 
-	// Step 3: open source at startAt.
+	// Step 3: open source at the guessed offset.
 	r, srcInfo, err := src.Open(ctx, startAt)
 	if err != nil {
 		return WrapPathErr("open-source", name, err)
@@ -377,12 +445,13 @@ func (opt ResumableCopyOption[Fsys, File]) Pull(
 		return WrapPathErr("pull", name, ErrContentChanged)
 	}
 
-	// Decide if the existing partial can be trusted.
+	// Authoritative decision now that the source identity is known. When we
+	// guessed a resume (startAt > 0) but the source identity does not back it
+	// up, discard the part and reopen at 0 (the only extra round-trip, and only
+	// on a proven-wrong guess).
 	if startAt > 0 {
-		trusted := srcInfo.ETag == "" || // no-etag world: size-based resume
-			srcInfo.ETag == storedETag || // exact sidecar match
-			(storedETag == "" && expected.ETag != "" && srcInfo.ETag == expected.ETag)
-		if !trusted {
+		decision := decideResume(partSize, storedETag, expected, srcInfo)
+		if decision.discardPart {
 			_ = r.Close()
 			if rerr := removePartFiles[Fsys, File](fsys, partPath, sidecarPath); rerr != nil {
 				return WrapPathErr("remove-part", partPath, rerr)

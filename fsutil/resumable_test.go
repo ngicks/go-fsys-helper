@@ -611,3 +611,134 @@ func TestPull_ErrorWrapping(t *testing.T) {
 		t.Errorf("PathError path %q does not contain file name", pathErr.Path)
 	}
 }
+
+// TestDecideResume is the table-driven trust matrix for the pure decideResume
+// helper (plan 01 entry F5). A wrong "resume" answer means silent corruption,
+// so every branch is asserted directly without driving a full Pull.
+func TestDecideResume(t *testing.T) {
+	const (
+		etagA = "sha256:aaaa"
+		etagB = "sha256:bbbb"
+	)
+	type tc struct {
+		name        string
+		partSize    int64
+		storedETag  string
+		expected    ContentInfo
+		src         ContentInfo
+		wantStartAt int64
+		wantDiscard bool
+	}
+	tests := []tc{
+		{
+			name:        "no part - nothing to resume",
+			partSize:    0,
+			expected:    ContentInfo{Size: 100, ETag: etagA},
+			src:         ContentInfo{Size: 100, ETag: etagA},
+			wantStartAt: 0,
+			wantDiscard: false,
+		},
+		{
+			name:        "no-etag world resumes by size",
+			partSize:    40,
+			storedETag:  "",
+			expected:    ContentInfo{Size: 100, ETag: ""},
+			src:         ContentInfo{Size: 100, ETag: ""},
+			wantStartAt: 40,
+			wantDiscard: false,
+		},
+		{
+			name:        "sidecar match resumes",
+			partSize:    40,
+			storedETag:  etagA,
+			expected:    ContentInfo{Size: 100, ETag: etagA},
+			src:         ContentInfo{Size: 100, ETag: etagA},
+			wantStartAt: 40,
+			wantDiscard: false,
+		},
+		{
+			name:        "expected-etag match resumes when sidecar absent",
+			partSize:    40,
+			storedETag:  "",
+			expected:    ContentInfo{Size: 100, ETag: etagA},
+			src:         ContentInfo{Size: 100, ETag: etagA},
+			wantStartAt: 40,
+			wantDiscard: false,
+		},
+		{
+			name:        "source etag conflicts with sidecar - discard",
+			partSize:    40,
+			storedETag:  etagA,
+			expected:    ContentInfo{Size: 100, ETag: ""},
+			src:         ContentInfo{Size: 100, ETag: etagB},
+			wantStartAt: 0,
+			wantDiscard: true,
+		},
+		{
+			name:        "source etag conflicts with expected (no sidecar) - discard",
+			partSize:    40,
+			storedETag:  "",
+			expected:    ContentInfo{Size: 100, ETag: etagA},
+			src:         ContentInfo{Size: 100, ETag: etagB},
+			wantStartAt: 0,
+			wantDiscard: true,
+		},
+		{
+			name:        "sidecar conflicts with expected - discard",
+			partSize:    40,
+			storedETag:  etagA,
+			expected:    ContentInfo{Size: 100, ETag: etagB},
+			src:         ContentInfo{Size: 100, ETag: etagB},
+			wantStartAt: 0,
+			wantDiscard: true,
+		},
+		{
+			name:        "oversized part - discard",
+			partSize:    150,
+			storedETag:  etagA,
+			expected:    ContentInfo{Size: 100, ETag: etagA},
+			src:         ContentInfo{Size: 100, ETag: etagA},
+			wantStartAt: 0,
+			wantDiscard: true,
+		},
+		{
+			name:        "pre-open guess (unknown source) resumes a non-conflicting part",
+			partSize:    40,
+			storedETag:  etagA,
+			expected:    ContentInfo{Size: 100, ETag: etagA},
+			src:         ContentInfo{Size: -1, ETag: ""},
+			wantStartAt: 40,
+			wantDiscard: false,
+		},
+		{
+			name:        "pre-open guess discards an oversized part",
+			partSize:    150,
+			storedETag:  etagA,
+			expected:    ContentInfo{Size: 100, ETag: etagA},
+			src:         ContentInfo{Size: -1, ETag: ""},
+			wantStartAt: 0,
+			wantDiscard: true,
+		},
+		{
+			name:        "unknown expected size never reports oversize",
+			partSize:    1 << 30,
+			storedETag:  etagA,
+			expected:    ContentInfo{Size: -1, ETag: etagA},
+			src:         ContentInfo{Size: -1, ETag: etagA},
+			wantStartAt: 1 << 30,
+			wantDiscard: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decideResume(tt.partSize, tt.storedETag, tt.expected, tt.src)
+			if got.startAt != tt.wantStartAt {
+				t.Errorf("startAt: got %d, want %d", got.startAt, tt.wantStartAt)
+			}
+			if got.discardPart != tt.wantDiscard {
+				t.Errorf("discardPart: got %v, want %v", got.discardPart, tt.wantDiscard)
+			}
+		})
+	}
+}
