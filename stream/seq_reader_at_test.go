@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/stream/internal/testhelper"
@@ -180,4 +181,55 @@ func TestSeqReaderAt_compose_multi(t *testing.T) {
 	testhelper.AssertErrorsIs(t, err, nil)
 	testhelper.AssertTrue(t, bytes.Equal(full, got), "compose_multi: data mismatch")
 	testhelper.AssertErrorsIs(t, multi.Close(), nil)
+}
+
+// wrappedEofReadCloser wraps a *bytes.Reader and returns a wrapped io.EOF at
+// the end of the stream, exercising the errors.Is-based EOF classification in
+// seqReaderAt.ReadAt.
+type wrappedEofReadCloser struct {
+	r *bytes.Reader
+}
+
+func (rc *wrappedEofReadCloser) Read(p []byte) (int, error) {
+	n, err := rc.r.Read(p)
+	if errors.Is(err, io.EOF) {
+		err = errors.Join(errors.New("stream closed"), io.EOF)
+	}
+	return n, err
+}
+
+func (rc *wrappedEofReadCloser) Close() error { return nil }
+
+// TestSeqReaderAt_wrapped_eof verifies that a stream returning a wrapped io.EOF
+// is handled as a clean end-of-stream: ReadAt clamped past size returns the
+// available bytes and a canonical io.EOF, not the wrapped error.
+func TestSeqReaderAt_wrapped_eof(t *testing.T) {
+	data := []byte("hello")
+	ra := NewSeqReaderAt(func(off int64) (io.ReadCloser, error) {
+		return &wrappedEofReadCloser{bytes.NewReader(data[off:])}, nil
+	}, int64(len(data)))
+
+	buf := make([]byte, 20) // larger than data to force EOF on Read
+	n, err := ra.ReadAt(buf, 0)
+	testhelper.AssertErrorsIs(t, err, io.EOF)
+	testhelper.AssertEq(t, len(data), n)
+	testhelper.AssertTrue(t, bytes.Equal(data, buf[:n]), "wrapped_eof: data mismatch")
+
+	testhelper.AssertErrorsIs(t, ra.Close(), nil)
+}
+
+// TestSeqReaderAt_negative_size verifies that NewSeqReaderAt panics on a
+// negative size (D3: programmer error, no silent clamping).
+func TestSeqReaderAt_negative_size(t *testing.T) {
+	defer func() {
+		r := recover()
+		testhelper.AssertNonNilInterface(t, r)
+		msg, ok := r.(string)
+		testhelper.AssertTrue(t, ok, "recover() is not a string: %#v", r)
+		testhelper.AssertTrue(t,
+			strings.Contains(msg, "negative size"),
+			"panic message %q does not mention negative size", msg,
+		)
+	}()
+	NewSeqReaderAt(func(int64) (io.ReadCloser, error) { return nil, nil }, -1)
 }

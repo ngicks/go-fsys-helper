@@ -3,6 +3,8 @@ package stream
 import (
 	"bytes"
 	"crypto/rand"
+	"errors"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"testing"
@@ -89,6 +91,43 @@ func (r *eofReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
 		err = io.EOF
 	}
 	return n, err
+}
+
+// wrappedEofReaderAt is like eofReaderAt but returns a *wrapped* io.EOF
+// (fmt.Errorf("...: %w", io.EOF)) at the end of the segment. It exercises the
+// errors.Is-based EOF classification: a bare "== io.EOF" check would treat this
+// as a hard error and abort the concatenation instead of advancing.
+type wrappedEofReaderAt struct {
+	r *bytes.Reader
+}
+
+func (r *wrappedEofReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	n, err = r.r.ReadAt(p, off)
+	if err == nil && int64(r.r.Len()) == off+int64(n) {
+		err = fmt.Errorf("segment exhausted: %w", io.EOF)
+	} else if errors.Is(err, io.EOF) {
+		err = fmt.Errorf("segment exhausted: %w", err)
+	}
+	return n, err
+}
+
+// prepareWrappedEofReader builds []SizedReaderAt whose segments return a wrapped
+// io.EOF at the end of each segment.
+func prepareWrappedEofReader(b []byte, lens []int) []SizedReaderAt {
+	reader := bytes.NewReader(b)
+	var sizedReaders []SizedReaderAt
+	for i := 0; ; i++ {
+		buf := make([]byte, lens[i%len(lens)])
+		n, _ := io.ReadAtLeast(reader, buf, 1)
+		if n <= 0 {
+			break
+		}
+		sizedReaders = append(sizedReaders, SizedReaderAt{
+			R:    &wrappedEofReaderAt{bytes.NewReader(buf[:n])},
+			Size: int64(n),
+		})
+	}
+	return sizedReaders
 }
 
 func prepareSizedReader(b []byte, lens []int, useEofReaderAt bool) []SizedReaderAt {

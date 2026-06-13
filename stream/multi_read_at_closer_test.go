@@ -3,6 +3,7 @@ package stream
 import (
 	"bytes"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/stream/internal/testhelper"
@@ -152,4 +153,56 @@ func TestMultiReadAtSeekCloser_wrong_size(t *testing.T) {
 			t.Logf("internal = %#v", e.Err)
 		})
 	}
+}
+
+// TestMultiReadAtSeekCloser_wrapped_eof verifies that segments returning a
+// wrapped io.EOF (fmt.Errorf("...: %w", io.EOF)) are treated as a clean
+// end-of-segment: the concatenation must advance past each such segment and
+// yield the full data without surfacing the wrapped error. Before the
+// errors.Is fix the bare "== io.EOF" check aborted at the first segment.
+func TestMultiReadAtSeekCloser_wrapped_eof(t *testing.T) {
+	t.Run("Read", func(t *testing.T) {
+		r := NewMultiReadAtSeekCloser(prepareWrappedEofReader(randomBytes, []int{1024}))
+		var out bytes.Buffer
+		buf := make([]byte, 1000) // unaligned to force boundary crossings
+		// io.CopyBuffer with onlyRead/onlyWrite prevents ReadFrom/WriteTo
+		// shortcuts so every byte flows through Read.
+		_, err := io.CopyBuffer(onlyWrite{&out}, onlyRead{r}, buf)
+		testhelper.AssertNilInterface(t, err)
+		testhelper.AssertTrue(t,
+			len(randomBytes) == out.Len(),
+			"src len = %d, dst len = %d", len(randomBytes), out.Len(),
+		)
+		testhelper.AssertTrue(t, bytes.Equal(randomBytes, out.Bytes()), "bytes.Equal returned false")
+	})
+	t.Run("ReadAt", func(t *testing.T) {
+		r := NewMultiReadAtSeekCloser(prepareWrappedEofReader(randomBytes, []int{1024}))
+		buf := make([]byte, len(randomBytes))
+		n, err := r.ReadAt(buf, 0)
+		testhelper.AssertTrue(t,
+			err == nil || err == io.EOF,
+			"err is not either of nil or io.EOF, but is %#v", err,
+		)
+		testhelper.AssertEq(t, len(randomBytes), n)
+		testhelper.AssertTrue(t, bytes.Equal(randomBytes, buf), "bytes.Equal returned false")
+	})
+}
+
+// TestMultiReadAtSeekCloser_negative_size verifies that a negative
+// SizedReaderAt.Size panics (D3: programmer error, no silent clamping).
+func TestMultiReadAtSeekCloser_negative_size(t *testing.T) {
+	defer func() {
+		r := recover()
+		testhelper.AssertNonNilInterface(t, r)
+		msg, ok := r.(string)
+		testhelper.AssertTrue(t, ok, "recover() is not a string: %#v", r)
+		testhelper.AssertTrue(t,
+			strings.Contains(msg, "negative Size"),
+			"panic message %q does not mention negative Size", msg,
+		)
+	}()
+	NewMultiReadAtSeekCloser([]SizedReaderAt{
+		{R: bytes.NewReader([]byte("ok")), Size: 2},
+		{R: bytes.NewReader([]byte("bad")), Size: -1},
+	})
 }

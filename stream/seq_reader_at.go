@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -45,9 +46,15 @@ type seqReaderAt struct {
 // EOF semantics follow the [io.ReaderAt] contract: a read starting at or past
 // size returns (0, io.EOF); a read that fills p before reaching size returns
 // (n, nil); a read that hits the end of the data returns (n, io.EOF).
+//
+// size must be non-negative; a negative size is a programmer error and
+// NewSeqReaderAt panics.
 func NewSeqReaderAt(
 	open func(off int64) (io.ReadCloser, error), size int64,
 ) ReadAtSizeCloser {
+	if size < 0 {
+		panic(fmt.Sprintf("NewSeqReaderAt: negative size %d", size))
+	}
 	return &seqReaderAt{open: open, size: size}
 }
 
@@ -111,8 +118,10 @@ func (r *seqReaderAt) ReadAt(p []byte, off int64) (int, error) {
 		r.off += int64(n)
 		p = p[n:]
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				// Stream ended — close and discard so next call reopens.
+				// Classify with errors.Is so a wrapped EOF from a user-supplied
+				// stream is handled, and normalize to the canonical io.EOF.
 				_ = r.current.Close()
 				r.current = nil
 				return total, io.EOF

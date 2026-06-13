@@ -117,10 +117,20 @@ type multiReadAtSeekCloser struct {
 
 // NewMultiReadAtSeekCloser virtually concatenates readers into a single reader.
 // Unlike io.MultiReader it implements io.ReaderAt.
+//
+// Each [SizedReaderAt.Size] must be non-negative; a negative size is a
+// programmer error (it would corrupt the precomputed headOff/upperLimit math)
+// and NewMultiReadAtSeekCloser panics. See [NewSeqReaderAt] for the same policy.
 func NewMultiReadAtSeekCloser(readers []SizedReaderAt) ReadAtReadSeekCloser {
 	translated := make([]sizedReaderAt, len(readers))
 	var accum = int64(0)
 	for i, rr := range readers {
+		if rr.Size < 0 {
+			panic(fmt.Sprintf(
+				"NewMultiReadAtSeekCloser: SizedReaderAt at index %d has negative Size %d",
+				i, rr.Size,
+			))
+		}
 		translated[i] = sizedReaderAt{
 			SizedReaderAt: rr,
 			headOff:       accum,
@@ -145,7 +155,19 @@ func (r *multiReadAtSeekCloser) Read(p []byte) (int, error) {
 	readerOff := r.off - rr.headOff
 	n, err := rr.R.ReadAt(p, readerOff)
 
-	if n > 0 || err == io.EOF {
+	// Classify EOF with errors.Is so that a segment returning a wrapped EOF
+	// (e.g. fmt.Errorf("...: %w", io.EOF)) is treated as a clean end-of-segment
+	// rather than a hard error. This cannot mask a short read because the
+	// rem-based validation below converts a too-short read into
+	// io.ErrUnexpectedEOF. Normalize to the canonical io.EOF so a wrapped EOF
+	// surfaced from the final segment does not leak to callers (e.g. io.ReadAll)
+	// that compare against io.EOF.
+	isEOF := errors.Is(err, io.EOF)
+	if isEOF {
+		err = io.EOF
+	}
+
+	if n > 0 || isEOF {
 		r.idx += i // i could be 0.
 		r.off += int64(n)
 	}
@@ -154,16 +176,16 @@ func (r *multiReadAtSeekCloser) Read(p []byte) (int, error) {
 		return &MultiReadError{r.idx, readerOff, off, len(p), err, cause}
 	}
 
-	if err != nil && err != io.EOF {
+	if err != nil && !isEOF {
 		return n, wrapErr(err, "read error")
 	}
 
 	switch rem := rr.Size - readerOff; {
 	case int64(n) > rem:
 		return n, wrapErr(ErrInvalidSize, "read more")
-	case err == io.EOF && n == 0 && rem > 0:
+	case isEOF && n == 0 && rem > 0:
 		return n, wrapErr(io.ErrUnexpectedEOF, "read less")
-	case err == io.EOF && len(r.r)-1 > r.idx:
+	case isEOF && len(r.r)-1 > r.idx:
 		err = nil
 	}
 
@@ -235,20 +257,28 @@ func (r *multiReadAtSeekCloser) readAt(p []byte, off int64) (n int, err error) {
 	readerOff := off - rr.headOff
 	n, err = rr.R.ReadAt(p, readerOff)
 
+	// Classify EOF with errors.Is so a wrapped EOF from a user-supplied segment
+	// is treated as a clean end-of-segment, and normalize to the canonical
+	// io.EOF (see Read for the rationale).
+	isEOF := errors.Is(err, io.EOF)
+	if isEOF {
+		err = io.EOF
+	}
+
 	wrapErr := func(err error, cause string) error {
 		return &MultiReadError{i, readerOff, off, len(p), err, cause}
 	}
 
-	if err != nil && err != io.EOF {
+	if err != nil && !isEOF {
 		return n, wrapErr(err, "read error")
 	}
 
 	switch rem := rr.Size - readerOff; {
 	case int64(n) > rem:
 		return n, wrapErr(ErrInvalidSize, "read more")
-	case err == io.EOF && n == 0 && rem > 0:
+	case isEOF && n == 0 && rem > 0:
 		return n, wrapErr(io.ErrUnexpectedEOF, "read less")
-	case err == io.EOF && len(r.r)-1 > i:
+	case isEOF && len(r.r)-1 > i:
 		err = nil
 	}
 	return n, err
