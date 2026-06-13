@@ -7,7 +7,7 @@
 | V3 | synthfs mode ownership + uniform removal guard | done | - |
 | V4 | WalkDir sibling-loop fix + escape-safety docs | done | - |
 | V5 | internal/paths iterator hardening | done | - |
-| V6 | sftpfs error-convention conformance + doc fix | planned | - |
+| V6 | sftpfs error-convention conformance + doc fix | done | - |
 
 Baseline: all module tests green (2026-06-13).
 Per-entry summaries: `SUMMARY-<entry>.md` in this directory.

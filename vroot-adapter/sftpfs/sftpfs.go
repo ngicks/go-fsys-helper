@@ -1,4 +1,16 @@
-// Package sftpfs implements [vroot.Unrooted] over a *sftp.Client.
+// Package sftpfs implements [vroot.Fs] over a *sftp.Client.
+//
+// SftpFs is escapable, NOT symlink-confined — like [osfs.Fs]. resolvePath
+// blocks a ".." path *argument* from climbing above Base (lexically), but
+// symlink targets are NOT confined: a symlink on the remote can point anywhere,
+// and following it is the remote server's concern. Confinement over SFTP would
+// require server-side realpath discipline the protocol does not guarantee, so it
+// is deliberately out of scope (decision D11).
+//
+// Errors follow the vroot convention: path operations return a *fs.PathError and
+// link operations (Link, Rename, Symlink) return an *os.LinkError, each wrapping
+// a normalized cause so callers can use errors.Is against fs.ErrExist /
+// fs.ErrNotExist regardless of the SFTP wire status the server returned.
 package sftpfs
 
 import (
@@ -77,7 +89,7 @@ func (s *SftpFs) Chmod(name string, mode fs.FileMode) error {
 	if err != nil {
 		return fsutil.WrapPathErr("chmod", name, err)
 	}
-	return s.client.Chmod(abs, mode)
+	return fsutil.WrapPathErr("chmod", name, mapSftpErr(s.client.Chmod(abs, mode)))
 }
 
 // Chown implements [vroot.Fs].
@@ -86,7 +98,7 @@ func (s *SftpFs) Chown(name string, uid, gid int) error {
 	if err != nil {
 		return fsutil.WrapPathErr("chown", name, err)
 	}
-	return s.client.Chown(abs, uid, gid)
+	return fsutil.WrapPathErr("chown", name, mapSftpErr(s.client.Chown(abs, uid, gid)))
 }
 
 // Chtimes implements [vroot.Fs].
@@ -95,7 +107,7 @@ func (s *SftpFs) Chtimes(name string, atime, mtime time.Time) error {
 	if err != nil {
 		return fsutil.WrapPathErr("chtimes", name, err)
 	}
-	return s.client.Chtimes(abs, atime, mtime)
+	return fsutil.WrapPathErr("chtimes", name, mapSftpErr(s.client.Chtimes(abs, atime, mtime)))
 }
 
 // Close implements [vroot.Fs]. It does not close the underlying
@@ -115,7 +127,7 @@ func (s *SftpFs) Lchown(name string, uid, gid int) error {
 	if err != nil {
 		return fsutil.WrapPathErr("lchown", name, err)
 	}
-	return s.client.Chown(abs, uid, gid)
+	return fsutil.WrapPathErr("lchown", name, mapSftpErr(s.client.Chown(abs, uid, gid)))
 }
 
 // Link implements [vroot.Fs] (hardlink, where supported).
@@ -128,7 +140,7 @@ func (s *SftpFs) Link(oldname, newname string) error {
 	if err != nil {
 		return fsutil.WrapLinkErr("link", oldname, newname, err)
 	}
-	return s.client.Link(oldAbs, newAbs)
+	return fsutil.WrapLinkErr("link", oldname, newname, mapSftpErr(s.client.Link(oldAbs, newAbs)))
 }
 
 // Lstat implements [vroot.Fs].
@@ -137,10 +149,19 @@ func (s *SftpFs) Lstat(name string) (fs.FileInfo, error) {
 	if err != nil {
 		return nil, fsutil.WrapPathErr("lstat", name, err)
 	}
+	var (
+		fi   fs.FileInfo
+		serr error
+	)
 	if abs == s.base {
-		return s.client.Stat(abs)
+		fi, serr = s.client.Stat(abs)
+	} else {
+		fi, serr = s.client.Lstat(abs)
 	}
-	return s.client.Lstat(abs)
+	if serr != nil {
+		return nil, fsutil.WrapPathErr("lstat", name, mapSftpErr(serr))
+	}
+	return fi, nil
 }
 
 // Mkdir implements [vroot.Fs]. perm is best-effort applied via
@@ -151,7 +172,7 @@ func (s *SftpFs) Mkdir(name string, perm fs.FileMode) error {
 		return fsutil.WrapPathErr("mkdir", name, err)
 	}
 	if err := s.client.Mkdir(abs); err != nil {
-		return mapSftpErr(err)
+		return fsutil.WrapPathErr("mkdir", name, mapSftpErr(err))
 	}
 	if perm != 0 {
 		_ = s.client.Chmod(abs, perm)
@@ -159,14 +180,17 @@ func (s *SftpFs) Mkdir(name string, perm fs.FileMode) error {
 	return nil
 }
 
-// MkdirAll implements [vroot.Fs].
+// MkdirAll implements [vroot.Fs]. Like [os.MkdirAll] it is idempotent: an
+// already-existing directory is success. The raw sftp.Client.MkdirAll result is
+// normalized through mapSftpErr so a leaf EEXIST surfaces as fs.ErrExist for
+// callers that rely on errors.Is.
 func (s *SftpFs) MkdirAll(name string, perm fs.FileMode) error {
 	abs, err := s.resolvePath(name)
 	if err != nil {
 		return fsutil.WrapPathErr("mkdir", name, err)
 	}
 	if err := s.client.MkdirAll(abs); err != nil {
-		return err
+		return fsutil.WrapPathErr("mkdir", name, mapSftpErr(err))
 	}
 	if perm != 0 {
 		_ = s.client.Chmod(abs, perm)
@@ -195,7 +219,7 @@ func (s *SftpFs) OpenFile(name string, flag int, perm fs.FileMode) (vroot.File, 
 	}
 	f, err := s.client.OpenFile(abs, flag)
 	if err != nil {
-		return nil, mapSftpErr(err)
+		return nil, fsutil.WrapPathErr("open", name, mapSftpErr(err))
 	}
 	if flag&os.O_APPEND != 0 {
 		if _, err := f.Seek(0, io.SeekEnd); err != nil {
@@ -216,9 +240,13 @@ func (s *SftpFs) ReadLink(name string) (string, error) {
 		return "", fsutil.WrapPathErr("readlink", name, err)
 	}
 	if abs == s.base {
-		return "", fsutil.WrapPathErr("readlink", abs, syscall.EINVAL)
+		return "", fsutil.WrapPathErr("readlink", name, syscall.EINVAL)
 	}
-	return s.client.ReadLink(abs)
+	target, rerr := s.client.ReadLink(abs)
+	if rerr != nil {
+		return "", fsutil.WrapPathErr("readlink", name, mapSftpErr(rerr))
+	}
+	return target, nil
 }
 
 // Remove implements [vroot.Fs].
@@ -227,7 +255,7 @@ func (s *SftpFs) Remove(name string) error {
 	if err != nil {
 		return fsutil.WrapPathErr("remove", name, err)
 	}
-	return s.client.Remove(abs)
+	return fsutil.WrapPathErr("remove", name, mapSftpErr(s.client.Remove(abs)))
 }
 
 // RemoveAll implements [vroot.Fs], mirroring [os.RemoveAll]: it removes
@@ -321,9 +349,9 @@ func (s *SftpFs) Rename(oldname, newname string) error {
 	}
 
 	if s.posixRename {
-		return s.client.PosixRename(oldAbs, newAbs)
+		return fsutil.WrapLinkErr("rename", oldname, newname, mapSftpErr(s.client.PosixRename(oldAbs, newAbs)))
 	}
-	return s.client.Rename(oldAbs, newAbs)
+	return fsutil.WrapLinkErr("rename", oldname, newname, mapSftpErr(s.client.Rename(oldAbs, newAbs)))
 }
 
 // Stat implements [vroot.Fs].
@@ -332,7 +360,11 @@ func (s *SftpFs) Stat(name string) (fs.FileInfo, error) {
 	if err != nil {
 		return nil, fsutil.WrapPathErr("stat", name, err)
 	}
-	return s.client.Stat(abs)
+	fi, serr := s.client.Stat(abs)
+	if serr != nil {
+		return nil, fsutil.WrapPathErr("stat", name, mapSftpErr(serr))
+	}
+	return fi, nil
 }
 
 // Symlink implements [vroot.Fs]. oldname (the link target) is stored
@@ -343,7 +375,7 @@ func (s *SftpFs) Symlink(oldname, newname string) error {
 	if err != nil {
 		return fsutil.WrapLinkErr("symlink", oldname, newname, err)
 	}
-	return mapSftpErr(s.client.Symlink(oldname, newAbs))
+	return fsutil.WrapLinkErr("symlink", oldname, newname, mapSftpErr(s.client.Symlink(oldname, newAbs)))
 }
 
 // ReadDir implements the [vroot.ReadDirFs] optional optimization,
@@ -355,7 +387,7 @@ func (s *SftpFs) ReadDir(name string) ([]fs.DirEntry, error) {
 	}
 	fis, err := s.client.ReadDir(abs)
 	if err != nil {
-		return nil, err
+		return nil, fsutil.WrapPathErr("readdir", name, mapSftpErr(err))
 	}
 	out := make([]fs.DirEntry, len(fis))
 	for i, fi := range fis {
@@ -482,12 +514,15 @@ func isSftpNotExist(err error) bool {
 }
 
 // mapSftpErr normalizes server-side errors that the pkg/sftp protocol cannot
-// represent precisely (SFTP v3 has no SSH_FX_FILE_ALREADY_EXISTS), so callers
-// can use [errors.Is] against [fs.ErrExist].
+// represent precisely, so callers can use [errors.Is] against the fs/syscall
+// sentinels regardless of the wire status the server returned.
 //
-// The detection looks at the server-supplied message because pkg/sftp's
-// statusFromError loses errno fidelity for EEXIST: it collapses to
-// SSH_FX_FAILURE with the os.PathError text preserved verbatim.
+// SFTP v3 has no dedicated status for several POSIX errno values (e.g.
+// SSH_FX_FILE_ALREADY_EXISTS, EINVAL), so pkg/sftp's statusFromError collapses
+// them to SSH_FX_FAILURE and preserves only the os.PathError text. The detection
+// therefore inspects the server-supplied message and rejoins the matching
+// sentinel so the wrapped error answers errors.Is correctly. The original
+// StatusError is preserved (joined) so its FxCode remains observable.
 func mapSftpErr(err error) error {
 	if err == nil {
 		return nil
@@ -497,8 +532,13 @@ func mapSftpErr(err error) error {
 		return err
 	}
 	msg := stErr.Error()
-	if strings.Contains(msg, "file exists") || strings.Contains(msg, "file already exists") {
+	switch {
+	case strings.Contains(msg, "file exists") || strings.Contains(msg, "file already exists"):
 		return errors.Join(err, fs.ErrExist)
+	case strings.Contains(msg, "invalid argument"):
+		return errors.Join(err, syscall.EINVAL)
+	case strings.Contains(msg, "directory not empty"):
+		return errors.Join(err, syscall.ENOTEMPTY)
 	}
 	return err
 }
