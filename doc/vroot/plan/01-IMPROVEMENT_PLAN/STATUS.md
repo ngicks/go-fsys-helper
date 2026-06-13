@@ -2,12 +2,12 @@
 
 | Entry | Title | Status | Commit |
 |-------|-------|--------|--------|
-| V1 | acceptance escape-suite expansion (all methods, real targets) | done | - |
-| V2 | synthfs Rename subtree-cycle rejection | done | - |
-| V3 | synthfs mode ownership + uniform removal guard | done | - |
-| V4 | WalkDir sibling-loop fix + escape-safety docs | done | - |
-| V5 | internal/paths iterator hardening | done | - |
-| V6 | sftpfs error-convention conformance + doc fix | done | - |
+| V1 | acceptance escape-suite expansion (all methods, real targets) | done | 5aa4294 |
+| V2 | synthfs Rename subtree-cycle rejection | done | a2d2402 |
+| V3 | synthfs mode ownership + uniform removal guard | done | 8b7dc28 |
+| V4 | WalkDir sibling-loop fix + escape-safety docs | done | 29b751c |
+| V5 | internal/paths iterator hardening | done | 8e5618c |
+| V6 | sftpfs error-convention conformance + doc fix | done | 67b7e4e |
 
 Baseline: all module tests green (2026-06-13).
 Per-entry summaries: `SUMMARY-<entry>.md` in this directory.
