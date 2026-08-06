@@ -339,63 +339,102 @@ standardFs := vroot.ToIoFsRooted(rootedFs)
 
 ## 🔄 Overlay Filesystem
 
-The overlay package provides sophisticated union mount capabilities with copy-on-write semantics:
+`overlayfs` is a **union mount**: a writable **top** layer stacked over zero or
+more read-only **lower** layers. Reads resolve top→lowers (top wins); writes
+land in top after a **copy-up** of the lower entry; deletions become
+**whiteouts** rather than mutating the read-only lowers. `*overlayfs.Fs`
+implements `vroot.Root[vroot.File, *overlayfs.Fs]`, so it has the full `Fs`
+suite plus `OpenRoot` and rooted confinement.
 
 ### Basic Overlay Setup
 
 ```go
-import "github.com/ngicks/go-fsys-helper/vroot/overlayfs"
+import (
+    "github.com/ngicks/go-fsys-helper/vroot"
+    "github.com/ngicks/go-fsys-helper/vroot/osfs"
+    "github.com/ngicks/go-fsys-helper/vroot/overlayfs"
+)
 
-// Create writable top layer
-top, err := osfs.NewRooted("top/data")
+// Writable top (any vroot.Fs — osfs for on-disk, memfs.New(name) for in-memory).
+top, err := osfs.NewRoot("top/data")
 if err != nil {
     log.Fatal(err)
 }
-topMetaFsys, err := osfs.NewRooted("top/meta")
-// Setup metadata store for tracking changes
-topMeta := overlayfs.NewMetadataStoreSimpleText(topMetaFsys)
 
-// Create read-only lower layers
-Layer1Data, err := osfs.NewRooted("layer1/data")
-Layer1MetaFsys, err := osfs.NewRooted("layer1/meta")
-...
+// Read-only lower layers, ordered low→high priority.
+lower1, err := osfs.NewRoot("layer1")
+lower2, err := osfs.NewRoot("layer2")
 
-// Create overlay filesystem
-overlayFs, err := overlayfs.New(
-    // Writable layer
-    NewLayer(NewMetadataStoreSimpleText(topMeta), top),
-    // Read-only lower layers
-    []Layer{layer1, layer2},
-    // Option; nil for default
-    nil,
+// The top layer carries the overlay's metadata journal (whiteouts / opaque
+// dirs). MetadataStoreLog is the default durable store (append-log +
+// compaction); use NewMetadataStoreMem() for an ephemeral overlay. The store's
+// backing fsys is vroot.Fs[vroot.File], so widen a *osfs.Root with vroot.Widen.
+meta := overlayfs.NewMetadataStoreLog(vroot.Widen(top), nil) // nil → defaults (batched fsync)
+
+overlayFs := overlayfs.New(
+    // Writable top + its metadata journal. NewLayer erases the file type via
+    // vroot.Widen, so heterogeneous layers (osfs *os.File, memfs vroot.File, …)
+    // mix freely.
+    overlayfs.NewLayer[*os.File](top, meta),
+    // Read-only lowers (low→high priority); meta may be nil for lowers.
+    []overlayfs.Layer{
+        overlayfs.NewLayer[*os.File](lower1, nil),
+        overlayfs.NewLayer[*os.File](lower2, nil),
+    },
+    nil, // *Option; nil → DefaultOption (visible Stage work dir, batched fsync)
 )
+defer overlayFs.Close() // closes top + lowers, flushes the journal
 
 /*
-layouts:
+resolution order:  top → lower2 → lower1   (last lower = highest priority)
 
 +--------+
-|  top   |
+|  top   |  writable; copy-up target; whiteouts/opaque live in its journal
 +--------+
-| layer2 |
+| lower2 |  read-only
 +--------+
-| layer1 |
+| lower1 |  read-only
 +--------+
 */
 ```
 
 ### Overlay Features
 
-- **Union Mount**: Files resolve from top layer down
-- **Copy-on-Write**: Lower layer files copied to top layer before any write operation or **opening as writable**
-- **Whiteout Support**: Track file deletions across layers
-- **Metadata Tracking**: Persistent storage of overlay metadata
+- **Union mount**: files resolve top→lowers (top wins).
+- **Copy-on-write**: a lower entry is copied up to top before any write — write-
+  open, `Chmod`/`Chown`/`Chtimes`, `Rename`/`Link`. Concurrent writers to the
+  same lower-only path collapse to a single copy-up (`singleflight`).
+- **Whiteout vs opaque**: `Remove` of a lower-backed entry records a *whiteout*
+  (the name, and its lower subtree, are hidden). `rm -rf dir && mkdir dir` over
+  lower content makes the recreated dir *opaque* (stale lower children stay
+  hidden while new top children show) — fixing the classic delete-then-recreate
+  resurrection bug.
+- **Copy-up policy**: `NewCopyUpPolicyStage(workDir)` (default) stages temps in
+  an explicit, *visible* work dir at the top root then publishes via an atomic
+  same-filesystem `Rename`; `NewCopyUpPolicyDotTmp(nameMax)` stages beside the
+  destination with no standing dir.
+- **Pluggable journal**: `MetadataStoreLog` (append-log + compaction, default
+  batched `fsync` off the hot path; force durability with `(*Fs).Sync()`) or
+  `MetadataStoreMem` (ephemeral, zero-cost).
+- **Fine-grained concurrency**: a sparse table of per-path *overlay virtual
+  nodes* (`ovl_node`) owns each touched path's deviation-state and lock, so
+  independent paths never serialize. The per-node lock is also the cross-layer
+  transaction boundary that keeps a top-write + journal-flip + lower-lookup
+  consistent (the backends share no lock). Optional Windows-style
+  `ERROR_SHARING_VIOLATION` via `Option.DisableOpenFileRemoval`.
 
 ```go
-// File resolution order: topLayer → lowerLayer1 → lowerLayer2
+// File resolution order: top → lower2 → lower1
 file, err := overlayFs.Open("config.yaml")
 
-// Modifications trigger copy-up from lower layers
-err = overlayFs.Remove("system-file.txt") // Creates whiteout entry
+// A write-open of a lower-only file copies it up to top first.
+w, err := overlayFs.OpenFile("config.yaml", os.O_RDWR, 0)
+
+// Remove of a lower-backed file records a whiteout (the lower copy is untouched).
+err = overlayFs.Remove("system-file.txt")
+
+// Force the metadata journal durable at a checkpoint (relevant in batched mode).
+err = overlayFs.Sync()
 ```
 
 ## 🧪 Testing
