@@ -25,6 +25,38 @@ func TestNilErr(t *testing.T) {
 	})
 }
 
+func TestErrFormatAndArgs(t *testing.T) {
+	t.Run("format string with args", func(t *testing.T) {
+		ft := newFakeT(t)
+		NilErr(ft, errors.New("boom"), "opening %q", "/x")
+		if !ft.failed {
+			t.Fatalf("NilErr(non-nil) should fail")
+		}
+		if want := `expected nil error, got: boom: opening "/x"`; ft.msg != want {
+			t.Fatalf("msg = %q, want %q", ft.msg, want)
+		}
+	})
+
+	t.Run("non-string values", func(t *testing.T) {
+		ft := newFakeT(t)
+		ErrIs(ft, errors.New("other"), errors.New("sentinel"), 42)
+		if !ft.failed {
+			t.Fatalf("ErrIs should fail on mismatch")
+		}
+		if want := "error mismatch: got other, want sentinel: 42"; ft.msg != want {
+			t.Fatalf("msg = %q, want %q", ft.msg, want)
+		}
+	})
+
+	t.Run("no args leaves message unchanged", func(t *testing.T) {
+		ft := newFakeT(t)
+		NilErr(ft, errors.New("boom"))
+		if want := "expected nil error, got: boom"; ft.msg != want {
+			t.Fatalf("msg = %q, want %q", ft.msg, want)
+		}
+	})
+}
+
 func TestErrIs(t *testing.T) {
 	target := errors.New("sentinel")
 	wrapped := fmt.Errorf("wrap: %w", target)
@@ -110,7 +142,7 @@ func TestErrAsTypeAnd(t *testing.T) {
 
 	t.Run("callback true passes", func(t *testing.T) {
 		ft := newFakeT(t)
-		ErrAsTypeAnd[*fs.PathError](ft, pe, func(p *fs.PathError) bool {
+		ErrAsTypeAnd(ft, pe, func(p *fs.PathError) bool {
 			return p.Op == "stat"
 		})
 		if ft.failed {
@@ -120,7 +152,7 @@ func TestErrAsTypeAnd(t *testing.T) {
 
 	t.Run("callback false fails", func(t *testing.T) {
 		ft := newFakeT(t)
-		ErrAsTypeAnd[*fs.PathError](ft, pe, func(p *fs.PathError) bool {
+		ErrAsTypeAnd(ft, pe, func(p *fs.PathError) bool {
 			return p.Op == "open"
 		})
 		if !ft.failed {
@@ -131,7 +163,7 @@ func TestErrAsTypeAnd(t *testing.T) {
 	t.Run("type mismatch fails before callback", func(t *testing.T) {
 		ft := newFakeT(t)
 		called := false
-		ErrAsTypeAnd[*fs.PathError](ft, errors.New("plain"), func(p *fs.PathError) bool {
+		ErrAsTypeAnd(ft, errors.New("plain"), func(p *fs.PathError) bool {
 			called = true
 			return true
 		})
