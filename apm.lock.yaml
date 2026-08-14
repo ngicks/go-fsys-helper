@@ -1,11 +1,11 @@
 lockfile_version: '1'
-generated_at: '2026-08-13T19:59:01.223254+00:00'
+generated_at: '2026-08-13T20:52:54.499019+00:00'
 apm_version: 0.28.0
 dependencies:
 - repo_url: ngicks/agents-package
   name: cc-workers
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: 0.0.1
   virtual_path: apm-package/cc-workers
   is_virtual: true
@@ -93,7 +93,7 @@ dependencies:
 - repo_url: ngicks/agents-package
   name: go-golangci-lint
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: 1.0.0
   virtual_path: hooks/go-golangci-lint
   is_virtual: true
@@ -102,7 +102,7 @@ dependencies:
 - repo_url: ngicks/agents-package
   name: go-vet-ngcheckers
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: 1.0.0
   virtual_path: hooks/go-vet-ngcheckers
   is_virtual: true
@@ -111,7 +111,7 @@ dependencies:
 - repo_url: ngicks/agents-package
   name: agents-package-ngicks.base.env
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: 1.0.0
   virtual_path: instructions/ngicks.base.env.instructions.md
   is_virtual: true
@@ -123,7 +123,7 @@ dependencies:
 - repo_url: ngicks/agents-package
   name: agents-package-ngicks.base.preference
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: 1.0.0
   virtual_path: instructions/ngicks.base.preference.instructions.md
   is_virtual: true
@@ -135,7 +135,7 @@ dependencies:
 - repo_url: ngicks/agents-package
   name: agents-package-ngicks.go.basics
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: 1.0.0
   virtual_path: instructions/ngicks.go.basics.instructions.md
   is_virtual: true
@@ -147,7 +147,7 @@ dependencies:
 - repo_url: ngicks/agents-package
   name: agents-package-ngicks.go.design-preference
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: 1.0.0
   virtual_path: instructions/ngicks.go.design-preference.instructions.md
   is_virtual: true
@@ -159,7 +159,7 @@ dependencies:
 - repo_url: ngicks/agents-package
   name: go-check-outdated-patterns
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: unknown
   virtual_path: skills/go-check-outdated-patterns
   is_virtual: true
@@ -176,7 +176,7 @@ dependencies:
 - repo_url: ngicks/agents-package
   name: go-review-checklist
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: unknown
   virtual_path: skills/go-review-checklist
   is_virtual: true
@@ -191,9 +191,26 @@ dependencies:
     .claude/skills/go-review-checklist/SKILL.md: sha256:e2fef495863cf2b659a85487565e4941e432ed70cece376784ccaf09623098ca
   content_hash: sha256:93e21c50dfcc501028db5d55493424042187a224bbc8c6af7f041b667f3cb4de
 - repo_url: ngicks/agents-package
+  name: ngcommit
+  host: github.com
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
+  version: unknown
+  virtual_path: skills/ngcommit
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/ngcommit
+  - .agents/skills/ngcommit/SKILL.md
+  - .claude/skills/ngcommit
+  - .claude/skills/ngcommit/SKILL.md
+  deployed_file_hashes:
+    .agents/skills/ngcommit/SKILL.md: sha256:66eaf3c7b183568eb842b8b6c7be1e384b090e9b75d15a4e0c4be7925fb562be
+    .claude/skills/ngcommit/SKILL.md: sha256:66eaf3c7b183568eb842b8b6c7be1e384b090e9b75d15a4e0c4be7925fb562be
+  content_hash: sha256:f9e7c06e1b96efb4639b4df627abb4b3074c0be899601b7a445d8348bf24a206
+- repo_url: ngicks/agents-package
   name: ngplan
   host: github.com
-  resolved_commit: 63c09246fa7d0f73154b8a34a58a948b67e16c6c
+  resolved_commit: 96e00d1e0f47c91ad26b668dad88ee2406bef462
   version: unknown
   virtual_path: skills/ngplan
   is_virtual: true
@@ -489,6 +506,24 @@ deployments:
   content_hash: sha256:c2c813783b318c988af325dd1960bfa7ff0af532d25ad4378efa9220d3ed9e11
 - kind: project-relative
   target: claude
+  value: .claude/skills/ngcommit
+  runtime: null
+  scope: project
+  owners:
+  - ngicks/agents-package/skills/ngcommit
+  active_owner: ngicks/agents-package/skills/ngcommit
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ngcommit/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - ngicks/agents-package/skills/ngcommit
+  active_owner: ngicks/agents-package/skills/ngcommit
+  content_hash: sha256:66eaf3c7b183568eb842b8b6c7be1e384b090e9b75d15a4e0c4be7925fb562be
+- kind: project-relative
+  target: claude
   value: .claude/skills/ngplan
   runtime: null
   scope: project
@@ -649,6 +684,24 @@ deployments:
   - ngicks/agents-package/apm-package/cc-workers
   active_owner: ngicks/agents-package/apm-package/cc-workers
   content_hash: sha256:c2c813783b318c988af325dd1960bfa7ff0af532d25ad4378efa9220d3ed9e11
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ngcommit
+  runtime: null
+  scope: project
+  owners:
+  - ngicks/agents-package/skills/ngcommit
+  active_owner: ngicks/agents-package/skills/ngcommit
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ngcommit/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - ngicks/agents-package/skills/ngcommit
+  active_owner: ngicks/agents-package/skills/ngcommit
+  content_hash: sha256:66eaf3c7b183568eb842b8b6c7be1e384b090e9b75d15a4e0c4be7925fb562be
 - kind: project-relative
   target: codex
   value: .agents/skills/ngplan
