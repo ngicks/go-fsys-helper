@@ -1,7 +1,8 @@
 name: go-fsys-helper
-version: 1.0.0
-description: APM project for go-fsys-helper
-author: ngicks
+version: 0.0.1
+targets:
+  - claude
+  - codex
 dependencies:
   apm:
     - git: github.com/ngicks/agents-package
@@ -27,4 +28,3 @@ dependencies:
     - git: github.com/ngicks/agents-package
       path: skills/ngplan
   mcp: []
-scripts: {}
