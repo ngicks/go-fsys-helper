@@ -6,8 +6,8 @@ github.com/ncruces/julianday v1.0.0 h1:fH0OKwa7NWvniGQtxdJRxAgkBMolni2BjDHaWTxqt
 github.com/ncruces/julianday v1.0.0/go.mod h1:Dusn2KvZrrovOMJuOt0TNXL6tB7U2E8kvza5fFc9G7g=
 github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20260528191442-457556e7ce33 h1:Xy0EN+hGqNmQX5HiMI/Vt5JRDKieg3IQyrZZU8ROUUA=
 github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20260528191442-457556e7ce33/go.mod h1:3Ko4N72NP33xyl3yIEj3JzbOAA8Ko/ZxgmbAl7uZhf4=
-github.com/ngicks/go-fsys-helper/vroot v0.0.0-20260528191442-457556e7ce33 h1:fcHJcqHpoypbUq149a4k8oTfsH/2Gcy6qSXxzbKC/nI=
-github.com/ngicks/go-fsys-helper/vroot v0.0.0-20260528191442-457556e7ce33/go.mod h1:DWJaa+njGsCTchRW7KsaAuE6f7ljzrk7qRkYpPP3P8Q=
+github.com/ngicks/go-fsys-helper/vroot v0.0.0-20260816141707-f9a55a9b10e0 h1:VtaO9SR3Beo5pSa0UujWSG+5o5olegxCNP5o3+Lrhcc=
+github.com/ngicks/go-fsys-helper/vroot v0.0.0-20260816141707-f9a55a9b10e0/go.mod h1:lYAxrQG79VT+1ScOoMW7DxwY9lnLlUDPK0LREmQj4eY=
 golang.org/x/sync v0.22.0 h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
 golang.org/x/sync v0.22.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
 golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
