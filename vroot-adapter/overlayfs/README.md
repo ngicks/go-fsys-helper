@@ -22,7 +22,10 @@ with one deliberate departure:
 
 Because layers are `vroot.Fs` values rather than directories, an overlay can
 stack anything vroot implements — `osfs`, `memfs`, an sftp mount, a read-only
-wrapper — and mix them freely in one stack.
+wrapper — and mix them freely in one stack. For layers on the real filesystem,
+prefer the `os.Root`-backed `osfs.NewRoot` over `osfs.NewFs`: besides confining
+traversal, its handles are opened with delete sharing on Windows, so files the
+overlay still holds open stay renamable and removable there.
 
 ## Installation
 

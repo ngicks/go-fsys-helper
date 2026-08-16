@@ -43,6 +43,12 @@ const (
 // What does not work is a second writable canonical data source over the same
 // directory: it blocks, rather than fails, for as long as the first holds the
 // store's exclusive lock.
+//
+// For a layer on the real filesystem, prefer an [os.Root]-backed
+// [github.com/ngicks/go-fsys-helper/vroot/osfs.Root] over a plain
+// [github.com/ngicks/go-fsys-helper/vroot/osfs.Fs]: besides confining
+// traversal, its handles are opened with delete sharing on Windows, so files
+// the overlay still holds open stay renamable and removable there.
 type DataSource struct {
 	fsys      vroot.Fs[vroot.File]
 	canonical bool
