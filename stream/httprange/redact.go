@@ -1,4 +1,3 @@
-// Package httprange reads remote objects through HTTP range requests.
 package httprange
 
 import (

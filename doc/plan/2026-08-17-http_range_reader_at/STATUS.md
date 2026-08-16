@@ -33,7 +33,8 @@ resolved (D1–D7), PLAN.md detailed. Implementation not begun.
 
 - [x] 1. In-package helpers — URL-secret redaction + Content-Range
   parsing incl. `bytes */N` (self-contained per D8)
-- [ ] 2. `httprange.New` + probe flow (D2/D3/D4)
+- [x] 2. `httprange.New` + probe flow (D2/D3/D4) — plus D14 carve-out:
+  empty-body 200 accepted as zero-size object
 - [ ] 3. `ReaderAt.ReadAt/Size/Close` (D1/D3/D5)
 - [ ] 4. httptest matrix incl. `-race` parallel ReadAt (D1), mutation →
   `ErrObjectChanged` (D5), probe cases (D4), cancellation (D3)

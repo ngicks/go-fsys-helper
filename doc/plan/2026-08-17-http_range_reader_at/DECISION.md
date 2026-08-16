@@ -193,3 +193,22 @@ all cases.
 **Rationale**: sending a weak validator in `If-Range` would be silently
 ignored by compliant servers, misclassifying object changes; the
 response-side comparisons keep detection honest regardless.
+
+## D14 — Probe accepts empty-body 200 as a zero-size object [automatic] (2026-08-17)
+
+**Choice**: the construction probe treats a 200 response with no
+`Content-Range` and `Content-Length: 0` as a zero-size object (size 0,
+validators/origin captured), instead of failing with `ErrRangeIgnored`.
+
+**Rationale**: Go's own `http.ServeContent` deliberately answers a range
+request on an empty file with 200, not 416 (`net/http/fs.go`, the
+`errNoOverlap` + `size == 0` branch) — so a strict probe would reject empty
+objects behind every standard Go file server. The carve-out cannot cause
+corruption: a `Content-Length: 0` 200 body IS the whole (empty)
+representation, and a zero-size reader never issues a ranged request —
+every ReadAt returns EOF locally. Range support remains unproven for such
+objects, but it is also never needed.
+
+**Rejected**: strict spec-only 416 `bytes */N` handling — punishes the
+most common Go server implementation for a case where range semantics are
+irrelevant.
