@@ -39,7 +39,7 @@ resolved (D1–D7), PLAN.md detailed. Implementation not begun.
   with a strong validator (D13)
 - [x] 4. httptest matrix incl. `-race` parallel ReadAt (D1), mutation →
   `ErrObjectChanged` (D5), probe cases (D4), cancellation (D3)
-- [ ] 5. zip round-trip (UC1) + `SizedReadersFromReadAtSizer` compile
+- [x] 5. zip round-trip (UC1) + `SizedReadersFromReadAtSizer` compile
   check (UC3)
 - [ ] 6. `stream/README.md`, `go test ./...`, `./govet.sh`
 
