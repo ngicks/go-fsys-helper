@@ -1,8 +1,9 @@
 # STATUS — HTTP range-read URL as io.ReaderAt
 
-Current state: **planned, not started** — idea gate passed
-(IDEA.md `Gate: confirmed by user, 2026-08-17`), all open questions
-resolved (D1–D7), PLAN.md detailed. Implementation not begun.
+Current state: **implemented** — all six steps done, reviewed
+(approve-with-nits; nits fixed), `go test -race ./...` and `./govet.sh`
+green. Post-plan decisions D12–D15 recorded (empty-object probe
+carve-out, strong-validator If-Range, errors.AsType + go 1.26 bump).
 
 ## Decision checklist
 
@@ -41,7 +42,7 @@ resolved (D1–D7), PLAN.md detailed. Implementation not begun.
   `ErrObjectChanged` (D5), probe cases (D4), cancellation (D3)
 - [x] 5. zip round-trip (UC1) + `SizedReadersFromReadAtSizer` compile
   check (UC3)
-- [ ] 6. `stream/README.md`, `go test ./...`, `./govet.sh`
+- [x] 6. `stream/README.md`, `go test ./...`, `./govet.sh`
 
 ## Research
 
@@ -73,4 +74,6 @@ resolved (D1–D7), PLAN.md detailed. Implementation not begun.
 
 ## Next action
 
-Start PLAN.md step 1 (in-package redaction + Content-Range helpers).
+None — implementation complete. Deferred: progressive/caching wrapper
+(HANDOFF.md H1); optional backport of the safer URL redaction fallback
+to `stream/fileserver` (its parse-failure path echoes the raw URL).
