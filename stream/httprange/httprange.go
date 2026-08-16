@@ -17,6 +17,12 @@ const drainLimit = 1 << 16
 // Doer issues an HTTP request and returns its response. [http.Client]
 // satisfies it, and so does anything wrapping one with retries, request
 // signing or instrumentation.
+//
+// A transport error reaches the caller with the URL it names replaced by
+// scheme, host and path alone, which the reader can do for an error that is or
+// wraps a [*url.Error]. A Doer describing a failure in words of its own is
+// beyond that reach: whatever it writes into its message, the raw URL
+// included, is passed on as it stands.
 type Doer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -31,8 +37,10 @@ type Config struct {
 	// Header holds headers to put on every request, such as an Authorization
 	// line or an API version. Whatever it carries stays out of error text.
 	//
-	// Range, If-Range and Accept-Encoding are removed from the copy that goes
-	// out: those decide what a response means, so the reader owns them.
+	// Range, If-Range and Accept-Encoding decide what a response means, so the
+	// reader owns them and no value handed in for one of the three reaches the
+	// wire: the first two are dropped from the copy that goes out and
+	// Accept-Encoding is overwritten with identity.
 	Header http.Header
 	// Size is the total size of the object in bytes. Greater than zero means
 	// the caller already knows it and vouches for it, which saves the reader a
@@ -60,6 +68,7 @@ var ErrObjectChanged = errors.New("httprange: remote object changed")
 var ErrRangeIgnored = errors.New("httprange: server ignored range request")
 
 // StatusCodeError reports a response status the reader cannot work with.
+// [errors.AsType] pulls one out of what a call returns.
 //
 // It deliberately does not wrap [io/fs.ErrNotExist] for 404 and 410. A remote
 // HTTP object is not a file: those statuses can just as well come from a proxy

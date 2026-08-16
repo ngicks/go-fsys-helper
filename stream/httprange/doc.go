@@ -1,10 +1,12 @@
 // Package httprange exposes a remote HTTP object as an [io.ReaderAt].
 //
-// [New] pins a URL together with the size, the validators and the origin the
-// object answered with, and every [ReaderAt.ReadAt] then issues its own
-// bounded GET carrying a Range header for exactly the bytes asked for.
-// Nothing is shared between reads beyond that pinned description, so any
-// number of goroutines may read different parts of the object at the same
+// [New] pins a URL together with the size of the object, and every
+// [ReaderAt.ReadAt] then issues its own bounded GET carrying a Range header
+// for exactly the bytes asked for. The validators and the origin that later
+// responses are held to are pinned alongside the size when New probes for it,
+// and by the first read that succeeds when the caller supplied the size
+// instead. Nothing is shared between reads beyond that pinned description, so
+// any number of goroutines may read different parts of the object at the same
 // time and no read disturbs another. When the object changes underneath, a
 // read fails with [ErrObjectChanged] rather than handing back a mix of the old
 // and the new bytes.
@@ -20,9 +22,9 @@
 //	defer r.Close()
 //	br := bufio.NewReaderSize(io.NewSectionReader(r, 0, r.Size()), 1<<20)
 //
-// [ReaderAt.Close] cancels the context New was given, which aborts the
-// requests still in flight and fails every later read. The reader holds no
-// other resource, so closing is cheap, always succeeds and may be done more
-// than once. A reader that is never closed stops working when the caller's own
-// context does.
+// [ReaderAt.Close] cancels a context derived from the one New was given, which
+// aborts the requests still in flight and fails every later read; the caller's
+// own context is left alone. The reader holds no other resource, so closing is
+// cheap, always succeeds and may be done more than once. A reader that is
+// never closed stops working when the caller's own context does.
 package httprange

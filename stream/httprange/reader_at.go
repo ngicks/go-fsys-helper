@@ -27,8 +27,9 @@ import (
 // matching [ErrRangeIgnored]. A body ending early fails with
 // [io.ErrUnexpectedEOF]; the bytes read so far are returned with it. Any other
 // status the server answers with comes back as a [*StatusCodeError]. No error
-// text ever contains the query, fragment or userinfo of the URL, nor anything
-// from the configured headers.
+// text this package writes contains the query, fragment or userinfo of the
+// URL, nor anything from the configured headers, and a transport error naming
+// the URL is rewritten the same way as far as [Doer] leaves room for.
 func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	if off < 0 {
 		return 0, fmt.Errorf("httprange.ReaderAt.ReadAt: negative offset %d", off)
@@ -85,7 +86,7 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 		return 0, &StatusCodeError{Code: resp.StatusCode}
 	}
 
-	if err := r.checkPartial(resp, off); err != nil {
+	if err := r.checkPartial(resp, off, int64(len(p))); err != nil {
 		return 0, err
 	}
 
@@ -109,8 +110,9 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 // when the reader is built and does not change afterwards.
 func (r *ReaderAt) Size() int64 { return r.size }
 
-// Close stops the reader: it cancels the context handed to [New], which aborts
-// the requests still in flight and fails every read from then on. There is
+// Close stops the reader: it cancels a context derived from the one handed to
+// [New], which aborts the requests still in flight and fails every read from
+// then on. The context the caller passed to New is left untouched. There is
 // nothing else to release, so it always reports success.
 func (r *ReaderAt) Close() error {
 	// A context.CancelFunc may be called any number of times, which is all
@@ -121,19 +123,22 @@ func (r *ReaderAt) Close() error {
 
 // checkPartial decides whether a 206 really is the stretch of bytes that was
 // asked for, out of the object the reader was built against, before any of its
-// body is believed.
-func (r *ReaderAt) checkPartial(resp *http.Response, off int64) error {
-	start, _, total, err := parseContentRange(resp.Header.Get("Content-Range"))
+// body is believed. length is how many bytes the request asked for, after the
+// clamp against the end of the object.
+func (r *ReaderAt) checkPartial(resp *http.Response, off, length int64) error {
+	start, end, total, err := parseContentRange(resp.Header.Get("Content-Range"))
 	if err != nil {
 		return fmt.Errorf(
 			"httprange: reading %s at offset %d: %w",
 			redactRawURL(r.url), off, err,
 		)
 	}
-	if start != off || total != r.size {
+	wantEnd := off + length - 1
+	if start != off || end != wantEnd || total != r.size {
 		return fmt.Errorf(
-			"%w: reading %s at offset %d: got bytes from %d of %d, want from %d of %d",
-			ErrObjectChanged, redactRawURL(r.url), off, start, total, off, r.size,
+			"%w: reading %s at offset %d: got bytes %d-%d of %d, want %d-%d of %d",
+			ErrObjectChanged, redactRawURL(r.url), off,
+			start, end, total, off, wantEnd, r.size,
 		)
 	}
 
