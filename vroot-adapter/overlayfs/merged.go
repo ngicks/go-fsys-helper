@@ -53,13 +53,20 @@ func (s *overlayState) lookupFrom(name string, from int) (lookupResult, error) {
 		switch {
 		case err == nil:
 			return lookupResult{layer: i, src: s.layers[i], path: path, info: info}, nil
+		case errors.Is(err, syscall.ENOTDIR):
+			blocked, probeErr := s.blockedIn(i, name)
+			if probeErr != nil {
+				return lookupResult{}, probeErr
+			}
+			if blocked {
+				// Not this layer's business alone: a non-directory on the way to name
+				// fills a path every deeper layer would have to be reached through, so
+				// the search ends here instead of stepping around it.
+				return lookupResult{}, s.blockedErr(name)
+			}
+			continue
 		case errors.Is(err, fs.ErrNotExist):
 			continue
-		case errors.Is(err, syscall.ENOTDIR):
-			// Not this layer's business alone: a non-directory on the way to name
-			// fills a path every deeper layer would have to be reached through, so
-			// the search ends here instead of stepping around it.
-			return lookupResult{}, s.blockedErr(name)
 		default:
 			// Anything else is the backend failing rather than answering, and a
 			// layer that cannot answer must not be read as an empty one.
@@ -67,6 +74,37 @@ func (s *overlayState) lookupFrom(name string, from int) (lookupResult, error) {
 		}
 	}
 	return lookupResult{}, fs.ErrNotExist
+}
+
+// blockedIn reports whether layer i holds a non-directory where name would have
+// to be reached through. It is the question an Lstat error matching
+// [syscall.ENOTDIR] raises rather than settles.
+//
+// Only unix answers it in the errno. Windows spells syscall.ENOTDIR as
+// ERROR_PATH_NOT_FOUND, which it returns both for a component before the leaf
+// that is not a directory and for one that is not there at all, and which
+// matches [fs.ErrNotExist] besides — one value for the two answers the search
+// has to tell apart, since a layer that merely lacks the directory leaves the
+// layers below it to be read as usual. So the layer is asked directly and the
+// nearest ancestor it does show decides.
+func (s *overlayState) blockedIn(i int, name string) (bool, error) {
+	for n := parentName(name); ; n = parentName(n) {
+		info, err := s.layers[i].fsys.Lstat(s.layerPath(i, n))
+		switch {
+		case err == nil:
+			return !info.IsDir(), nil
+		case errors.Is(err, syscall.ENOTDIR):
+			// Whatever stands in the way is further up still; asked before
+			// fs.ErrNotExist for the same reason the caller asks in this order.
+		case errors.Is(err, fs.ErrNotExist):
+			return false, nil
+		default:
+			return false, err
+		}
+		if n == "" {
+			return false, nil
+		}
+	}
 }
 
 // blockedErr names what a non-directory component left behind: the merged view
@@ -109,13 +147,22 @@ func (s *overlayState) readDir(name string) ([]fs.DirEntry, error) {
 		path := s.layerPath(i, name)
 		info, err := s.layers[i].fsys.Lstat(path)
 		switch {
+		// A non-directory at name, or on the way to it in the case after this
+		// one, fills the path the layers below would be merged in through:
+		// nothing under them is part of this directory any more.
+		case err == nil && !info.IsDir():
+			return sortEntries(entries), nil
+		case errors.Is(err, syscall.ENOTDIR):
+			blocked, probeErr := s.blockedIn(i, name)
+			if probeErr != nil {
+				return nil, probeErr
+			}
+			if blocked {
+				return sortEntries(entries), nil
+			}
+			continue
 		case errors.Is(err, fs.ErrNotExist):
 			continue
-		case errors.Is(err, syscall.ENOTDIR), err == nil && !info.IsDir():
-			// A non-directory at or on the way to name fills the path the layers
-			// below would be merged in through: nothing under them is part of this
-			// directory any more.
-			return sortEntries(entries), nil
 		case err != nil:
 			return nil, err
 		}
