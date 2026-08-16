@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -196,6 +197,170 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
 		}
 	})
+
+	t.Run("short_range", func(t *testing.T) {
+		content := testContent(256)
+		s := startHandlerServer(t, handleSequence(
+			handlePartial(content, `"v1"`),
+			// A 206 announcing fewer bytes than were asked for. Taking it at
+			// face value would leave the tail of the buffer holding whatever
+			// the caller had put there.
+			func(w http.ResponseWriter, r *http.Request) {
+				start, _ := rangeBounds(r.Header.Get("Range"))
+				w.Header().Set("ETag", `"v1"`)
+				w.Header().Set(
+					"Content-Range",
+					fmt.Sprintf("bytes %d-%d/%d", start, start+7, len(content)),
+				)
+				w.WriteHeader(http.StatusPartialContent)
+				_, _ = w.Write(content[start : start+8])
+			},
+		))
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
+		}
+	})
+}
+
+// TestReaderAt_ReadAt_originChanged pins a read to the origin construction
+// settled on, which is the far end of any redirect rather than the URL asked
+// for.
+func TestReaderAt_ReadAt_originChanged(t *testing.T) {
+	content := testContent(256)
+
+	// The redirect target answers exactly as the probe did, validators
+	// included, so the origin is the only thing a read can find fault with.
+	elsewhere := startHandlerServer(t, handlePartial(content, `"v1"`))
+	s := startHandlerServer(t, handleSequence(
+		handlePartial(content, `"v1"`),
+		func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusTemporaryRedirect)
+		},
+	))
+
+	r, err := New(context.Background(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	_, err = r.ReadAt(make([]byte, 16), 0)
+	if !errors.Is(err, ErrObjectChanged) {
+		t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
+	}
+	if !strings.Contains(err.Error(), "origin") {
+		t.Fatalf("ReadAt returned %v, want the origin mismatch", err)
+	}
+}
+
+func TestReaderAt_ReadAt_statusError(t *testing.T) {
+	content := testContent(256)
+	// The object is there for the probe and gone by the time it is read.
+	s := startHandlerServer(t, handleSequence(
+		handlePartial(content, `"v1"`),
+		func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "no such object", http.StatusNotFound)
+		},
+	))
+
+	r, err := New(context.Background(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	_, err = r.ReadAt(make([]byte, 16), 0)
+	codeErr, ok := errors.AsType[*StatusCodeError](err)
+	if !ok {
+		t.Fatalf("ReadAt returned %v, want a *StatusCodeError", err)
+	}
+	if codeErr.Code != http.StatusNotFound {
+		t.Fatalf("Code = %d, want %d", codeErr.Code, http.StatusNotFound)
+	}
+	if !codeErr.NotFound() {
+		t.Fatalf("NotFound() = false, want true for status %d", codeErr.Code)
+	}
+}
+
+func TestReaderAt_ReadAt_weakETag(t *testing.T) {
+	const (
+		weakETag     = `W/"v1"`
+		lastModified = "Mon, 06 May 2024 07:08:09 GMT"
+	)
+	content := testContent(256)
+
+	// A weak validator has to be served by hand: http.ServeContent sends a
+	// Last-Modified whenever it has a modification time, and one case here
+	// needs a response carrying nothing but the weak ETag.
+	serveWeak := func(lastMod string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("ETag", weakETag)
+			if lastMod != "" {
+				w.Header().Set("Last-Modified", lastMod)
+			}
+			start, end := rangeBounds(r.Header.Get("Range"))
+			w.Header().Set(
+				"Content-Range",
+				fmt.Sprintf("bytes %d-%d/%d", start, end, len(content)),
+			)
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(content[start : end+1])
+		}
+	}
+
+	for _, tc := range []struct {
+		name         string
+		lastModified string
+		wantIfRange  string
+	}{
+		{
+			name:         "falls_back_to_last_modified",
+			lastModified: lastModified,
+			wantIfRange:  lastModified,
+		},
+		{name: "nothing_left_to_send"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var reqLog requestLog
+			s := startHandlerServer(t, reqLog.wrap(serveWeak(tc.lastModified)))
+
+			r, err := New(context.Background(), s.URL, nil)
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			defer r.Close()
+
+			if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
+				t.Fatalf("ReadAt returned error: %v", err)
+			}
+
+			headers := reqLog.snapshot()
+			if len(headers) != 2 {
+				t.Fatalf("server saw %d requests, want 2", len(headers))
+			}
+			// A server may ignore a weak validator in an If-Range and answer
+			// with the whole entity, so the reader must never send one.
+			if got := headers[1].Get("If-Range"); strings.Contains(got, weakETag) {
+				t.Fatalf("read If-Range = %q, want the weak ETag left out", got)
+			}
+			if tc.wantIfRange == "" {
+				if got := headers[1].Values("If-Range"); len(got) != 0 {
+					t.Fatalf("read sent If-Range %q, want none at all", got)
+				}
+				return
+			}
+			if got := headers[1].Get("If-Range"); got != tc.wantIfRange {
+				t.Fatalf("read If-Range = %q, want %q", got, tc.wantIfRange)
+			}
+		})
+	}
 }
 
 func TestReaderAt_ReadAt_shortBody(t *testing.T) {
@@ -263,6 +428,78 @@ func TestReaderAt_ReadAt_parallel(t *testing.T) {
 		}(int64(i))
 	}
 	wg.Wait()
+}
+
+// TestReaderAt_ReadAt_concurrentFirstRead covers the reader built with a size
+// it was handed: nothing describes the object until a read comes back, and
+// every one of these goroutines is racing to be the read that settles it.
+func TestReaderAt_ReadAt_concurrentFirstRead(t *testing.T) {
+	const (
+		readers = 8
+		bufLen  = 64
+	)
+	content := testContent(readers * bufLen)
+	s := startConformantServer(t, content)
+
+	r, err := New(context.Background(), s.URL, &Config{Size: int64(len(content))})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range readers {
+		wg.Add(1)
+		go func(off int64) {
+			defer wg.Done()
+
+			buf := make([]byte, bufLen)
+			<-start
+			n, err := r.ReadAt(buf, off)
+			if err != nil && !errors.Is(err, io.EOF) {
+				t.Errorf("ReadAt(make([]byte, %d), %d) returned error: %v", bufLen, off, err)
+				return
+			}
+			if !bytes.Equal(buf[:n], content[off:off+int64(n)]) {
+				t.Errorf("ReadAt(make([]byte, %d), %d) read the wrong bytes", bufLen, off)
+			}
+		}(int64(i) * bufLen)
+	}
+	close(start)
+	wg.Wait()
+
+	changed := testContent(len(content))
+	for i := range changed {
+		changed[i] ^= 0xff
+	}
+	s.swap(changed, `"v2"`)
+
+	if _, err := r.ReadAt(make([]byte, bufLen), 0); !errors.Is(err, ErrObjectChanged) {
+		t.Fatalf(
+			"ReadAt after the object changed = %v, want %v; the reads above left it unpinned",
+			err, ErrObjectChanged,
+		)
+	}
+}
+
+// TestReaderAt_iotest walks the [io.Reader] contract over the reader, which
+// asks for every offset in the object one small piece at a time.
+func TestReaderAt_iotest(t *testing.T) {
+	// Each of those pieces costs an HTTP round trip, so the object is kept
+	// small enough for the walk to stay quick.
+	content := testContent(1024)
+	s := startConformantServer(t, content)
+
+	r, err := New(context.Background(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	if err := iotest.TestReader(io.NewSectionReader(r, 0, r.Size()), content); err != nil {
+		t.Fatalf("iotest.TestReader returned error: %v", err)
+	}
 }
 
 func TestReaderAt_parentContextCanceled(t *testing.T) {

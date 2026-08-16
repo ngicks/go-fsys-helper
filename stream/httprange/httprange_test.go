@@ -105,6 +105,34 @@ func deadServerURL(t *testing.T) string {
 	return s.URL
 }
 
+// doerFunc adapts a function to [Doer], which is how a test stands in for a
+// client without a server behind it.
+type doerFunc func(req *http.Request) (*http.Response, error)
+
+func (f doerFunc) Do(req *http.Request) (*http.Response, error) { return f(req) }
+
+// requestLog keeps the headers of every request that reached the handler it
+// wraps, for tests asking what the reader put on the wire.
+type requestLog struct {
+	mu      sync.Mutex
+	headers []http.Header
+}
+
+func (l *requestLog) wrap(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		l.mu.Lock()
+		l.headers = append(l.headers, r.Header.Clone())
+		l.mu.Unlock()
+		h(w, r)
+	}
+}
+
+func (l *requestLog) snapshot() []http.Header {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]http.Header(nil), l.headers...)
+}
+
 // handleSequence answers requests with hs in order, staying on the last one
 // once the list runs out.
 func handleSequence(hs ...http.HandlerFunc) http.HandlerFunc {
@@ -239,6 +267,46 @@ func TestNew_configuredSize(t *testing.T) {
 
 	if _, err := r.ReadAt(buf, 32); !errors.Is(err, ErrObjectChanged) {
 		t.Fatalf("ReadAt after the object changed = %v, want %v", err, ErrObjectChanged)
+	}
+}
+
+func TestNew_invalidURL(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		rawURL  string
+		wantMsg string
+	}{
+		{name: "empty", rawURL: "", wantMsg: "empty url"},
+		{
+			name:    "unparsable",
+			rawURL:  "http://example.com/%zz",
+			wantMsg: "invalid URL escape",
+		},
+		{
+			name:    "wrong_scheme",
+			rawURL:  "ftp://user:" + secretPassword + "@example.com/p?token=" + secretToken,
+			wantMsg: "is not http or https",
+		},
+		{name: "no_host", rawURL: "http://", wantMsg: "no host"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// A URL that can never become a ranged GET is refused before
+			// anything reaches the wire, so this client must stay untouched.
+			client := doerFunc(func(req *http.Request) (*http.Response, error) {
+				t.Errorf("New issued a request to %q", req.URL.Redacted())
+				return nil, errors.New("no request was expected")
+			})
+
+			r, err := New(context.Background(), tc.rawURL, &Config{Client: client})
+			if err == nil {
+				r.Close()
+				t.Fatalf("New returned no error, size %d", r.Size())
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Fatalf("New returned %v, want it to say %q", err, tc.wantMsg)
+			}
+			assertNoSecret(t, err)
+		})
 	}
 }
 
@@ -402,8 +470,8 @@ func TestNew_statusError(t *testing.T) {
 			})
 
 			_, err := New(context.Background(), s.URL, nil)
-			var codeErr *StatusCodeError
-			if !errors.As(err, &codeErr) {
+			codeErr, ok := errors.AsType[*StatusCodeError](err)
+			if !ok {
 				t.Fatalf("New returned %v, want a *StatusCodeError", err)
 			}
 			if codeErr.Code != tc.code {
