@@ -3,9 +3,11 @@ package overlayfs
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"maps"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
@@ -118,8 +120,9 @@ func TestNewSweepsWork(t *testing.T) {
 	})
 }
 
-// TestNewRejects checks the two tops New refuses: a plain data source, which has
-// nowhere to record masking, and a canonical one whose store opened read-only.
+// TestNewRejects checks what New refuses: a plain top, which has nowhere to
+// record masking, a canonical top whose store opened read-only, and a nil lower,
+// which is reported rather than dereferenced.
 func TestNewRejects(t *testing.T) {
 	t.Run("plain top", func(t *testing.T) {
 		plain := NewDataSource[vroot.File](memfs.New("plain"))
@@ -151,6 +154,20 @@ func TestNewRejects(t *testing.T) {
 		assertErrIs(t, "New(read-only top)", err, ErrTopReadOnly)
 		if errors.Is(err, ErrNotCanonical) {
 			t.Error("a read-only top is reported as non-canonical; its layout is canonical")
+		}
+	})
+
+	t.Run("nil lower", func(t *testing.T) {
+		top := canonicalSource(t, memfs.New("top"))
+		lower0 := canonicalSource(t, memfs.New("lower0"))
+
+		_, err := New(top, []*DataSource{lower0, nil}, nil)
+		assertErrIs(t, "New(nil lower)", err, fs.ErrInvalid)
+		if errors.Is(err, ErrNotCanonical) {
+			t.Error("a nil lower is reported as non-canonical; a lower may be plain")
+		}
+		if !strings.Contains(err.Error(), "lowers[1]") {
+			t.Errorf("New(nil lower) -> %v, want the message to name lowers[1]", err)
 		}
 	})
 }

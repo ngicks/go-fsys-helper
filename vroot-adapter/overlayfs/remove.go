@@ -82,7 +82,7 @@ func (f *Fs) removeAll(name string) error {
 	case err != nil:
 		return err
 	}
-	if err := f.removable(full); err != nil {
+	if err := f.removableTree(full); err != nil {
 		return err
 	}
 	return f.unlink(full, f.top().fsys.RemoveAll)
@@ -94,6 +94,21 @@ func (f *Fs) removeAll(name string) error {
 // handles were counted out under.
 func (f *Fs) removable(full string) error {
 	if f.disableOpenFileRemoval && f.handles.count(full) > 0 {
+		return errSharingViolation
+	}
+	return nil
+}
+
+// removableTree is the same gate over everything [Fs.RemoveAll] takes down at
+// once: a handle out anywhere under the name refuses the whole removal.
+//
+// Windows walks such a tree entry by entry and stops at the first open one,
+// leaving behind whatever it already deleted. Refusing before anything is
+// dropped answers the same refusal without the half-removed tree, which matters
+// more here: the deletion spans layers, so a partial one would also have left
+// the masking describing a tree that no longer matches either side.
+func (f *Fs) removableTree(full string) error {
+	if f.disableOpenFileRemoval && f.handles.countSubtree(full) > 0 {
 		return errSharingViolation
 	}
 	return nil

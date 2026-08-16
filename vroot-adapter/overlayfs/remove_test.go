@@ -186,3 +186,53 @@ func TestDisableOpenFileRemoval(t *testing.T) {
 	mustDo(t, "Remove after close", f.Remove("file.txt"))
 	assertNotExist(t, f, "file.txt")
 }
+
+// TestDisableOpenFileRemovalSubtree checks that the refusal covers everything
+// RemoveAll takes down at once: a handle out on a file deep inside the tree stops
+// the removal before anything is dropped or masked.
+func TestDisableOpenFileRemovalSubtree(t *testing.T) {
+	top := canonicalSource(t, memfs.New("top"))
+	lower0 := canonicalSource(t, memfs.New("lower0"))
+	put(t, lower0, "tree/sub/deep.txt", "lower", 0o644)
+	put(t, lower0, "treeX/inside.txt", "lower", 0o644)
+	put(t, lower0, "other/inside.txt", "lower", 0o644)
+	f, err := New(top, []*DataSource{lower0}, &Option{DisableOpenFileRemoval: true})
+	mustDo(t, "New", err)
+
+	file, err := f.Open(filepath.FromSlash("tree/sub/deep.txt"))
+	mustDo(t, "Open", err)
+
+	assertErrIs(
+		t,
+		"RemoveAll with a handle out deep inside",
+		f.RemoveAll("tree"),
+		errSharingViolation,
+	)
+	assertErrIs(
+		t,
+		"RemoveAll on the holding directory",
+		f.RemoveAll(filepath.FromSlash("tree/sub")),
+		errSharingViolation,
+	)
+	assertErrIs(
+		t,
+		"RemoveAll on the held name itself",
+		f.RemoveAll(filepath.FromSlash("tree/sub/deep.txt")),
+		errSharingViolation,
+	)
+	assertExists(t, f, "tree/sub/deep.txt")
+	assertMarks(t, f, nil, nil)
+
+	mustDo(t, "RemoveAll(other)", f.RemoveAll("other"))
+
+	// A held sibling whose name merely extends "tree" without a separator must
+	// not block the tree's removal.
+	sibling, err := f.Open(filepath.FromSlash("treeX/inside.txt"))
+	mustDo(t, "Open(sibling)", err)
+	defer func() { mustDo(t, "Close(sibling)", sibling.Close()) }()
+
+	mustDo(t, "Close", file.Close())
+	mustDo(t, "RemoveAll after close", f.RemoveAll("tree"))
+	assertNotExist(t, f, "tree")
+	assertExists(t, f, "treeX/inside.txt")
+}

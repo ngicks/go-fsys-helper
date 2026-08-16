@@ -1,6 +1,7 @@
 package overlayfs
 
 import (
+	"io/fs"
 	"testing"
 	"time"
 )
@@ -67,6 +68,34 @@ func TestMergedDirChmod(t *testing.T) {
 	mustDo(t, "Stat through the handle", err)
 	if got := info.Mode().Perm(); got != 0o700 {
 		t.Errorf("mode through the handle after its own Chmod = %o, want %o", got, 0o700)
+	}
+	assertMarks(t, f, nil, nil)
+}
+
+// TestMergedDirChmodAfterClose checks that a closed directory handle changes
+// nothing: both setters report fs.ErrClosed, the copy-up they would have gone
+// through does not happen, and the lower directory keeps the mode it had.
+func TestMergedDirChmodAfterClose(t *testing.T) {
+	f, top, lower0, _ := newOverlay(t, memfsMaker)
+	put(t, lower0, "dir/inside.txt", "lower", 0o644)
+	before, err := lower0.fsys.Stat(lower0.ContentPath("dir"))
+	mustDo(t, "Stat lower", err)
+
+	dir, err := f.Open("dir")
+	mustDo(t, "Open", err)
+	mustDo(t, "Close", dir.Close())
+
+	assertErrIs(t, "Chmod after Close", dir.Chmod(0o700), fs.ErrClosed)
+	assertErrIs(t, "Chown after Close", dir.Chown(-1, -1), fs.ErrClosed)
+
+	if exists(t, top.fsys, top.ContentPath("dir")) {
+		t.Error("a closed handle's Chmod copied the directory up")
+	}
+	after, err := lower0.fsys.Stat(lower0.ContentPath("dir"))
+	mustDo(t, "Stat lower", err)
+	if after.Mode().Perm() != before.Mode().Perm() {
+		t.Errorf("the lower's mode changed to %o, want %o left alone",
+			after.Mode().Perm(), before.Mode().Perm())
 	}
 	assertMarks(t, f, nil, nil)
 }

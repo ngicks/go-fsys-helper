@@ -2,6 +2,7 @@ package overlayfs
 
 import (
 	"fmt"
+	"io/fs"
 	"maps"
 	"slices"
 	"strings"
@@ -59,6 +60,13 @@ type layerMask struct {
 func newOverlayState(top *DataSource, lowers []*DataSource) (*overlayState, error) {
 	if top == nil || !top.canonical || top.store == nil {
 		return nil, fmt.Errorf("overlayfs: %w: top", ErrNotCanonical)
+	}
+	// Not ErrNotCanonical: a lower is free to be plain, so nothing about a nil
+	// one is a statement about the layout it carries.
+	for i, d := range lowers {
+		if d == nil {
+			return nil, fmt.Errorf("overlayfs: %w: lowers[%d] is nil", fs.ErrInvalid, i)
+		}
 	}
 	s := &overlayState{layers: append([]*DataSource{top}, lowers...)}
 	s.masks = make([]layerMask, len(s.layers))

@@ -33,10 +33,16 @@ const (
 // or stack as a lower and go on masking the layers below it.
 //
 // A DataSource takes over what it is handed: [DataSource.Close] closes the
-// store and the fs under it. Stack one layer under two overlays by sharing the
-// *DataSource, not by building a second one over the same directory — that
-// second one would block, not fail, for as long as the first holds the store's
-// exclusive lock.
+// store and the fs under it. One belongs to one overlay and must not be shared
+// with a second: an overlay copies the layer's masking into memory as it is
+// built and never re-reads it, so two overlays over one *DataSource drift
+// apart, and whichever closes first closes the store and the fs out from under
+// the other. Stack one layer under two overlays by building a DataSource per
+// overlay, each over its own handle on the layer — a plain one, or a canonical
+// one over a [vroot.ReadOnlyFs], whose store opens read-only and takes no lock.
+// What does not work is a second writable canonical data source over the same
+// directory: it blocks, rather than fails, for as long as the first holds the
+// store's exclusive lock.
 type DataSource struct {
 	fsys      vroot.Fs[vroot.File]
 	canonical bool

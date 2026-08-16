@@ -122,7 +122,7 @@ func TestFsEscapes(t *testing.T) {
 
 // TestFsMergedDirHandle checks the listing a directory handle serves: every
 // layer's entries merged and sorted, read in chunks by a cursor that does not
-// hand the same entry out twice.
+// hand the same entry out twice and is rewound only by a seek to offset zero.
 func TestFsMergedDirHandle(t *testing.T) {
 	eachBacking(t, func(t *testing.T, mk fsysMaker) {
 		f, top, lower0, lower1 := newOverlay(t, mk)
@@ -163,6 +163,9 @@ func TestFsMergedDirHandle(t *testing.T) {
 		if !slices.Equal(chunked, want) {
 			t.Errorf("chunked ReadDir = %q, want %q", chunked, want)
 		}
+
+		_, err = d.Seek(1, io.SeekStart)
+		assertErrIs(t, "Seek(1, io.SeekStart)", err, fs.ErrInvalid)
 
 		if _, err := d.Seek(0, io.SeekStart); err != nil {
 			t.Fatalf("Seek: %v", err)

@@ -28,8 +28,9 @@ type Option struct {
 	CopyUpPolicy CopyUpPolicy
 	// DisableOpenFileRemoval keeps a name the overlay still holds an open handle
 	// on from being removed, the way Windows refuses to unlink an open file.
-	// Setting it on every platform is what makes an overlay behave the same on
-	// all of them.
+	// RemoveAll refuses when the handle is on the named path or anywhere under
+	// it. Setting it on every platform is what makes an overlay behave the same
+	// on all of them.
 	DisableOpenFileRemoval bool
 }
 
@@ -74,7 +75,8 @@ type Fs struct {
 // lowers are read-only and given in mount order: lowers[0] is the
 // highest-priority lower, the way lowerdir=a:b:c reads, so a name resolves top →
 // lowers[0] → lowers[1] → … (D20). A canonical lower goes on masking the layers
-// stacked under it with the whiteouts its own store kept.
+// stacked under it with the whiteouts its own store kept. A nil lower is refused
+// with [fs.ErrInvalid], naming the index it was passed at.
 //
 // opt may be nil, which selects the defaults of [Option].
 //

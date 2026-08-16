@@ -17,11 +17,12 @@ const (
 //
 //	if l, ok := f.(vroot.Locker); ok { … }
 //
-// Lock acquires a whole-file advisory lock at the given level (protecting
-// against access from other processes). Calling Lock again with a different
-// level converts the held lock; conversion is not atomic on every platform
-// (it may momentarily drop to unlocked, e.g. on Windows). Unlock releases
-// the lock entirely.
+// Lock acquires a whole-file advisory lock at the given level: it excludes
+// only the other users that take the lock too, and does not guarantee
+// protection against one that touches the file without taking it. Calling Lock again
+// with a different level converts the held lock; conversion is not atomic on
+// every platform (it may momentarily drop to unlocked, e.g. on Windows).
+// Unlock releases the lock entirely.
 //
 // WARNING: acquiring the lock may switch the underlying file into
 // non-blocking mode as a side effect on some platforms/implementations;

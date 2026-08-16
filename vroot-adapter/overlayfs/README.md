@@ -122,9 +122,16 @@ the fs root:
 fine and only the writability is not.
 
 A `DataSource` takes over what it is handed: `Close` closes the store **and**
-the fs under it. To stack one layer under two overlays, share the
-`*DataSource`; do not build a second one over the same directory, which would
-block rather than fail for as long as the first holds the store's exclusive
+the fs under it. A `*DataSource` belongs to one overlay and must not be shared
+with a second: an overlay copies the layer's masking into memory as it is built
+and never re-reads it, so two overlays over one `*DataSource` drift apart, and
+whichever closes first closes the store and the fs out from under the other.
+
+To stack one layer under two overlays, build a `DataSource` per overlay, each
+over its own handle on the layer — a plain one, or a canonical one over a
+`vroot.ReadOnlyFs`, whose store opens read-only and takes no lock. What does not
+work is a second writable canonical data source over the same directory: it
+blocks rather than fails for as long as the first holds the store's exclusive
 lock.
 
 ### Restacking a stopped overlay as a lower
@@ -238,8 +245,10 @@ reaches exactly as far.
   `syscall.EINVAL` carries the same message.
 
 - **`Option.DisableOpenFileRemoval` refuses to remove a name the overlay still
-  holds a handle on**, the way Windows refuses to unlink an open file. Setting
-  it on every platform is what makes an overlay behave identically everywhere.
+  holds a handle on**, the way Windows refuses to unlink an open file.
+  `RemoveAll` refuses when the handle is on the named path or anywhere under
+  it, before anything is dropped. Setting it on every platform is what makes an
+  overlay behave identically everywhere.
   The error is the real `ERROR_SHARING_VIOLATION` on Windows and a
   `syscall.EINVAL` wrapped in the same message elsewhere, so `errors.Is(err,
   syscall.EINVAL)` still matches off Windows.
@@ -249,12 +258,14 @@ reaches exactly as far.
   creates one. The type is refused before anything is created, so a failed
   copy-up leaves the top exactly as it found it.
 
-- **`meta.sqlite3-journal` sits beside the database permanently, zeroed.** The
-  store runs `locking_mode=EXCLUSIVE` over a rollback journal — the overlay is
-  the database's only user, and no journal mode needing shared memory can work
-  over a VFS that has none. Under exclusive locking sqlite zeroes the journal
-  header after a commit instead of deleting the file. A persistent
-  zero-filled `meta.sqlite3-journal` is normal and is not a hot journal.
+- **`meta.sqlite3-journal` sits beside the database permanently, its header
+  zeroed.** The store runs `locking_mode=EXCLUSIVE` over a rollback journal —
+  the overlay is the database's only user, and no journal mode needing shared
+  memory can work over a VFS that has none. Under exclusive locking sqlite
+  zeroes the journal header after a commit instead of deleting the file, and
+  leaves whatever is past the header as it lies. A persistent
+  `meta.sqlite3-journal` whose header is zeroed is normal and is not a hot
+  journal.
 
 - **No `Sync`.** Masking is durable by the time the call that changed it
   returns, so there is nothing to flush at a checkpoint.

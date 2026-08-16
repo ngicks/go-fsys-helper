@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -55,6 +56,26 @@ func (t *handleTracker) count(name string) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.open[name]
+}
+
+// countSubtree counts the handles out on name and on everything under it, which
+// is what a removal taking a whole tree down is refused by. It scans the map
+// rather than walking the tree: the map holds only names something is open on,
+// and the tree the walk would cover spans layers.
+func (t *handleTracker) countSubtree(name string) int {
+	prefix := name + "/"
+	if name == "" {
+		prefix = ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var n int
+	for open, count := range t.open {
+		if open == name || strings.HasPrefix(open, prefix) {
+			n += count
+		}
+	}
+	return n
 }
 
 // trackedFile is a handle the overlay handed out, counted for as long as it is
@@ -221,18 +242,20 @@ func (d *mergedDir) Readdirnames(n int) ([]string, error) {
 	return out, nil
 }
 
-// Seek mimics [os.File] on a directory: only a rewind to the start or a jump to
-// the end is accepted, and neither reports a meaningful offset.
+// Seek mimics [os.File] on a directory: only a rewind to the whole listing's
+// start, a jump to its end, or the [io.SeekCurrent] no-op is accepted, and
+// none reports a meaningful offset. What the cursor indexes is entries, not
+// bytes, so an offset naming anything else is refused rather than rounded.
 func (d *mergedDir) Seek(offset int64, whence int) (int64, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	switch whence {
 	case io.SeekStart:
-		if offset < 0 {
+		if offset != 0 {
 			return 0, fsutil.WrapPathErr(
 				"seek",
 				d.name,
-				fmt.Errorf("negative offset %d: %w", offset, fs.ErrInvalid),
+				fmt.Errorf("non-zero offset %d: %w", offset, fs.ErrInvalid),
 			)
 		}
 		d.cursor = 0
@@ -243,11 +266,11 @@ func (d *mergedDir) Seek(offset int64, whence int) (int64, error) {
 			return 0, fsutil.WrapPathErr("seek", d.name, fs.ErrInvalid)
 		}
 	case io.SeekEnd:
-		if offset > 0 {
+		if offset != 0 {
 			return 0, fsutil.WrapPathErr(
 				"seek",
 				d.name,
-				fmt.Errorf("positive offset %d: %w", offset, fs.ErrInvalid),
+				fmt.Errorf("non-zero offset %d: %w", offset, fs.ErrInvalid),
 			)
 		}
 		if err := d.load(); err != nil {
@@ -303,22 +326,23 @@ func (d *mergedDir) Chown(uid int, gid int) error {
 // layer answered the open with describes the directory the copy-up left behind,
 // and Stat and Fd would go on reporting it.
 //
-// A closed handle is not re-pointed, having nothing to answer with any more, and
-// neither is one whose reopen fails — a change that has already landed is not
-// failed over a handle, and the handle is then no staler than it was before this
-// method existed. The state lock is taken under d.mu, the order [mergedDir.load]
-// takes them in.
+// A closed handle changes nothing, the way [mergedDir.readEntries] reads
+// nothing: the copy-up the change would drag in is a write no handle is entitled
+// to any more. A handle whose reopen fails keeps the one it has — a change that
+// has already landed is not failed over a handle, and the handle is then no
+// staler than it was before this method existed. The state lock is taken under
+// d.mu, the order [mergedDir.load] takes them in.
 func (d *mergedDir) mutate(
 	op string,
 	fn func(fsys vroot.Fs[vroot.File], path string) error,
 ) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.closed {
+		return fsutil.WrapPathErr(op, d.name, fs.ErrClosed)
+	}
 	if err := d.fsys.mutateResolved(d.key, fn); err != nil {
 		return fsutil.WrapPathErr(op, d.name, err)
-	}
-	if d.closed {
-		return nil
 	}
 	inner, err := d.fsys.openTopDir(d.key)
 	if err != nil {
