@@ -36,11 +36,11 @@ func redactRawURL(raw string) string {
 // passwords and the like never reach error text.
 //
 // The underlying Err is carried over untouched, keeping [errors.Is] and
-// [errors.As] working through the result. Any error not built around a
+// [errors.AsType] working through the result. Any error not built around a
 // [url.Error] is returned as is.
 func redactURLError(err error) error {
-	var ue *url.Error
-	if !errors.As(err, &ue) {
+	ue, ok := errors.AsType[*url.Error](err)
+	if !ok {
 		return err
 	}
 	return &url.Error{

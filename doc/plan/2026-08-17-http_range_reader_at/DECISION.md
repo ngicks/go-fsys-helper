@@ -212,3 +212,13 @@ objects, but it is also never needed.
 **Rejected**: strict spec-only 416 `bytes */N` handling — punishes the
 most common Go server implementation for a case where range semantics are
 irrelevant.
+
+## D15 — Use errors.AsType; stream module bumped to go 1.26 (2026-08-17, user)
+
+**Choice**: all typed-error matching in `httprange` (code and tests) uses
+`errors.AsType[T]` instead of `errors.As`. Since `errors.AsType` was added
+in Go 1.26, the `stream` module's `go` directive rises from `1.22.0` to
+`1.26.0` (the sibling `vroot` module already declares 1.26.x).
+
+**Rationale**: user instruction; the generic form is type-safe and drops
+the target-pointer boilerplate.

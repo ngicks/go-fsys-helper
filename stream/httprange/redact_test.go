@@ -165,9 +165,9 @@ func TestRedactURLError(t *testing.T) {
 			if !errors.Is(got, underlying) {
 				t.Fatalf("errors.Is(redactURLError(...), underlying) = false, want true")
 			}
-			var ue *url.Error
-			if !errors.As(got, &ue) {
-				t.Fatalf("errors.As(redactURLError(...), *url.Error) = false, want true")
+			ue, ok := errors.AsType[*url.Error](got)
+			if !ok {
+				t.Fatalf("errors.AsType[*url.Error](redactURLError(...)) = false, want true")
 			}
 			for _, secret := range []string{"hunter2", "s3cr3t", "token"} {
 				if strings.Contains(ue.URL, secret) {
