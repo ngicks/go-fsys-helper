@@ -31,7 +31,7 @@ resolved (D1–D7), PLAN.md detailed. Implementation not begun.
 
 ## Implementation checklist (mirrors PLAN.md steps)
 
-- [ ] 1. In-package helpers — URL-secret redaction + Content-Range
+- [x] 1. In-package helpers — URL-secret redaction + Content-Range
   parsing incl. `bytes */N` (self-contained per D8)
 - [ ] 2. `httprange.New` + probe flow (D2/D3/D4)
 - [ ] 3. `ReaderAt.ReadAt/Size/Close` (D1/D3/D5)
