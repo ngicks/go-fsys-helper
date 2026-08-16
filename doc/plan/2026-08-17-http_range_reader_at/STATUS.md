@@ -35,7 +35,8 @@ resolved (D1–D7), PLAN.md detailed. Implementation not begun.
   parsing incl. `bytes */N` (self-contained per D8)
 - [x] 2. `httprange.New` + probe flow (D2/D3/D4) — plus D14 carve-out:
   empty-body 200 accepted as zero-size object
-- [ ] 3. `ReaderAt.ReadAt/Size/Close` (D1/D3/D5)
+- [x] 3. `ReaderAt.ReadAt/Size/Close` (D1/D3/D5) — If-Range sent only
+  with a strong validator (D13)
 - [ ] 4. httptest matrix incl. `-race` parallel ReadAt (D1), mutation →
   `ErrObjectChanged` (D5), probe cases (D4), cancellation (D3)
 - [ ] 5. zip round-trip (UC1) + `SizedReadersFromReadAtSizer` compile
