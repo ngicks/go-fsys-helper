@@ -34,7 +34,7 @@ func materializeDirFS(t *testing.T, lines []string) fs.ReadLinkFS {
 	if err != nil {
 		t.Fatalf("NewFs setup: %v", err)
 	}
-	testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(lines...)
+	testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(lines...)
 	dirFS, ok := os.DirFS(dir).(fs.ReadLinkFS)
 	if !ok {
 		t.Skip("os.DirFS does not implement fs.ReadLinkFS on this Go version")

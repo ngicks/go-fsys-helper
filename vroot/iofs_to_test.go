@@ -2,7 +2,6 @@ package vroot_test
 
 import (
 	"io/fs"
-	"os"
 	"testing"
 	"testing/fstest"
 
@@ -26,7 +25,7 @@ func setupIoFsToFixture(t *testing.T) *osfs.Root {
 	if err != nil {
 		t.Fatalf("NewFs setup: %v", err)
 	}
-	testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(
+	testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(
 		`file1.txt: "f1"`,
 		`file2.txt: "f2"`,
 		`subdir/`,
@@ -85,7 +84,7 @@ func TestToIoFs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFs setup: %v", err)
 	}
-	testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(
+	testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(
 		`file1.txt: "f1"`,
 		`subdir/`,
 		`subdir/nested.txt: "n"`,
@@ -94,7 +93,7 @@ func TestToIoFs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFs: %v", err)
 	}
-	iofs := vroot.ToIoFs[*os.File](fsys)
+	iofs := vroot.ToIoFs[*osfs.File](fsys)
 
 	if err := fstest.TestFS(iofs, "file1.txt", "subdir/nested.txt"); err != nil {
 		t.Fatal(err)

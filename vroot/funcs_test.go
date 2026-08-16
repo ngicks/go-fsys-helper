@@ -11,12 +11,12 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 )
 
-// noExtFs exposes only the base Fs[*os.File] method set: because the embedded
+// noExtFs exposes only the base Fs[*osfs.File] method set: because the embedded
 // type is the interface (not the concrete *osfs.Fs), ReadDir/ReadFile are NOT
 // part of its method set, so vroot.ReadDir / vroot.ReadFile cannot type-assert
 // the extension interfaces and must use their Open-based fallback paths.
 type noExtFs struct {
-	vroot.Fs[*os.File]
+	vroot.Fs[*osfs.File]
 }
 
 // recordReadDirFs satisfies vroot.ReadDirFs[*os.File]; ReadDir records that the
@@ -144,10 +144,10 @@ func TestFd(t *testing.T) {
 	}
 	defer func() { _ = f.Close() }()
 
-	// osfs returns *os.File which has a real Fd.
+	// osfs returns *osfs.File which has a real Fd.
 	got := vroot.Fd(f)
 	if got == ^uintptr(0) {
-		t.Error("Fd returned invalid sentinel for *os.File; expected a real descriptor")
+		t.Error("Fd returned invalid sentinel for *osfs.File; expected a real descriptor")
 	}
 
 	// A value not implementing Fd() returns the sentinel.
@@ -234,7 +234,7 @@ func TestReadDir_Fallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFs: %v", err)
 	}
-	entries, err := vroot.ReadDir[*os.File](noExtFs{inner}, ".")
+	entries, err := vroot.ReadDir[*osfs.File](noExtFs{inner}, ".")
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestReadFile_Fallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFs: %v", err)
 	}
-	got, err := vroot.ReadFile[*os.File](noExtFs{inner}, "f.txt")
+	got, err := vroot.ReadFile[*osfs.File](noExtFs{inner}, "f.txt")
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestReadFile_Fallback(t *testing.T) {
 	}
 
 	// Open failure in the fallback must propagate.
-	if _, err := vroot.ReadFile[*os.File](noExtFs{inner}, "missing.txt"); err == nil {
+	if _, err := vroot.ReadFile[*osfs.File](noExtFs{inner}, "missing.txt"); err == nil {
 		t.Error("fallback ReadFile on missing file: want error, got nil")
 	}
 }
@@ -306,7 +306,7 @@ func TestSub_Fallback(t *testing.T) {
 		t.Fatalf("NewFs: %v", err)
 	}
 	// osfs.Fs has OpenRoot, not Sub, so it does not satisfy SubFs -> fallback.
-	sub, err := vroot.Sub[*os.File](fsys, "sub")
+	sub, err := vroot.Sub[*osfs.File](fsys, "sub")
 	if err != nil {
 		t.Fatalf("Sub: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestSub_Fallback(t *testing.T) {
 	}
 
 	// Sub onto a non-existent dir is rejected by the PathPrefixFs validation.
-	if _, err := vroot.Sub[*os.File](fsys, "missing"); err == nil {
+	if _, err := vroot.Sub[*osfs.File](fsys, "missing"); err == nil {
 		t.Error("Sub onto missing dir: want error, got nil")
 	}
 }

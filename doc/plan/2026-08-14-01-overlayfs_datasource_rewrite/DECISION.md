@@ -159,3 +159,48 @@ calls, noted as such). OQ stubs at the bottom fill in as PLAN.md §9 resolves.
   windows moot in our own use. Rejected: sqlite's 5-level enum (overfit;
   not expressible by whole-file OS locks anyway); keeping the level-less
   shape (cannot express shared locks the OSes already offer).
+
+## Implementation-time decisions (2026-08-14, run start)
+
+- **D24 — osfs files become a wrapper type `osfs.File` (user-confirmed).**
+  Step 2a found osfs's file type is the bare stdlib `*os.File`
+  (`vroot.Fs[*os.File]`), which cannot gain `Lock`/`Unlock` methods —
+  "implement Locker on osfs files" was unimplementable as planned. Chosen: a
+  wrapper `osfs.File struct{ *os.File }`; `Fs`/`Root` type parameters change
+  to `*osfs.File`. Public API break in osfs, but the only route satisfying
+  D22's assert-`vroot.Locker`-via-type-switch contract verbatim (widening
+  passes concrete files through, so the assertion still hits). Rejected: a
+  generic `Fd()`-based lock helper in vroot core (no API break, but amends
+  D22's contract).
+- **D25 — vroot gains a direct `golang.org/x/sys` dependency
+  (user-confirmed).** Stdlib `syscall` has no `LockFileEx`/`UnlockFileEx` on
+  windows (verified; they live only in `internal/syscall/windows`), so the
+  windows Locker impl uses `golang.org/x/sys/windows`. Amends D15's "vroot
+  stays 2-dep" tally to three; the concern there was the sqlite/wazero tree,
+  not near-stdlib x/sys. Rejected: hand-rolled
+  `syscall.NewLazyDLL("kernel32.dll")` procs.
+- **D26 — dependency note (informational).** ncruces/go-sqlite3 v0.35.3 no
+  longer pulls wazero directly; the wasm payload comes via
+  `github.com/ncruces/go-sqlite3-wasm/v3` (+ `ncruces/julianday`). D13's
+  "ncruces+wazero" consequence reads accordingly.
+
+## Final-review round (2026-08-14)
+
+- **D27 — release ordering: vroot must land and tag before the new module's
+  go.mod pin is bumped.** The final review verified `GOWORK=off go build`
+  fails in vroot-adapter/overlayfs: its go.mod pins vroot
+  v0.0.0-20260528191442-457556e7ce33, which predates `vroot.Locker` and the
+  `osfs.File` wrapper — both part of this same change set, so no commit
+  exists to pin to yet. Development builds work via the gitignored go.work
+  (the repo's convention precisely to avoid `replace` directives). Required
+  ordering at release: commit/tag vroot (Locker + osfs wrapper + x/sys dep)
+  first, then `go get` the new pseudo-version in vroot-adapter/overlayfs and
+  commit the pin bump. Until then CI for the new module cannot pass on a
+  plain checkout.
+- **D28 — DataSource gains exported copy-up accessors (user-confirmed).**
+  The review found `CopyUpPolicy` was advertised as a public extension point
+  while `*DataSource` exported only `Close` — an out-of-package policy could
+  not reach the top's merged/ or work/ trees. Chosen: export `Fsys()`,
+  `ContentPath(name)`, `StagingPath(name)` on `*DataSource`, matching what
+  the default policy uses (additive; aligns with IDEA's "copy-up strategy
+  stays extensible"). Rejected: deleting the public-extension claim for v1.

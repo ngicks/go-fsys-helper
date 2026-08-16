@@ -12,11 +12,11 @@ var (
 	_ SubFs[File]      = widenedFs[File]{}
 )
 
-// Widen adapts an [Fs] returning a concrete file type (e.g. *os.File
+// Widen adapts an [Fs] returning a concrete file type (e.g. *osfs.File
 // from osfs) to the type-erased Fs[File], so implementations with different
 // file types can be stored behind a single interface type. Go interfaces are
-// not covariant in method return types: Fs[*os.File] does not satisfy
-// Fs[File] directly even though *os.File implements [File]. Widen bridges
+// not covariant in method return types: Fs[*osfs.File] does not satisfy
+// Fs[File] directly even though *osfs.File implements [File]. Widen bridges
 // that gap by widening the concrete file type parameter F to the [File]
 // interface.
 //

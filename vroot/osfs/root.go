@@ -9,7 +9,7 @@ import (
 	"github.com/ngicks/go-fsys-helper/vroot"
 )
 
-var _ vroot.Root[*os.File, *Root] = (*Root)(nil)
+var _ vroot.Root[*File, *Root] = (*Root)(nil)
 
 // Root wraps [*os.Root] and translates the unexported "path escapes from parent" error
 // returned by *os.Root into [vroot.ErrPathEscapes] so callers can use [errors.Is].
@@ -76,9 +76,12 @@ func (r *Root) Chtimes(name string, atime time.Time, mtime time.Time) error {
 	return translateEscape(r.Root.Chtimes(name, atime, mtime))
 }
 
-func (r *Root) Create(name string) (*os.File, error) {
+func (r *Root) Create(name string) (*File, error) {
 	f, err := r.Root.Create(name)
-	return f, translateEscape(err)
+	if err != nil {
+		return nil, translateEscape(err)
+	}
+	return &File{f}, nil
 }
 
 func (r *Root) Lchown(name string, uid int, gid int) error {
@@ -102,14 +105,20 @@ func (r *Root) MkdirAll(name string, perm fs.FileMode) error {
 	return translateEscape(r.Root.MkdirAll(name, perm))
 }
 
-func (r *Root) Open(name string) (*os.File, error) {
+func (r *Root) Open(name string) (*File, error) {
 	f, err := r.Root.Open(name)
-	return f, translateEscape(err)
+	if err != nil {
+		return nil, translateEscape(err)
+	}
+	return &File{f}, nil
 }
 
-func (r *Root) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) {
+func (r *Root) OpenFile(name string, flag int, perm fs.FileMode) (*File, error) {
 	f, err := r.Root.OpenFile(name, flag, perm)
-	return f, translateEscape(err)
+	if err != nil {
+		return nil, translateEscape(err)
+	}
+	return &File{f}, nil
 }
 
 func (r *Root) ReadLink(name string) (string, error) {

@@ -31,8 +31,8 @@ func pathprefixOption() acceptancetest.Option {
 // sub-directory; every operation must behave as if "prefix" were the root.
 func TestPathPrefixFs_Acceptance(t *testing.T) {
 	opt := pathprefixOption()
-	s := acceptancetest.Setup[*os.File, *vroot.PathPrefixFs[*os.File]]{
-		Make: func(t *testing.T, lines []string) *vroot.PathPrefixFs[*os.File] {
+	s := acceptancetest.Setup[*osfs.File, *vroot.PathPrefixFs[*osfs.File]]{
+		Make: func(t *testing.T, lines []string) *vroot.PathPrefixFs[*osfs.File] {
 			base := t.TempDir()
 			prefixDir := filepath.Join(base, "prefix")
 			if err := os.Mkdir(prefixDir, 0o755); err != nil {
@@ -43,7 +43,7 @@ func TestPathPrefixFs_Acceptance(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewFs setup: %v", err)
 			}
-			testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(lines...)
+			testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(lines...)
 			// Wrap the base Fs with the prefix so its root == prefixDir.
 			baseFs, err := osfs.NewFs(base)
 			if err != nil {

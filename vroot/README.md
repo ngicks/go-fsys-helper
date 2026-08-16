@@ -8,7 +8,7 @@ The `vroot` package provides a filesystem abstraction layer that builds upon Go'
 
 - **📁 Filesystem Abstraction**: Unified interface based on `*os.Root` for various filesystem implementations
 - **🔒 Root Containment Models**: Choose between rooted (strict) or unrooted (relaxed) path containment
-- **🔄 Overlay Filesystem**: Full union mount implementation with copy-on-write semantics
+- **🔄 Overlay Filesystem**: Union mount with copy-on-write semantics, in its own module ([`vroot-adapter/overlayfs`](../vroot-adapter/overlayfs))
 - **🔀 Synthetic Filesystem**: Combine files from different sources into unified filesystem trees
 - **💾 In-Memory Storage**: Pure memory-based implementations for testing and isolation
 - **📚 Standard Library Integration**: Convert interface to/from `io/fs`
@@ -34,8 +34,6 @@ The `vroot` package provides a filesystem abstraction layer that builds upon Go'
   - [4. Read-Only Wrappers](#4-read-only-wrappers)
   - [5. io/fs Adapters](#5-iofs-adapters)
 - [🔄 Overlay Filesystem](#-overlay-filesystem)
-  - [Basic Overlay Setup](#basic-overlay-setup)
-  - [Overlay Features](#overlay-features)
 - [🧪 Testing](#-testing)
   - [Test Your Implementation](#test-your-implementation)
 - [🤝 Contributing](#-contributing)
@@ -339,103 +337,31 @@ standardFs := vroot.ToIoFsRooted(rootedFs)
 
 ## 🔄 Overlay Filesystem
 
-`overlayfs` is a **union mount**: a writable **top** layer stacked over zero or
-more read-only **lower** layers. Reads resolve top→lowers (top wins); writes
-land in top after a **copy-up** of the lower entry; deletions become
-**whiteouts** rather than mutating the read-only lowers. `*overlayfs.Fs`
-implements `vroot.Root[vroot.File, *overlayfs.Fs]`, so it has the full `Fs`
-suite plus `OpenRoot` and rooted confinement.
+The overlay filesystem no longer lives in this module. It was rewritten and
+relocated to its own module,
+[`github.com/ngicks/go-fsys-helper/vroot-adapter/overlayfs`](../vroot-adapter/overlayfs),
+whose README documents it in full.
 
-### Basic Overlay Setup
+`overlayfs` is a union mount over `vroot` backends: a writable **top** layer
+stacked over read-only **lower** layers, exposed as a
+`vroot.Root[vroot.File, *overlayfs.Fs]`. Reads resolve in mount order (top,
+then `lowers[0]`, `lowers[1]`, …); writes land in the top after the lower entry
+is copied up; deletions become whiteouts instead of touching the read-only
+lowers. Unlike kernel overlayfs and fuse-overlayfs, masking state never appears
+as files inside a layer — each layer's whiteouts and opaque directories are
+kept in a sqlite database beside its content, reached through a VFS built on
+the layer's own `vroot.Fs`.
 
-```go
-import (
-    "github.com/ngicks/go-fsys-helper/vroot"
-    "github.com/ngicks/go-fsys-helper/vroot/osfs"
-    "github.com/ngicks/go-fsys-helper/vroot/overlayfs"
-)
+The move is why the package is a separate module: the sqlite dependency stays
+out of `vroot`'s dependency graph, matching the rule the other
+`vroot-adapter/*` modules follow.
 
-// Writable top (any vroot.Fs — osfs for on-disk, memfs.New(name) for in-memory).
-top, err := osfs.NewRoot("top/data")
-if err != nil {
-    log.Fatal(err)
-}
-
-// Read-only lower layers, ordered low→high priority.
-lower1, err := osfs.NewRoot("layer1")
-lower2, err := osfs.NewRoot("layer2")
-
-// The top layer carries the overlay's metadata journal (whiteouts / opaque
-// dirs). MetadataStoreLog is the default durable store (append-log +
-// compaction); use NewMetadataStoreMem() for an ephemeral overlay. The store's
-// backing fsys is vroot.Fs[vroot.File], so widen a *osfs.Root with vroot.Widen.
-meta := overlayfs.NewMetadataStoreLog(vroot.Widen(top), nil) // nil → defaults (batched fsync)
-
-overlayFs := overlayfs.New(
-    // Writable top + its metadata journal. NewLayer erases the file type via
-    // vroot.Widen, so heterogeneous layers (osfs *os.File, memfs vroot.File, …)
-    // mix freely.
-    overlayfs.NewLayer[*os.File](top, meta),
-    // Read-only lowers (low→high priority); meta may be nil for lowers.
-    []overlayfs.Layer{
-        overlayfs.NewLayer[*os.File](lower1, nil),
-        overlayfs.NewLayer[*os.File](lower2, nil),
-    },
-    nil, // *Option; nil → DefaultOption (visible Stage work dir, batched fsync)
-)
-defer overlayFs.Close() // closes top + lowers, flushes the journal
-
-/*
-resolution order:  top → lower2 → lower1   (last lower = highest priority)
-
-+--------+
-|  top   |  writable; copy-up target; whiteouts/opaque live in its journal
-+--------+
-| lower2 |  read-only
-+--------+
-| lower1 |  read-only
-+--------+
-*/
-```
-
-### Overlay Features
-
-- **Union mount**: files resolve top→lowers (top wins).
-- **Copy-on-write**: a lower entry is copied up to top before any write — write-
-  open, `Chmod`/`Chown`/`Chtimes`, `Rename`/`Link`. Concurrent writers to the
-  same lower-only path collapse to a single copy-up (`singleflight`).
-- **Whiteout vs opaque**: `Remove` of a lower-backed entry records a *whiteout*
-  (the name, and its lower subtree, are hidden). `rm -rf dir && mkdir dir` over
-  lower content makes the recreated dir *opaque* (stale lower children stay
-  hidden while new top children show) — fixing the classic delete-then-recreate
-  resurrection bug.
-- **Copy-up policy**: `NewCopyUpPolicyStage(workDir)` (default) stages temps in
-  an explicit, *visible* work dir at the top root then publishes via an atomic
-  same-filesystem `Rename`; `NewCopyUpPolicyDotTmp(nameMax)` stages beside the
-  destination with no standing dir.
-- **Pluggable journal**: `MetadataStoreLog` (append-log + compaction, default
-  batched `fsync` off the hot path; force durability with `(*Fs).Sync()`) or
-  `MetadataStoreMem` (ephemeral, zero-cost).
-- **Fine-grained concurrency**: a sparse table of per-path *overlay virtual
-  nodes* (`ovl_node`) owns each touched path's deviation-state and lock, so
-  independent paths never serialize. The per-node lock is also the cross-layer
-  transaction boundary that keeps a top-write + journal-flip + lower-lookup
-  consistent (the backends share no lock). Optional Windows-style
-  `ERROR_SHARING_VIOLATION` via `Option.DisableOpenFileRemoval`.
-
-```go
-// File resolution order: top → lower2 → lower1
-file, err := overlayFs.Open("config.yaml")
-
-// A write-open of a lower-only file copies it up to top first.
-w, err := overlayFs.OpenFile("config.yaml", os.O_RDWR, 0)
-
-// Remove of a lower-backed file records a whiteout (the lower copy is untouched).
-err = overlayFs.Remove("system-file.txt")
-
-// Force the metadata journal durable at a checkpoint (relevant in batched mode).
-err = overlayFs.Sync()
-```
+> **The old `vroot/overlayfs` API was replaced wholesale, not moved.** Nothing
+> from it — `Layer`, `NewLayer`, `MetadataStoreLog`, `MetadataStoreMem`,
+> `NewCopyUpPolicyStage`, `NewCopyUpPolicyDotTmp`, `(*Fs).Sync` — carries over,
+> and `New` takes a different signature. The new module builds layers from
+> `DataSource` values instead of `Layer` ones, and has no `Sync` because
+> masking is durable by the time the call that changed it returns.
 
 ## 🧪 Testing
 
@@ -447,7 +373,6 @@ go test ./...
 
 # Run specific implementation tests
 go test ./osfs/
-go test ./overlayfs/
 go test ./synthfs/
 go test ./memfs/
 ```

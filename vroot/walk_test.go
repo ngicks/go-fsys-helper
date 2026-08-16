@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"iter"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -105,7 +104,7 @@ func setupLines(t *testing.T, dir string, lines ...string) {
 	setupC(t, dir).SetupLines(lines...)
 }
 
-func setupC(t *testing.T, dir string) *testhelper.C[*testing.T, *os.File, *osfs.Fs] {
+func setupC(t *testing.T, dir string) *testhelper.C[*testing.T, *osfs.File, *osfs.Fs] {
 	t.Helper()
 	fsys, err := osfs.NewFs(dir)
 	if err != nil {

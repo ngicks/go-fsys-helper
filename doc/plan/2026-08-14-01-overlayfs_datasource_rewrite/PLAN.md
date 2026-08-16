@@ -4,8 +4,8 @@ Replace `vroot/overlayfs` wholesale with a design modeled on
 `containers/fuse-overlayfs`: DataSource layers, a canonical top holding
 `work/` + `merged/`, a CGO-free sqlite metadata store (trie schema), and
 reflink-first copy-up — landing in a **new module
-`vroot-adapter/overlayfs`** (D15). **Status: FINALIZED 2026-08-14 — all
-open questions resolved (D1–D21); ready to implement.**
+`vroot-adapter/overlayfs`** (D15). **Status: IMPLEMENTED 2026-08-14 — all
+open questions resolved (D1–D28); every §6 step landed.**
 
 ## 1. Goal / success criteria
 

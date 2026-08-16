@@ -62,6 +62,7 @@ func RunFsReadWrite[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) 
 
 	t.Run("File/Chmod", func(t *testing.T) { TestFileChmod(t, s) })
 	t.Run("File/Chown", func(t *testing.T) { TestFileChown(t, s) })
+	t.Run("File/Lock", func(t *testing.T) { TestFileLock(t, s) })
 	t.Run("File/Sync", func(t *testing.T) { TestFileSync(t, s) })
 	t.Run("File/Truncate", func(t *testing.T) { TestFileTruncate(t, s) })
 	t.Run("File/Write", func(t *testing.T) { TestFileWrite(t, s) })

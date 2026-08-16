@@ -1,5 +1,14 @@
 // Package osfs provides [vroot.Fs] and [vroot.Root] implementations backed
 // by the real operating-system filesystem via [os.OpenRoot].
+//
+// Create, Open and OpenFile return [*File], on [Fs] and [Root] alike. It is a
+// thin wrapper over [*os.File] that promotes every method of it and adds the one
+// the stdlib type cannot carry: [vroot.Locker], through flock(2) on the platforms
+// that have whole-file advisory locks and LockFileEx on windows — where there are
+// none, [File] carries no Lock or Unlock at all rather than a pair that refuses.
+// These methods returned *os.File before, so a caller naming the concrete type
+// has to name [*File] now; one going through [vroot.File] or [vroot.Fs] sees no
+// change.
 package osfs
 
 import (
@@ -14,7 +23,7 @@ import (
 )
 
 var (
-	_ vroot.Fs[*os.File] = (*Fs)(nil)
+	_ vroot.Fs[*File] = (*Fs)(nil)
 )
 
 // Fs exposes a file system under given path as [vroot.Fs].
@@ -95,7 +104,7 @@ func (u *Fs) Close() error {
 	return nil
 }
 
-func (u *Fs) Create(name string) (*os.File, error) {
+func (u *Fs) Create(name string) (*File, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
 		return nil, fsutil.WrapPathErr("open", name, err)
@@ -104,7 +113,7 @@ func (u *Fs) Create(name string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f, nil
+	return &File{f}, nil
 }
 
 func (u *Fs) Lchown(name string, uid int, gid int) error {
@@ -161,7 +170,7 @@ func (u *Fs) Name() string {
 	return u.root
 }
 
-func (u *Fs) Open(name string) (*os.File, error) {
+func (u *Fs) Open(name string) (*File, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
 		return nil, fsutil.WrapPathErr("open", name, err)
@@ -170,10 +179,10 @@ func (u *Fs) Open(name string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f, nil
+	return &File{f}, nil
 }
 
-func (u *Fs) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) {
+func (u *Fs) OpenFile(name string, flag int, perm fs.FileMode) (*File, error) {
 	path, err := u.resolvePath(name)
 	if err != nil {
 		return nil, fsutil.WrapPathErr("open", name, err)
@@ -182,7 +191,7 @@ func (u *Fs) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error)
 	if err != nil {
 		return nil, err
 	}
-	return f, nil
+	return &File{f}, nil
 }
 
 func (u *Fs) OpenRoot(name string) (*Root, error) {

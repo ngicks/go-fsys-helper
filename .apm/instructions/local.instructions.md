@@ -37,8 +37,8 @@ Each top level directory is separate Go module except for vroot-adapter.
 │   │   └── paths
 │   ├── memfs           in-mem fs. under the hood it is synthfs with default flags.
 │   ├── osfs
-│   ├── overlayfs       virtually overlaid fs
 │   └── synthfs         synthetic fs; virtually mixes contents from other Fs impl
 └── vroot-adapter
+    ├── overlayfs       union mount over vroot layers; sqlite-backed masking
     └── sftpfs          sftpfs wrapped as vroot.Fs
 ```

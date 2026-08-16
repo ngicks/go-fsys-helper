@@ -30,14 +30,14 @@ func readonlyOption() acceptancetest.Option {
 // should pass against the wrapped Root.
 func TestReadOnlyRoot(t *testing.T) {
 	opt := readonlyOption()
-	s := acceptancetest.SetupRoot[*vroot.ReadOnlyFile, *vroot.ReadOnlyRoot[*os.File, *osfs.Root]]{
-		Make: func(t *testing.T, lines []string) *vroot.ReadOnlyRoot[*os.File, *osfs.Root] {
+	s := acceptancetest.SetupRoot[*vroot.ReadOnlyFile, *vroot.ReadOnlyRoot[*osfs.File, *osfs.Root]]{
+		Make: func(t *testing.T, lines []string) *vroot.ReadOnlyRoot[*osfs.File, *osfs.Root] {
 			dir := t.TempDir()
 			setupFs, err := osfs.NewFs(dir)
 			if err != nil {
 				t.Fatalf("NewFs setup: %v", err)
 			}
-			testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(lines...)
+			testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(lines...)
 			inner, err := osfs.NewRoot(dir)
 			if err != nil {
 				t.Fatalf("NewRoot: %v", err)
@@ -53,19 +53,19 @@ func TestReadOnlyRoot(t *testing.T) {
 // wrapped in ReadOnlyFs.
 func TestReadOnlyFs(t *testing.T) {
 	opt := readonlyOption()
-	s := acceptancetest.Setup[*vroot.ReadOnlyFile, *vroot.ReadOnlyFs[*os.File]]{
-		Make: func(t *testing.T, lines []string) *vroot.ReadOnlyFs[*os.File] {
+	s := acceptancetest.Setup[*vroot.ReadOnlyFile, *vroot.ReadOnlyFs[*osfs.File]]{
+		Make: func(t *testing.T, lines []string) *vroot.ReadOnlyFs[*osfs.File] {
 			dir := t.TempDir()
 			setupFs, err := osfs.NewFs(dir)
 			if err != nil {
 				t.Fatalf("NewFs setup: %v", err)
 			}
-			testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(lines...)
+			testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(lines...)
 			inner, err := osfs.NewFs(dir)
 			if err != nil {
 				t.Fatalf("NewFs: %v", err)
 			}
-			return vroot.NewReadOnlyFs[*os.File](inner)
+			return vroot.NewReadOnlyFs[*osfs.File](inner)
 		},
 		Option: opt,
 	}
@@ -81,7 +81,7 @@ func TestReadOnly_WritesRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFs: %v", err)
 	}
-	testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(
+	testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(
 		`f.txt: "hello"`,
 	)
 	inner, err := osfs.NewRoot(tempDir)

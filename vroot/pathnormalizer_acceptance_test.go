@@ -32,14 +32,14 @@ func pathnormOption() acceptancetest.Option {
 // full Root acceptance suite through it.
 func TestPathLocalizerRoot_Acceptance(t *testing.T) {
 	opt := pathnormOption()
-	s := acceptancetest.SetupRoot[*os.File, *vroot.PathLocalizerRoot[*os.File, *osfs.Root]]{
-		Make: func(t *testing.T, lines []string) *vroot.PathLocalizerRoot[*os.File, *osfs.Root] {
+	s := acceptancetest.SetupRoot[*osfs.File, *vroot.PathLocalizerRoot[*osfs.File, *osfs.Root]]{
+		Make: func(t *testing.T, lines []string) *vroot.PathLocalizerRoot[*osfs.File, *osfs.Root] {
 			dir := t.TempDir()
 			setupFs, err := osfs.NewFs(dir)
 			if err != nil {
 				t.Fatalf("NewFs setup: %v", err)
 			}
-			testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(lines...)
+			testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(lines...)
 			r, err := osfs.NewRoot(dir)
 			if err != nil {
 				t.Fatalf("NewRoot: %v", err)
@@ -61,7 +61,7 @@ func TestPathLocalizerRoot_ForwardSlash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFs: %v", err)
 	}
-	testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(
+	testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(
 		"subdir/",
 		"subdir/double_nested/",
 		`subdir/file1.txt: "f1"`,
@@ -119,18 +119,18 @@ func TestPathLocalizerRoot_ForwardSlash(t *testing.T) {
 // separators are "/"), but the test still exercises every wrapper method.
 func TestPathNormalizerRoot_RoundTrip(t *testing.T) {
 	type normLocOsRoot = vroot.PathNormalizerRoot[
-		*os.File,
-		*vroot.PathLocalizerRoot[*os.File, *osfs.Root],
+		*osfs.File,
+		*vroot.PathLocalizerRoot[*osfs.File, *osfs.Root],
 	]
 	opt := pathnormOption()
-	s := acceptancetest.SetupRoot[*os.File, *normLocOsRoot]{
+	s := acceptancetest.SetupRoot[*osfs.File, *normLocOsRoot]{
 		Make: func(t *testing.T, lines []string) *normLocOsRoot {
 			dir := t.TempDir()
 			setupFs, err := osfs.NewFs(dir)
 			if err != nil {
 				t.Fatalf("NewFs setup: %v", err)
 			}
-			testhelper.New[*testing.T, *os.File](t, setupFs).SetupLines(lines...)
+			testhelper.New[*testing.T, *osfs.File](t, setupFs).SetupLines(lines...)
 			inner, err := osfs.NewRoot(dir)
 			if err != nil {
 				t.Fatalf("NewRoot: %v", err)
