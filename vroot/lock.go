@@ -1,15 +1,16 @@
 package vroot
 
-// LockLevel is the strength of an advisory file lock, mirroring what both
-// POSIX (flock LOCK_SH/LOCK_EX, fcntl F_RDLCK/F_WRLCK) and Windows
-// (LockFileEx with/without LOCKFILE_EXCLUSIVE_LOCK) natively provide.
-type LockLevel int
+import "github.com/ngicks/go-fsys-helper/fsutil"
+
+// LockLevel is the strength of an advisory file lock.
+// See [fsutil.LockLevel] for the platform primitives it mirrors.
+type LockLevel = fsutil.LockLevel
 
 const (
 	// LockShared allows other shared holders, excludes exclusive holders.
-	LockShared LockLevel = 1 + iota
+	LockShared = fsutil.LockShared
 	// LockExclusive excludes every other holder.
-	LockExclusive
+	LockExclusive = fsutil.LockExclusive
 )
 
 // Locker is an optional extension interface a [File] may implement,

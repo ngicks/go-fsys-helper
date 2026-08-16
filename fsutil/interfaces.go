@@ -82,6 +82,17 @@ type CloseFile interface {
 	Close() error
 }
 
+// LockerFile is an optional extension interface for whole-file advisory
+// locking. The contract is extensive — cooperative exclusion between every
+// holder, lock-level conversion on repeated Lock calls — and realistically
+// requires a platform locking primitive (flock/fcntl, LockFileEx) behind it,
+// so a wide variety of filesystem implementations may not support it at all.
+// Assert for it and degrade gracefully when it is absent.
+type LockerFile interface {
+	Lock(level LockLevel) error
+	Unlock() error
+}
+
 type NameFile interface {
 	Name() string
 }
