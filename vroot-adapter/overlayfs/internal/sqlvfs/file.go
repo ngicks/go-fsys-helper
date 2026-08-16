@@ -27,9 +27,17 @@ var (
 // map onto the exclusive lock: that blocks other readers earlier than sqlite
 // would, which is harmless for a store that runs locking_mode=EXCLUSIVE.
 //
-// A contended lock waits rather than reporting sqlite3.BUSY, because
-// [vroot.Locker] has no try or timeout form; contention means two overlays share
-// one top, which the design forbids anyway.
+// Contention surfaces in whatever shape the platform gives it; none of it is
+// translated here. Where the lock is advisory a contended lock waits rather than
+// reporting sqlite3.BUSY, because [vroot.Locker] has no try or timeout form. On
+// windows LockFileEx ranges are mandatory and [vroot.Locker] can only take the
+// whole file, so a foreign handle is refused by its very first read — sqlite
+// reads the database header before it takes any lock — which reaches the caller
+// as a disk I/O error instead of a wait. Sqlite's own windows VFS keeps reads
+// working by locking only the byte range it reserves for locking, which a
+// whole-file lock cannot express; being refused is exclusion too, and stricter
+// than waiting. Either way contention means two overlays share one top, which
+// the design forbids anyway.
 type file struct {
 	fsys   vroot.Fs[vroot.File]
 	inner  vroot.File

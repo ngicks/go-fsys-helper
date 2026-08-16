@@ -78,7 +78,15 @@ func TestConcurrentIndependentPaths(t *testing.T) {
 				if err := file.Close(); err != nil {
 					return err
 				}
-				if _, err := f.Create(filepath.Join(dir, "a")); err != nil {
+				// Closed before the rename below: os.OpenFile on Windows grants no
+				// FILE_SHARE_DELETE, so a handle still out on the source denies the
+				// DELETE access renaming it needs and the move comes back a sharing
+				// violation.
+				file, err = f.Create(filepath.Join(dir, "a"))
+				if err != nil {
+					return err
+				}
+				if err := file.Close(); err != nil {
 					return err
 				}
 				if err := f.Rename(filepath.Join(dir, "a"), filepath.Join(dir, "b")); err != nil {

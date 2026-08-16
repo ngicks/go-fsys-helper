@@ -18,11 +18,7 @@ func TestChmodChtimesCopyUp(t *testing.T) {
 		mustDo(t, "Chmod", f.Chmod("file.txt", 0o600))
 
 		assertBackedBy(t, f, "file.txt", 0)
-		info, err := f.Stat("file.txt")
-		mustDo(t, "Stat", err)
-		if got := info.Mode().Perm(); got != 0o600 {
-			t.Errorf("mode after Chmod = %o, want %o", got, 0o600)
-		}
+		assertMode(t, f, "file.txt", 0o600)
 		lowerAfter, err := lower0.fsys.Stat(lower0.ContentPath("file.txt"))
 		mustDo(t, "Stat lower", err)
 		if lowerAfter.Mode().Perm() != lowerBefore.Mode().Perm() {
@@ -35,7 +31,7 @@ func TestChmodChtimesCopyUp(t *testing.T) {
 
 		when := time.Date(2020, 3, 4, 5, 6, 7, 0, time.UTC)
 		mustDo(t, "Chtimes", f.Chtimes("file.txt", when, when))
-		info, err = f.Stat("file.txt")
+		info, err := f.Stat("file.txt")
 		mustDo(t, "Stat", err)
 		if !info.ModTime().Equal(when) {
 			t.Errorf("mtime after Chtimes = %v, want %v", info.ModTime(), when)

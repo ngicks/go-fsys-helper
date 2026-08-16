@@ -347,6 +347,10 @@ func TestLockBookkeepingWithoutLocker(t *testing.T) {
 // store's own settings: while one connection holds the database in
 // locking_mode=EXCLUSIVE a second one over the same directory cannot get in, and
 // it proceeds as soon as the first closes.
+//
+// "Cannot get in" takes the shape the platform gives it. Where the lock is
+// advisory the second connection parks in Lock and resumes on release; on
+// windows it is refused outright, so it is retried after the release instead.
 func TestExclusiveLockingKeepsSecondConnectionOut(t *testing.T) {
 	dir := t.TempDir()
 	first := newOsfs(t, dir)
@@ -363,22 +367,63 @@ func TestExclusiveLockingKeepsSecondConnectionOut(t *testing.T) {
 	}
 
 	second := newOsfs(t, dir)
+	// read is one whole second connection over the same directory: open, read the
+	// row, close.
+	read := func() (string, error) {
+		other, err := sqlvfs.Open(second, dbName)
+		if err != nil {
+			return "", err
+		}
+		defer other.Close()
+		var v string
+		err = other.QueryRow(`SELECT v FROM t`).Scan(&v)
+		return v, err
+	}
+
 	type result struct {
 		v   string
 		err error
 	}
 	done := make(chan result, 1)
 	go func() {
-		other, err := sqlvfs.Open(second, dbName)
-		if err != nil {
-			done <- result{err: err}
-			return
-		}
-		defer other.Close()
-		var v string
-		err = other.QueryRow(`SELECT v FROM t`).Scan(&v)
+		v, err := read()
 		done <- result{v: v, err: err}
 	}()
+
+	if runtime.GOOS == "windows" {
+		// LockFileEx ranges are mandatory and osfs locks the whole file, so the
+		// second connection never reaches Lock: sqlite reads the database header
+		// before locking anything, that read overlaps the range the first
+		// connection holds, and windows fails it with ERROR_LOCK_VIOLATION, which
+		// arrives here as a disk I/O error out of Open. Refusing is exclusion too —
+		// stricter than the advisory lock elsewhere, since it stops even a reader
+		// that takes no lock — so what is asserted is that it fails rather than
+		// waits. The error itself is not matched: it is regenerated as SQLITE_IOERR
+		// inside sqlite, and the windows errno does not survive that.
+		select {
+		case got := <-done:
+			if got.err == nil {
+				t.Fatalf(
+					"second connection read %q while the first holds the database",
+					got.v,
+				)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("second connection waits for the first instead of being refused")
+		}
+
+		if err := db.Close(); err != nil {
+			t.Fatalf("close first: %v", err)
+		}
+		v, err := read()
+		if err != nil {
+			t.Fatalf("second connection after the first closed: %v", err)
+		}
+		if v != "x" {
+			t.Fatalf("second connection read %q, want %q", v, "x")
+		}
+		return
+	}
 
 	select {
 	case got := <-done:
