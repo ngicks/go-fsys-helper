@@ -11,13 +11,9 @@ import (
 type (
 	testSafeWriteOption      = SafeWriteOption[*osfslite.OsfsLite, *os.File]
 	testTempFilePolicyRandom = TempFilePolicyRandom[*osfslite.OsfsLite, *os.File]
-	testTempFilePolicyDir    = TempFilePolicyDir[*osfslite.OsfsLite, *os.File]
 )
 
-var (
-	newTestTempFilePolicyRandom = NewTempFilePolicyRandom[*osfslite.OsfsLite]
-	newTestTempFilePolicyDir    = NewTempFilePolicyDir[*osfslite.OsfsLite]
-)
+var newTestTempFilePolicyDir = NewTempFilePolicyDir[*osfslite.OsfsLite]
 
 // testFsysWrapper wraps osfsLite to implement fs.FS for fs.WalkDir
 type testFsysWrapper struct {

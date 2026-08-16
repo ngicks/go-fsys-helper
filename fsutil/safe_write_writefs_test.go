@@ -18,10 +18,18 @@ func TestSafeWriteCopyFs(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(srcDir, "subdir"), 0o755); err != nil {
 			t.Fatalf("failed to create src directory: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(srcDir, "file1.txt"), []byte("content1"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(srcDir, "file1.txt"),
+			[]byte("content1"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create src file1: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(srcDir, "subdir", "file2.txt"), []byte("content2"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(srcDir, "subdir", "file2.txt"),
+			[]byte("content2"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create src file2: %v", err)
 		}
 
@@ -69,7 +77,11 @@ func TestSafeWriteCopyFs(t *testing.T) {
 		if err := os.Mkdir(srcDir, 0o755); err != nil {
 			t.Fatalf("failed to create src directory: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(srcDir, "test.txt"), []byte("test content"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(srcDir, "test.txt"),
+			[]byte("test content"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create src file: %v", err)
 		}
 
@@ -110,7 +122,11 @@ func TestSafeWriteCopyFs(t *testing.T) {
 		if err := os.Mkdir(srcDir, 0o755); err != nil {
 			t.Fatalf("failed to create src directory: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(srcDir, "hooks.txt"), []byte("hooks test"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(srcDir, "hooks.txt"),
+			[]byte("hooks test"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create src file: %v", err)
 		}
 
@@ -163,14 +179,20 @@ func TestSafeWriteCopyFs(t *testing.T) {
 			t.Errorf("not equal: expected(%q) != actual(%q)", "hooks test", string(data))
 		}
 
-		// Verify hooks were called in correct order: default pre -> arg pre -> arg post -> default post
+		// Verify hooks were called in correct order: default pre -> arg pre -> arg post -> default
+		// post
 		expectedOrder := []string{"opt-pre", "arg-pre", "arg-post", "opt-post"}
 		if len(hooksCalled) != len(expectedOrder) {
 			t.Fatalf("not equal: expected(%d) != actual(%d)", len(expectedOrder), len(hooksCalled))
 		}
 		for i, v := range expectedOrder {
 			if hooksCalled[i] != v {
-				t.Errorf("hook order[%d]: not equal: expected(%q) != actual(%q)", i, v, hooksCalled[i])
+				t.Errorf(
+					"hook order[%d]: not equal: expected(%q) != actual(%q)",
+					i,
+					v,
+					hooksCalled[i],
+				)
 			}
 		}
 	})

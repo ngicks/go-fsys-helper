@@ -1,4 +1,6 @@
-github.com/ngicks/go-common/serr v0.6.0 h1:SWlTHqKiUnTBYIRi+CZPn4fcEegdU2AN97wE2JpeCvo=
-github.com/ngicks/go-common/serr v0.6.0/go.mod h1:RpZAw0PTWnJ/rOaKm8TBMnkQbk8qikWfigI+zOAE1Co=
-github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20250706091057-1fb707f4d5a2 h1:FkHn91vZXooV5unmbKk7JXd1QYlY+4p53dtmwXIVIKA=
-github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20250706091057-1fb707f4d5a2/go.mod h1:3Ko4N72NP33xyl3yIEj3JzbOAA8Ko/ZxgmbAl7uZhf4=
+github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20260528191442-457556e7ce33 h1:Xy0EN+hGqNmQX5HiMI/Vt5JRDKieg3IQyrZZU8ROUUA=
+github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20260528191442-457556e7ce33/go.mod h1:3Ko4N72NP33xyl3yIEj3JzbOAA8Ko/ZxgmbAl7uZhf4=
+golang.org/x/sync v0.20.0 h1:e0PTpb7pjO8GAtTs2dQ6jYa5BWYlMuX047Dco/pItO4=
+golang.org/x/sync v0.20.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
+golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=

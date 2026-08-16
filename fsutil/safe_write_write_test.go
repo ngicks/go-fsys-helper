@@ -124,7 +124,12 @@ func TestSafeWrite(t *testing.T) {
 		}
 		for i, v := range expectedOrder {
 			if hookOrder[i] != v {
-				t.Errorf("hook order[%d]: not equal: expected(%q) != actual(%q)", i, v, hookOrder[i])
+				t.Errorf(
+					"hook order[%d]: not equal: expected(%q) != actual(%q)",
+					i,
+					v,
+					hookOrder[i],
+				)
 			}
 		}
 	})
@@ -162,7 +167,12 @@ func TestSafeWrite(t *testing.T) {
 		targetPath := "test-pre-error.txt"
 		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644, nil, nil)
 		if err != hookErr {
-			t.Errorf("errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v", hookErr, err, err)
+			t.Errorf(
+				"errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v",
+				hookErr,
+				err,
+				err,
+			)
 		}
 
 		// Verify file was not created
@@ -190,7 +200,12 @@ func TestSafeWrite(t *testing.T) {
 		targetPath := "test-post-error.txt"
 		err := opt.Copy(fsys, targetPath, strings.NewReader("content"), 0o644, nil, nil)
 		if err != hookErr {
-			t.Errorf("errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v", hookErr, err, err)
+			t.Errorf(
+				"errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v",
+				hookErr,
+				err,
+				err,
+			)
 		}
 
 		// Verify file was not created
@@ -214,7 +229,12 @@ func TestSafeWrite(t *testing.T) {
 
 		err := opt.Copy(fsys, targetPath, errReader, 0o644, nil, nil)
 		if err != io.ErrUnexpectedEOF {
-			t.Errorf("errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v", io.ErrUnexpectedEOF, err, err)
+			t.Errorf(
+				"errors.Is(err, %v) does not satisfied:\nactual = %v\ndetailed = %#v",
+				io.ErrUnexpectedEOF,
+				err,
+				err,
+			)
 		}
 
 		// Verify file was not created
@@ -234,7 +254,11 @@ func TestSafeWrite(t *testing.T) {
 		targetPath := "test-overwrite.txt"
 
 		// Create initial file
-		if err := os.WriteFile(filepath.Join(tempDir, targetPath), []byte("old content"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(tempDir, targetPath),
+			[]byte("old content"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create initial file: %v", err)
 		}
 

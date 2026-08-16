@@ -187,7 +187,7 @@ func TestMaskChmod(t *testing.T) {
 			},
 			{
 				name:     "read-only directory with no permissions",
-				input:    os.ModeDir | 0o000,
+				input:    os.ModeDir,
 				expected: os.ModeDir | 0o555,
 			},
 			// Edge cases
@@ -329,4 +329,3 @@ func (m *mockFileInfo) Mode() fs.FileMode  { return m.mode }
 func (m *mockFileInfo) ModTime() time.Time { return time.Time{} }
 func (m *mockFileInfo) IsDir() bool        { return m.mode.IsDir() }
 func (m *mockFileInfo) Sys() any           { return nil }
-

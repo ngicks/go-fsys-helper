@@ -1,8 +1,10 @@
 module github.com/ngicks/go-fsys-helper/vroot
 
-go 1.25rc2
+go 1.26.2
+
+require github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20260528191442-457556e7ce33
 
 require (
-	github.com/ngicks/go-common/serr v0.6.0
-	github.com/ngicks/go-fsys-helper/fsutil v0.0.0-20250706091057-1fb707f4d5a2
+	golang.org/x/sync v0.20.0
+	golang.org/x/sys v0.47.0
 )

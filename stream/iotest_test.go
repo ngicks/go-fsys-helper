@@ -41,7 +41,8 @@ func TestIotest(t *testing.T) {
 	})
 	t.Run("multiReadAtSeekCloser", func(t *testing.T) {
 		seekBack(splitted...)
-		// multiReadAtSeekCloser only relies on ReadAt, therefore seeking back is not necessary but anyway.
+		// multiReadAtSeekCloser only relies on ReadAt, therefore seeking back is not necessary but
+		// anyway.
 		testhelper.AssertNilInterface(
 			t,
 			iotest.TestReader(

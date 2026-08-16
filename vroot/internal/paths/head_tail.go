@@ -1,3 +1,5 @@
+// Package paths provides iterators over path components, allowing callers
+// to walk a path from its head (outermost) or tail (innermost) segment.
 package paths
 
 import (

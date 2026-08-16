@@ -8,13 +8,13 @@ import (
 	"slices"
 )
 
-type ReadDirFs interface {
-	Fs
+type ReadDirFs[F File] interface {
+	Fs[F]
 	ReadDir(name string) ([]fs.DirEntry, error)
 }
 
-func ReadDir(fsys Fs, name string) ([]fs.DirEntry, error) {
-	if readDirFsys, ok := fsys.(ReadDirFs); ok {
+func ReadDir[F File](fsys Fs[F], name string) ([]fs.DirEntry, error) {
+	if readDirFsys, ok := fsys.(ReadDirFs[F]); ok {
 		return readDirFsys.ReadDir(name)
 	}
 
@@ -22,22 +22,25 @@ func ReadDir(fsys Fs, name string) ([]fs.DirEntry, error) {
 	if err != nil {
 		return []fs.DirEntry{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	// fs.ReadDir does this thing.
 	dirents, err := f.ReadDir(-1)
 	if len(dirents) >= 2 {
-		slices.SortFunc(dirents, func(i, j fs.DirEntry) int { return cmp.Compare(i.Name(), j.Name()) })
+		slices.SortFunc(
+			dirents,
+			func(i, j fs.DirEntry) int { return cmp.Compare(i.Name(), j.Name()) },
+		)
 	}
 	return dirents, err
 }
 
-type ReadFileFs interface {
-	Fs
+type ReadFileFs[F File] interface {
+	Fs[F]
 	ReadFile(name string) ([]byte, error)
 }
 
-func ReadFile(fsys Fs, name string) ([]byte, error) {
-	if readFileFsys, ok := fsys.(ReadFileFs); ok {
+func ReadFile[F File](fsys Fs[F], name string) ([]byte, error) {
+	if readFileFsys, ok := fsys.(ReadFileFs[F]); ok {
 		return readFileFsys.ReadFile(name)
 	}
 
@@ -45,8 +48,33 @@ func ReadFile(fsys Fs, name string) ([]byte, error) {
 	if err != nil {
 		return []byte{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return io.ReadAll(f)
+}
+
+// SubFs is the extension interface for [Fs] implementations that can return a
+// sub-filesystem rooted at a directory natively (e.g. more cheaply than path
+// prefixing). [Sub] uses it when present.
+type SubFs[F File] interface {
+	Fs[F]
+	Sub(dir string) (Fs[F], error)
+}
+
+// Sub returns an [Fs] rooted at dir within fsys.
+//
+// If fsys implements [SubFs], its Sub is used. Otherwise Sub falls back to
+// [NewPathPrefixFs], which prefixes every path with dir and blocks traversal
+// above it. dir must name an existing directory (the fallback validates it via
+// [NewPathPrefixFs]). [ToIoFs] uses Sub to implement [io/fs.SubFS].
+func Sub[F File](fsys Fs[F], dir string) (Fs[F], error) {
+	if subFsys, ok := fsys.(SubFs[F]); ok {
+		return subFsys.Sub(dir)
+	}
+	w, err := NewPathPrefixFs(fsys, dir)
+	if err != nil {
+		return nil, err
+	}
+	return w, nil
 }
 
 type fdFile interface {
@@ -63,7 +91,7 @@ func Fd(f any) uintptr {
 }
 
 // WriteFile is short hand for creating file at name and writing data into it.
-func WriteFile(fsys Fs, name string, data []byte, perm fs.FileMode) error {
+func WriteFile[F File](fsys Fs[F], name string, data []byte, perm fs.FileMode) error {
 	f, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
 		return err

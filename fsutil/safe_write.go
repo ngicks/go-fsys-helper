@@ -28,8 +28,9 @@ type safeWriteFsys[File safeWriteFile] interface {
 
 // SyncHook syncs the file to ensure data is written to disk.
 //
-// From what you can read in linux man page for close(2): https://man7.org/linux/man-pages/man2/close.2.html#NOTES
-// you may want to set IgnoreCloseErr option in [SafeWriteOption] to true and put this hook to PostHooks.
+// From what you can read in linux man page for close(2):
+// https://man7.org/linux/man-pages/man2/close.2.html#NOTES you may want to set IgnoreCloseErr
+// option in [SafeWriteOption] to true and put this hook to PostHooks.
 func SyncHook[File safeWriteFile](f File, path string) error {
 	return f.Sync()
 }
@@ -44,7 +45,8 @@ type SafeWriteOption[Fsys safeWriteFsys[File], File safeWriteFile] struct {
 	//
 	// Hook invriatns:
 	//  - should not Close the file.
-	//  - must not Rename the file to other name. Doing so may cause undefined behvaior: concurrent safe-write fails or wrong files are wirtten to final destination.
+	// - must not Rename the file to other name. Doing so may cause undefined behvaior: concurrent
+	// safe-write fails or wrong files are wirtten to final destination.
 	//  - must not Remove the file. Instead just return a non-nil error.
 	PreHooks, PostHooks []func(f File, path string) error
 	// If true, Copy ignores error returned when closing temporary file.
@@ -70,9 +72,17 @@ func (opt SafeWriteOption[Fsys, File]) Write(
 		return err
 	}
 
-	return opt.safeOperation(fsys, name, tempFile, tempDir, preHooks, postHooks, func(file File) error {
-		return writeFunc(file)
-	})
+	return opt.safeOperation(
+		fsys,
+		name,
+		tempFile,
+		tempDir,
+		preHooks,
+		postHooks,
+		func(file File) error {
+			return writeFunc(file)
+		},
+	)
 }
 
 // Copy performs safe copy from a reader using the provided options.
@@ -93,14 +103,22 @@ func (opt SafeWriteOption[Fsys, File]) Copy(
 		return err
 	}
 
-	return opt.safeOperation(fsys, name, tempFile, tempDir, preHooks, postHooks, func(file File) error {
-		bufP := bufpool.GetBytes()
-		defer bufpool.PutBytes(bufP)
+	return opt.safeOperation(
+		fsys,
+		name,
+		tempFile,
+		tempDir,
+		preHooks,
+		postHooks,
+		func(file File) error {
+			bufP := bufpool.GetBytes()
+			defer bufpool.PutBytes(bufP)
 
-		buf := *bufP
-		_, err := io.CopyBuffer(file, r, buf)
-		return err
-	})
+			buf := *bufP
+			_, err := io.CopyBuffer(file, r, buf)
+			return err
+		},
+	)
 }
 
 // CopyFs performs safe copy from a filesystem using the provided options.
@@ -121,12 +139,20 @@ func (opt SafeWriteOption[Fsys, File]) CopyFs(
 		return err
 	}
 
-	return opt.safeOperation(fsys, name, tempFile, tempDir, preHooks, postHooks, func(file File) error {
-		// Use base name from tempFile.Name() to get the temporary directory path
-		tempBaseName := filepath.Base(file.Name())
-		tempPath := filepath.Join(tempDir, tempBaseName)
-		return opt.CopyFsOption.CopyAll(fsys, src, tempPath)
-	})
+	return opt.safeOperation(
+		fsys,
+		name,
+		tempFile,
+		tempDir,
+		preHooks,
+		postHooks,
+		func(file File) error {
+			// Use base name from tempFile.Name() to get the temporary directory path
+			tempBaseName := filepath.Base(file.Name())
+			tempPath := filepath.Join(tempDir, tempBaseName)
+			return opt.CopyFsOption.CopyAll(fsys, src, tempPath)
+		},
+	)
 }
 
 // safeOperation performs the common safe operation logic for Copy, Write, and CopyFs.
@@ -207,16 +233,22 @@ type TempFilePolicy[Fsys safeWriteFsys[File], File safeWriteFile] interface {
 	// WalkFunc processes a single entry during filesystem traversal.
 	// It checks if the path matches this policy and removes the file if it matches.
 	WalkFunc(fsys Fsys, path string, d fs.DirEntry, err error) error
-	// Match returns true if the given path matches the pattern of temporary files created by this policy.
+	// Match returns true if the given path matches the pattern of temporary files created by this
+	// policy.
 	Match(path string) bool
 }
 
-var _ TempFilePolicy[safeWriteFsys[safeWriteFile], safeWriteFile] = (*TempFilePolicyRandom[safeWriteFsys[safeWriteFile], safeWriteFile])(nil)
+// compile-time interface check: TempFilePolicyRandom implements TempFilePolicy.
+type _checkTFPRandom = TempFilePolicyRandom[safeWriteFsys[safeWriteFile], safeWriteFile]
+
+var _ TempFilePolicy[safeWriteFsys[safeWriteFile], safeWriteFile] = (*_checkTFPRandom)(nil)
 
 // TempFilePolicyRandom creates temporary files using random names.
 type TempFilePolicyRandom[Fsys safeWriteFsys[File], File safeWriteFile] struct{}
 
-func NewTempFilePolicyRandom[Fsys safeWriteFsys[File], File safeWriteFile]() TempFilePolicyRandom[Fsys, File] {
+func NewTempFilePolicyRandom[Fsys safeWriteFsys[File], File safeWriteFile]() TempFilePolicyRandom[
+	Fsys, File,
+] {
 	return TempFilePolicyRandom[Fsys, File]{}
 }
 
@@ -240,7 +272,11 @@ func (p TempFilePolicyRandom[Fsys, File]) pattern(path string) string {
 	return base + ".*.tmp"
 }
 
-func (p TempFilePolicyRandom[Fsys, File]) Create(fsys Fsys, targetPath string, perm fs.FileMode) (File, string, error) {
+func (p TempFilePolicyRandom[Fsys, File]) Create(
+	fsys Fsys,
+	targetPath string,
+	perm fs.FileMode,
+) (File, string, error) {
 	dir := filepath.Dir(filepath.Clean(targetPath))
 	file, err := OpenFileRandom(fsys, dir, p.pattern(targetPath), perm.Perm())
 	if err != nil {
@@ -249,7 +285,11 @@ func (p TempFilePolicyRandom[Fsys, File]) Create(fsys Fsys, targetPath string, p
 	return file, dir, nil
 }
 
-func (p TempFilePolicyRandom[Fsys, File]) Mkdir(fsys Fsys, targetPath string, perm fs.FileMode) (File, string, error) {
+func (p TempFilePolicyRandom[Fsys, File]) Mkdir(
+	fsys Fsys,
+	targetPath string,
+	perm fs.FileMode,
+) (File, string, error) {
 	dir := filepath.Dir(filepath.Clean(targetPath))
 	file, err := MkdirRandom(fsys, dir, p.pattern(targetPath), perm.Perm())
 	if err != nil {
@@ -258,7 +298,12 @@ func (p TempFilePolicyRandom[Fsys, File]) Mkdir(fsys Fsys, targetPath string, pe
 	return file, dir, nil
 }
 
-func (p TempFilePolicyRandom[Fsys, File]) WalkFunc(fsys Fsys, path string, d fs.DirEntry, err error) error {
+func (p TempFilePolicyRandom[Fsys, File]) WalkFunc(
+	fsys Fsys,
+	path string,
+	d fs.DirEntry,
+	err error,
+) error {
 	if err != nil {
 		return err
 	}
@@ -318,14 +363,20 @@ type TempFilePolicyDir[Fsys safeWriteFsys[File], File safeWriteFile] struct {
 	tempDir string
 }
 
-func NewTempFilePolicyDir[Fsys safeWriteFsys[File], File safeWriteFile](tempDir string) TempFilePolicyDir[Fsys, File] {
+func NewTempFilePolicyDir[Fsys safeWriteFsys[File], File safeWriteFile](
+	tempDir string,
+) TempFilePolicyDir[Fsys, File] {
 	return TempFilePolicyDir[Fsys, File]{
 		tempDir: filepath.Clean(tempDir),
 	}
 }
 
 // Create creates a temporary file in the dedicated directory.
-func (p TempFilePolicyDir[Fsys, File]) Create(fsys Fsys, targetPath string, perm fs.FileMode) (File, string, error) {
+func (p TempFilePolicyDir[Fsys, File]) Create(
+	fsys Fsys,
+	targetPath string,
+	perm fs.FileMode,
+) (File, string, error) {
 	if err := fsys.Mkdir(p.tempDir, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
 		return *new(File), "", err
 	}
@@ -338,7 +389,11 @@ func (p TempFilePolicyDir[Fsys, File]) Create(fsys Fsys, targetPath string, perm
 }
 
 // Mkdir creates a temporary directory in the dedicated directory.
-func (p TempFilePolicyDir[Fsys, File]) Mkdir(fsys Fsys, targetPath string, perm fs.FileMode) (File, string, error) {
+func (p TempFilePolicyDir[Fsys, File]) Mkdir(
+	fsys Fsys,
+	targetPath string,
+	perm fs.FileMode,
+) (File, string, error) {
 	if err := fsys.Mkdir(p.tempDir, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
 		return *new(File), "", err
 	}
@@ -351,7 +406,12 @@ func (p TempFilePolicyDir[Fsys, File]) Mkdir(fsys Fsys, targetPath string, perm 
 }
 
 // WalkFunc processes temporary files in the dedicated directory during filesystem traversal.
-func (p TempFilePolicyDir[Fsys, File]) WalkFunc(fsys Fsys, path string, d fs.DirEntry, err error) error {
+func (p TempFilePolicyDir[Fsys, File]) WalkFunc(
+	fsys Fsys,
+	path string,
+	d fs.DirEntry,
+	err error,
+) error {
 	if err != nil {
 		return err
 	}
@@ -373,7 +433,10 @@ func (p TempFilePolicyDir[Fsys, File]) WalkFunc(fsys Fsys, path string, d fs.Dir
 		case ".":
 			isParent = true // current directory is parent of any subdirectory
 		default:
-			isParent = strings.HasPrefix(p.tempDir+string(filepath.Separator), cleanPath+string(filepath.Separator))
+			isParent = strings.HasPrefix(
+				p.tempDir+string(filepath.Separator),
+				cleanPath+string(filepath.Separator),
+			)
 		}
 
 		if isParent {
@@ -402,7 +465,8 @@ func (p TempFilePolicyDir[Fsys, File]) WalkFunc(fsys Fsys, path string, d fs.Dir
 	return fsys.RemoveAll(path)
 }
 
-// Match returns true if the path is within the temporary directory and matches temp file pattern (10 digits + .tmp).
+// Match returns true if the path is within the temporary directory and matches temp file pattern
+// (10 digits + .tmp).
 func (p TempFilePolicyDir[Fsys, File]) Match(path string) bool {
 	cleanPath := filepath.Clean(path)
 	cleanTempDir := filepath.Clean(p.tempDir)

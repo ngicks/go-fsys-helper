@@ -64,8 +64,14 @@ func assertPathSeen(t *testing.T, expected, actual []pathSeen) {
 		convertedExpected,
 		convertedActual,
 	) {
-		onlyInExpected := slices.DeleteFunc(slices.Clone(convertedExpected), func(p pathSeen) bool { return slices.Contains(convertedActual, p) })
-		onlyInActual := slices.DeleteFunc(slices.Clone(convertedActual), func(p pathSeen) bool { return slices.Contains(convertedExpected, p) })
+		onlyInExpected := slices.DeleteFunc(
+			slices.Clone(convertedExpected),
+			func(p pathSeen) bool { return slices.Contains(convertedActual, p) },
+		)
+		onlyInActual := slices.DeleteFunc(
+			slices.Clone(convertedActual),
+			func(p pathSeen) bool { return slices.Contains(convertedExpected, p) },
+		)
 		t.Fatalf(
 			"not equal:\n"+
 				"expected: %#v\n"+
@@ -93,15 +99,32 @@ func assertPathSeen(t *testing.T, expected, actual []pathSeen) {
 	}
 }
 
+func setupLines(t *testing.T, dir string, lines ...string) {
+	t.Helper()
+	setupC(t, dir).SetupLines(lines...)
+}
+
+func setupC(t *testing.T, dir string) *testhelper.C[*testing.T, *osfs.File, *osfs.Fs] {
+	t.Helper()
+	fsys, err := osfs.NewFs(dir)
+	if err != nil {
+		t.Fatalf("NewFs: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = fsys.Close()
+	})
+	return testhelper.New(t, fsys)
+}
+
 func TestWalk_Unrooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeOsFsys(tempDir, true, false)
-	r, err := osfs.NewUnrooted(filepath.Join(tempDir, "root", "readable"))
+	acceptancetest.MakeOsFsys(setupC(t, tempDir), true, false)
+	r, err := osfs.NewFs(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	t.Run("symlink not follow", func(t *testing.T) {
 		var seen []pathSeen
@@ -130,7 +153,10 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 			{path: "subdir/symlink_upward_escapes", realPath: "subdir/symlink_upward_escapes"},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "subdir/double_nested", realPath: "subdir/double_nested"},
-			{path: "subdir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "subdir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "subdir/symlink_upward", realPath: "subdir/symlink_upward"},
 			{path: "file2.txt", realPath: "file2.txt"},
 			{path: "symlink_escapes", realPath: "symlink_escapes"},
@@ -163,14 +189,20 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 			{path: "symlink_inner_dir/symlink_upward_escapes", realPath: ""},
 			{path: "symlink_inner_dir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "symlink_inner_dir/double_nested", realPath: "subdir/double_nested"},
-			{path: "symlink_inner_dir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "symlink_inner_dir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "symlink_inner_dir/symlink_upward", realPath: "file1.txt"},
 			{path: "symlink_inner", realPath: "file1.txt"},
 			{path: "subdir", realPath: "subdir"},
 			{path: "subdir/symlink_upward_escapes", realPath: ""},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "subdir/double_nested", realPath: "subdir/double_nested"},
-			{path: "subdir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "subdir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "subdir/symlink_upward", realPath: "file1.txt"},
 			{path: "file2.txt", realPath: "file2.txt"},
 			{path: "symlink_escapes", realPath: ""},
@@ -182,12 +214,12 @@ func TestWalk_Unrooted_no_loop(t *testing.T) {
 func TestWalk_Rooted_no_loop(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Logf("temp dir = %s", tempDir)
-	acceptancetest.MakeOsFsys(tempDir, true, false)
-	r, err := osfs.NewRooted(filepath.Join(tempDir, "root", "readable"))
+	acceptancetest.MakeOsFsys(setupC(t, tempDir), true, false)
+	r, err := osfs.NewRoot(filepath.Join(tempDir, "root", "readable"))
 	if err != nil {
 		panic(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	t.Run("symlink not follow", func(t *testing.T) {
 		var seen []pathSeen
@@ -216,7 +248,10 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			{path: "subdir/symlink_upward_escapes", realPath: "subdir/symlink_upward_escapes"},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "subdir/double_nested", realPath: "subdir/double_nested"},
-			{path: "subdir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "subdir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "subdir/symlink_upward", realPath: "subdir/symlink_upward"},
 			{path: "file2.txt", realPath: "file2.txt"},
 			{path: "symlink_escapes", realPath: "symlink_escapes"},
@@ -257,13 +292,19 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 			{path: "symlink_inner_dir", realPath: "subdir"},
 			{path: "symlink_inner_dir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "symlink_inner_dir/double_nested", realPath: "subdir/double_nested"},
-			{path: "symlink_inner_dir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "symlink_inner_dir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "symlink_inner_dir/symlink_upward", realPath: "file1.txt"},
 			{path: "symlink_inner", realPath: "file1.txt"},
 			{path: "subdir", realPath: "subdir"},
 			{path: "subdir/nested_file.txt", realPath: "subdir/nested_file.txt"},
 			{path: "subdir/double_nested", realPath: "subdir/double_nested"},
-			{path: "subdir/double_nested/double_nested.txt", realPath: "subdir/double_nested/double_nested.txt"},
+			{
+				path:     "subdir/double_nested/double_nested.txt",
+				realPath: "subdir/double_nested/double_nested.txt",
+			},
 			{path: "subdir/symlink_upward", realPath: "file1.txt"},
 			{path: "file2.txt", realPath: "file2.txt"},
 		}
@@ -273,20 +314,16 @@ func TestWalk_Rooted_no_loop(t *testing.T) {
 
 func TestWalk_Rooted_symlinks_targetting_each_other(t *testing.T) {
 	tempDir := t.TempDir()
-	err := testhelper.ExecuteLines(
-		tempDir,
+	setupLines(t, tempDir,
 		"root/",
 		"root/a -> b",
 		"root/b -> a",
 	)
+	r, err := osfs.NewRoot(filepath.Join(tempDir, "root"))
 	if err != nil {
 		panic(err)
 	}
-	r, err := osfs.NewRooted(filepath.Join(tempDir, "root"))
-	if err != nil {
-		panic(err)
-	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	err = vroot.WalkDir(
 		r,
 		".",
@@ -399,18 +436,14 @@ func TestWalk_Rooted_loop(t *testing.T) {
 	for _, tc := range walkTestCases {
 		t.Run(tc.name(), func(t *testing.T) {
 			tempDir := t.TempDir()
-			err := testhelper.ExecuteLines(
-				tempDir,
+			setupLines(t, tempDir,
 				tc.fsysStructure...,
 			)
+			r, err := osfs.NewRoot(filepath.Join(tempDir, "root"))
 			if err != nil {
 				panic(err)
 			}
-			r, err := osfs.NewRooted(filepath.Join(tempDir, "root"))
-			if err != nil {
-				panic(err)
-			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 			var seen []pathSeen
 			err = vroot.WalkDir(
 				r,
@@ -491,18 +524,14 @@ func TestWalk_Unrooted_loop(t *testing.T) {
 	for _, tc := range slices.Concat(walkTestCases, outsideCases) {
 		t.Run(tc.name(), func(t *testing.T) {
 			tempDir := t.TempDir()
-			err := testhelper.ExecuteLines(
-				tempDir,
+			setupLines(t, tempDir,
 				tc.fsysStructure...,
 			)
+			r, err := osfs.NewFs(filepath.Join(tempDir, "root"))
 			if err != nil {
 				panic(err)
 			}
-			r, err := osfs.NewUnrooted(filepath.Join(tempDir, "root"))
-			if err != nil {
-				panic(err)
-			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 			var seen []pathSeen
 			err = vroot.WalkDir(
 				r,

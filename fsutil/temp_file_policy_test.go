@@ -192,28 +192,37 @@ func TestTempFilePolicy_WalkFunc(t *testing.T) {
 		if err := os.MkdirAll(subDir, 0o755); err != nil {
 			t.Fatalf("failed to create subdirectory: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(subDir, "0123456789.tmp"), []byte("content"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(subDir, "0123456789.tmp"),
+			[]byte("content"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create file in subdirectory: %v", err)
 		}
 
 		// Use WalkFunc and log which files/dirs get removed
 		var cleaned []string
 		wrapped := &testFsysWrapper{fsys: fsys}
-		err := fs.WalkDir(wrapped, tempPolicyDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			// Check if this would be processed by the policy
-			if policy.Match(path) {
-				cleaned = append(cleaned, path)
-			}
-			return policy.WalkFunc(fsys, path, d, err)
-		})
+		err := fs.WalkDir(
+			wrapped,
+			tempPolicyDir,
+			func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				// Check if this would be processed by the policy
+				if policy.Match(path) {
+					cleaned = append(cleaned, path)
+				}
+				return policy.WalkFunc(fsys, path, d, err)
+			},
+		)
 		if err != nil {
 			t.Fatalf("WalkFunc failed: %v", err)
 		}
 
-		// Verify files and directories in temp directory root were cleaned (3 files + 2 dirs, not subdirectory)
+		// Verify files and directories in temp directory root were cleaned (3 files + 2 dirs, not
+		// subdirectory)
 		if len(cleaned) != 5 {
 			t.Errorf("not equal: expected(%d) != actual(%d), cleaned: %v", 5, len(cleaned), cleaned)
 		}
@@ -254,7 +263,12 @@ func TestTempFilePolicy_Match(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			policy := testTempFilePolicyRandom{}
 			if got := policy.Match(tt.path); got != tt.expected {
-				t.Errorf("Match(%q): not equal: expected(%v) != actual(%v)", tt.path, tt.expected, got)
+				t.Errorf(
+					"Match(%q): not equal: expected(%v) != actual(%v)",
+					tt.path,
+					tt.expected,
+					got,
+				)
 			}
 		})
 	}

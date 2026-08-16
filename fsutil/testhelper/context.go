@@ -1,3 +1,5 @@
+// Package testhelper provides test utilities for setting up and asserting
+// filesystem state in fsutil tests.
 package testhelper
 
 import (

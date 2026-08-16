@@ -174,8 +174,10 @@ func TestResolvePath(t *testing.T) {
 
 			if tc.resolved != filepath.ToSlash(resolved) {
 				t.Errorf(
-					"resolved not equal: expected(%q) != actual(%q) (filepath.ToSlash is applied to print this result)",
-					tc.resolved, filepath.ToSlash(resolved),
+					"resolved not equal: expected(%q) != actual(%q)"+
+						" (filepath.ToSlash is applied to print this result)",
+					tc.resolved,
+					filepath.ToSlash(resolved),
 				)
 			}
 			if !errors.Is(err, tc.err) {
@@ -296,7 +298,11 @@ func TestResolvePath_ErrorPaths(t *testing.T) {
 
 	t.Run("ResolvePath skipLastElement true", func(t *testing.T) {
 		// Create a regular file
-		if err := os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte("content"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(tempDir, "file.txt"),
+			[]byte("content"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create file: %v", err)
 		}
 
@@ -314,7 +320,11 @@ func TestResolvePath_ErrorPaths(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(tempDir, "subdir"), 0o755); err != nil {
 			t.Fatalf("failed to create subdir: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(tempDir, "subdir", "file.txt"), []byte("content"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(tempDir, "subdir", "file.txt"),
+			[]byte("content"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create file in subdir: %v", err)
 		}
 
@@ -352,8 +362,12 @@ func TestResolveSymlink_targeting_each_other_ELOOP(t *testing.T) {
 	resolved, num, err := ResolveSymlink(fsys, "a", 30)
 	if resolved != "" || num != 30 || !errors.Is(err, syscall.ELOOP) {
 		t.Errorf(
-			"incorrect: expected \"\", %d and error that satisfies erorrs.Is(err, syscall.ELOOP), but is %q, %d and %v",
-			maxSymlinkResolutionCount, resolved, num, err,
+			"incorrect: expected \"\", %d and error that satisfies"+
+				" erorrs.Is(err, syscall.ELOOP), but is %q, %d and %v",
+			maxSymlinkResolutionCount,
+			resolved,
+			num,
+			err,
 		)
 	}
 }

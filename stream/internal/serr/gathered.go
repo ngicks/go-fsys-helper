@@ -1,3 +1,6 @@
+// Package serr provides error-gathering and prefixing helpers.
+// Vendored from https://github.com/ngicks/go-common/tree/main/serr
+// as an internal package (see README.md for the source commit).
 package serr
 
 import (
@@ -17,7 +20,8 @@ type gathered struct{ errs []error }
 //
 // If all errors are nil or len(errs) == 0, Gather returns nil.
 //
-// The returned error, if not a nil, implements [fmt.Formatter] which prints wrapped errors using given flags and verbs.
+// The returned error, if not a nil, implements [fmt.Formatter] which prints wrapped errors using
+// given flags and verbs.
 // Each error is separated by ", ".
 // If the returned error itself should be prefixed with a message, use with [Prefix].
 func Gather(errs ...error) error {

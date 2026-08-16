@@ -12,7 +12,8 @@ import (
 )
 
 var (
-	// ErrInvalidSize reports an incorrectly reported size in []SizedReaderAt caused malformed read from readers.
+	// ErrInvalidSize reports an incorrectly reported size in []SizedReaderAt caused malformed read
+	// from readers.
 	// It is very likely wrapped in *MultiReadError.
 	ErrInvalidSize = errors.New("invalid size")
 )

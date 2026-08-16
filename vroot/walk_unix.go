@@ -12,7 +12,7 @@ type fileIdent struct {
 	inode uint64
 }
 
-func fileIdentFromSys(_ Fs, _, _ string, stat fs.FileInfo) (fileIdent, bool) {
+func fileIdentFromSys[F File, Fsys Fs[F]](_ Fsys, _, _ string, stat fs.FileInfo) (fileIdent, bool) {
 	s, ok := stat.Sys().(*syscall.Stat_t)
 	if !ok {
 		return fileIdent{}, false

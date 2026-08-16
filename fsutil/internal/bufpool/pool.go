@@ -1,3 +1,5 @@
+// Package bufpool provides pooled byte-slice and bytes.Buffer allocations
+// to reduce GC pressure in hot I/O paths.
 package bufpool
 
 import (

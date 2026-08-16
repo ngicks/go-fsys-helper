@@ -1,3 +1,5 @@
+// Package testhelper provides small assertion helpers shared by tests in
+// the stream module.
 package testhelper
 
 import (
@@ -31,7 +33,11 @@ func AssertErrorsAs[T any](t *testing.T, err error) T {
 	t.Helper()
 	var e T
 	if !errors.As(err, &e) {
-		t.Fatalf("errors.As(err, target) returned false, expected to be type %T, but is %#v", e, err)
+		t.Fatalf(
+			"errors.As(err, target) returned false, expected to be type %T, but is %#v",
+			e,
+			err,
+		)
 	}
 	return e
 }

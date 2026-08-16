@@ -12,7 +12,7 @@ type fileIdent struct {
 	Qid  syscall.Qid // unique id from server
 }
 
-func fileIdentFromSys(_ Fs, _, _ string, stat fs.FileInfo) (fileIdent, bool) {
+func fileIdentFromSys[F File, Fsys Fs[F]](_ Fsys, _, _ string, stat fs.FileInfo) (fileIdent, bool) {
 	s, ok := stat.Sys().(*syscall.Dir)
 	if !ok {
 		return fileIdent{}, false

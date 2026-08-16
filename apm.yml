@@ -4,11 +4,27 @@ description: APM project for go-fsys-helper
 author: ngicks
 dependencies:
   apm:
-  - ngicks/agents-package/hooks/golangci-lint-fmt-after-edit
-  - ngicks/agents-package/hooks/golangci-lint-run-after-edit
-  - ngicks/agents-package/instructions/base-env.instructions.md
-  - ngicks/agents-package/instructions/go/go-basics.instructions.md
-  - ngicks/agents-package/skills/go-check-outdated-patterns
-  - ngicks/agents-package/skills/go-review-checklist
+    - git: github.com/ngicks/agents-package
+      path: apm-package/cc-workers
+    - git: github.com/ngicks/agents-package
+      path: hooks/go-golangci-lint
+    - git: github.com/ngicks/agents-package
+      path: hooks/go-vet-ngcheckers
+    - git: github.com/ngicks/agents-package
+      path: instructions/ngicks.base.env.instructions.md
+    - git: github.com/ngicks/agents-package
+      path: instructions/ngicks.base.preference.instructions.md
+    - git: github.com/ngicks/agents-package
+      path: instructions/ngicks.go.basics.instructions.md
+    - git: github.com/ngicks/agents-package
+      path: instructions/ngicks.go.design-preference.instructions.md
+    - git: github.com/ngicks/agents-package
+      path: skills/go-check-outdated-patterns
+    - git: github.com/ngicks/agents-package
+      path: skills/go-review-checklist
+    - git: github.com/ngicks/agents-package
+      path: skills/ngcommit
+    - git: github.com/ngicks/agents-package
+      path: skills/ngplan
   mcp: []
 scripts: {}

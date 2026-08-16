@@ -25,15 +25,18 @@ var ErrPathEscapes = errors.New("path escapes from parent")
 // If skipLastElement is true, the final path component is preserved without
 // symlink resolution (useful for operations on the symlink itself e.g. Lstat, Lchown).
 //
-// Returns ErrPathEscapes for paths that would escape the parent directory (including absolute paths.)
-// When a path component doesn't exist, returns an error that satisfies errors.Is(err, fs.ErrNotExist)
-// with the path concatenated from the intermediate resolution result and remaining unresolved components.
+// Returns ErrPathEscapes for paths that would escape the parent directory (including absolute
+// paths.) When a path component doesn't exist, returns an error that satisfies errors.Is(err,
+// fs.ErrNotExist) with the path concatenated from the intermediate resolution result and remaining
+// unresolved components.
 //
 // ResolvePath is still vulnerable to attack using TOCTOU(Time Of Check Time Of Use) race;
-// unlike [*os.Root] which leverages APIs that open paths relative from open file handle (e.g. openat(2) and fstatat(2)),
+// unlike [*os.Root] which leverages APIs that open paths relative from open file handle (e.g.
+// openat(2) and fstatat(2)),
 // ResolvePath is just a sequence of Lstat and ReadLink.
 //
-// For plan9, if underlying fsys does not have concept of symlink, it would just returns bare syscall.EPLAN9
+// For plan9, if underlying fsys does not have concept of symlink, it would just returns bare
+// syscall.EPLAN9
 func ResolvePath(
 	fsys interface {
 		ReadLinkFs
@@ -107,7 +110,14 @@ func ResolvePath(
 
 		curLinkResolved += numSymlink
 		if curLinkResolved >= maxSymlinkResolutionCount {
-			return cmp.Or(currentResolved, resolved.String()), WrapPathErr("stat", name, errdef.ELOOP)
+			return cmp.Or(
+					currentResolved,
+					resolved.String(),
+				), WrapPathErr(
+					"stat",
+					name,
+					errdef.ELOOP,
+				)
 		}
 
 		if currentResolved == "" || !filepath.IsLocal(currentResolved) {
@@ -127,7 +137,6 @@ func ResolvePath(
 		}
 		i = 0
 		offStart = 0
-		offEnd = 0
 		resolved.Reset()
 	}
 

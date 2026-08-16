@@ -129,7 +129,7 @@ func TestCSetup(t *testing.T) {
 		t.Fatalf("hardlink does not point to source file")
 	}
 
-	dirInfo, err := fs.Stat(os.DirFS(tempDir), filepath.Join("dir", "nested"))
+	dirInfo, err := fs.Stat(os.DirFS(tempDir), "dir/nested")
 	if err != nil {
 		t.Fatalf("Stat dir: %v", err)
 	}

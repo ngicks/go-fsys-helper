@@ -12,7 +12,7 @@ type fileIdent struct {
 	FileIndexHigh, FileIndexLow uint32
 }
 
-func fileIdentFromSys(fsys Fs, virtualPath, _ string, _ fs.FileInfo) (fileIdent, bool) {
+func fileIdentFromSys[F File, Fsys Fs[F]](fsys Fsys, virtualPath, _ string, _ fs.FileInfo) (fileIdent, bool) {
 	f, err := fsys.Open(virtualPath)
 	if err != nil {
 		return fileIdent{}, false

@@ -22,16 +22,24 @@ func TestCopyFs(t *testing.T) {
 		dstDir := filepath.Join(tempDir, "dst")
 
 		// Create test structure using testhelper
-		err := testhelper.ExecuteLines(tempDir,
-			"src/",
-			"dst/",
-			"src/subdir/",
-			"src/file1.txt: 0644 content1",
-			"src/subdir/file2.txt: 0755 content2",
+		c := testhelper.New(t, osfslite.New(tempDir))
+		c.Setup(
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: "src"},
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: "dst"},
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{
+				Name: filepath.FromSlash("src/subdir"),
+			},
+			&testhelper.CreateFile[*os.File, *osfslite.OsfsLite]{
+				Name:    filepath.FromSlash("src/file1.txt"),
+				Mode:    0o644,
+				Content: []byte("content1"),
+			},
+			&testhelper.CreateFile[*os.File, *osfslite.OsfsLite]{
+				Name:    filepath.FromSlash("src/subdir/file2.txt"),
+				Mode:    0o755,
+				Content: []byte("content2"),
+			},
 		)
-		if err != nil {
-			t.Fatalf("failed to create test structure: %v", err)
-		}
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
@@ -41,7 +49,7 @@ func TestCopyFs(t *testing.T) {
 		opt := testCopyFsOption{}
 
 		// Perform copy
-		err = opt.CopyAll(dstFs, srcFs, ".")
+		err := opt.CopyAll(dstFs, srcFs, ".")
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
@@ -82,7 +90,11 @@ func TestCopyFs(t *testing.T) {
 			expectedPerm1 = 0o666 // Windows typically widens files to read-write
 		}
 		if info1.Mode().Perm() != expectedPerm1 {
-			t.Errorf("file1 permissions: not equal: expected(%o) != actual(%o)", expectedPerm1, info1.Mode().Perm())
+			t.Errorf(
+				"file1 permissions: not equal: expected(%o) != actual(%o)",
+				expectedPerm1,
+				info1.Mode().Perm(),
+			)
 		}
 
 		info2, err := os.Stat(filepath.Join(dstDir, "subdir", "file2.txt"))
@@ -91,10 +103,15 @@ func TestCopyFs(t *testing.T) {
 		}
 		expectedPerm2 := fs.FileMode(0o755)
 		if runtime.GOOS == "windows" {
-			expectedPerm2 = 0o666 // Windows typically widens files to read-write (0o755 is file perm, not dir)
+			// Windows typically widens files to read-write (0o755 is file perm, not dir)
+			expectedPerm2 = 0o666
 		}
 		if info2.Mode().Perm() != expectedPerm2 {
-			t.Errorf("file2 permissions: not equal: expected(%o) != actual(%o)", expectedPerm2, info2.Mode().Perm())
+			t.Errorf(
+				"file2 permissions: not equal: expected(%o) != actual(%o)",
+				expectedPerm2,
+				info2.Mode().Perm(),
+			)
 		}
 	})
 
@@ -105,14 +122,16 @@ func TestCopyFs(t *testing.T) {
 		dstDir := filepath.Join(tempDir, "dst")
 
 		// Create test structure using testhelper
-		err := testhelper.ExecuteLines(tempDir,
-			"src/",
-			"dst/",
-			"src/file.txt: 0600 content",
+		c := testhelper.New(t, osfslite.New(tempDir))
+		c.Setup(
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: "src"},
+			&testhelper.CreateDir[*os.File, *osfslite.OsfsLite]{Name: "dst"},
+			&testhelper.CreateFile[*os.File, *osfslite.OsfsLite]{
+				Name:    filepath.FromSlash("src/file.txt"),
+				Mode:    0o600,
+				Content: []byte("content"),
+			},
 		)
-		if err != nil {
-			t.Fatalf("failed to create test structure: %v", err)
-		}
 
 		// Set up filesystems
 		srcFs := os.DirFS(srcDir)
@@ -122,7 +141,7 @@ func TestCopyFs(t *testing.T) {
 		opt := testCopyFsOption{}
 
 		// Perform copy
-		err = opt.CopyAll(dstFs, srcFs, ".")
+		err := opt.CopyAll(dstFs, srcFs, ".")
 		if err != nil {
 			t.Fatalf("Copy failed: %v", err)
 		}
@@ -137,7 +156,11 @@ func TestCopyFs(t *testing.T) {
 			expectedPerm = 0o666 // Windows typically widens files to read-write
 		}
 		if info.Mode().Perm() != expectedPerm {
-			t.Errorf("file permissions: not equal: expected(%o) != actual(%o)", expectedPerm, info.Mode().Perm())
+			t.Errorf(
+				"file permissions: not equal: expected(%o) != actual(%o)",
+				expectedPerm,
+				info.Mode().Perm(),
+			)
 		}
 	})
 }
@@ -162,15 +185,27 @@ func TestCopyPath(t *testing.T) {
 			t.Fatalf("failed to create source subdir: %v", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(srcDir, "file1.txt"), []byte("content1"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(srcDir, "file1.txt"),
+			[]byte("content1"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create source file1: %v", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(srcDir, "file2.txt"), []byte("content2"), fs.ModePerm); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(srcDir, "file2.txt"),
+			[]byte("content2"),
+			fs.ModePerm,
+		); err != nil {
 			t.Fatalf("failed to create source file2: %v", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(srcDir, "subdir", "file3.txt"), []byte("content3"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(srcDir, "subdir", "file3.txt"),
+			[]byte("content3"),
+			0o644,
+		); err != nil {
 			t.Fatalf("failed to create source file3: %v", err)
 		}
 
