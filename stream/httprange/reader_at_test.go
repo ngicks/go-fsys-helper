@@ -350,6 +350,45 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
 		}
 	})
+
+	t.Run("over_grant", func(t *testing.T) {
+		content := testContent(256)
+		s := startHandlerServer(t, handleSequence(
+			handlePartial(content, `"v1"`),
+			// A 206 running to the end of the object however few bytes were
+			// asked for, which is the over-grant that reads as a whole answer:
+			// there is no room for those bytes in the buffer the caller
+			// passed, and whatever room there is past it is not this package's
+			// to write into.
+			func(w http.ResponseWriter, r *http.Request) {
+				start, _ := rangeBounds(r.Header.Get("Range"))
+				w.Header().Set("ETag", `"v1"`)
+				w.Header().Set(
+					"Content-Range",
+					fmt.Sprintf("bytes %d-%d/%d", start, len(content)-1, len(content)),
+				)
+				w.WriteHeader(http.StatusPartialContent)
+				_, _ = w.Write(content[start:])
+			},
+		))
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		mustProbe(t, r)
+
+		buf := make([]byte, 16)
+		n, err := r.ReadAt(buf, 0)
+		if !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("ReadAt = (%d, %v), want %v", n, err, ErrObjectChanged)
+		}
+		if n != 0 || !bytes.Equal(buf, make([]byte, len(buf))) {
+			t.Fatalf("ReadAt = (%d, %v) with buffer %x, want no bytes touched", n, err, buf)
+		}
+	})
 }
 
 // TestReaderAt_ReadAt_originChanged pins a read to the origin the probe
@@ -571,6 +610,27 @@ func TestReaderAt_Metadata(t *testing.T) {
 			LastModified: s.modTime.UTC().Format(http.TimeFormat),
 			Size:         size,
 		}
+		if got, ok := r.Metadata(); got != want || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+	})
+
+	t.Run("response_without_validators", func(t *testing.T) {
+		// Nothing the response carries says which object this is, so what
+		// settles the description is the response having happened at all.
+		s := startHandlerServer(t, handlePartial(content, ""))
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
+			t.Fatalf("ReadAt returned error: %v", err)
+		}
+
+		want := Metadata{Size: size}
 		if got, ok := r.Metadata(); got != want || !ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
 		}

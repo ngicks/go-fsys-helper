@@ -66,10 +66,10 @@ type Config struct {
 
 // ErrObjectChanged reports that what answered a request is not the object the
 // reader was built against: a different length, a different validator, bytes
-// from an offset other than the one asked for, or a response from an origin
-// other than the one earlier responses settled. The bytes of such a response
-// are never handed to the caller, since mixing them with earlier reads would
-// produce an object that never existed.
+// other than the ones asked for, or a response from an origin other than the
+// one earlier responses settled. The bytes of such a response are never handed
+// to the caller, since mixing them with earlier reads would produce an object
+// that never existed.
 var ErrObjectChanged = errors.New("httprange: remote object changed")
 
 // ErrRangeIgnored reports that the server answered a ranged request with the
@@ -137,10 +137,6 @@ type ReaderAt struct {
 	// at once, hence the atomic. Each property goes from unstated to settled
 	// once and is what later responses are held to from then on.
 	meta atomic.Pointer[objectMeta]
-	// verified says whether a response has been through pinOrVerify yet, which
-	// is what tells a description the caller vouched for apart from one the
-	// server has confirmed.
-	verified atomic.Bool
 
 	// view is the stretch of the object this reader hands out, and what the
 	// offsets its caller reads at are relative to. A reader over the whole
@@ -167,6 +163,13 @@ type objectMeta struct {
 	// unstated case: an object of zero bytes has a size of zero.
 	size      int64
 	sizeKnown bool
+	// verified says whether a response has been through pinOrVerify, which is
+	// what tells a description the caller vouched for apart from one the
+	// server has confirmed. It sits in the description rather than beside it so
+	// that the two settle in one step: a flag of its own would leave a moment
+	// where a reader finds what a response pinned and nothing saying a response
+	// pinned it.
+	verified bool
 }
 
 // metaFromResponse is what resp says about the object, total being the
@@ -178,6 +181,7 @@ func metaFromResponse(resp *http.Response, total int64) *objectMeta {
 		origin:       originOf(resp),
 		size:         total,
 		sizeKnown:    true,
+		verified:     true,
 	}
 }
 
@@ -200,6 +204,9 @@ func (m *objectMeta) completedBy(o *objectMeta) *objectMeta {
 	}
 	if !filled.sizeKnown {
 		filled.size, filled.sizeKnown = o.size, o.sizeKnown
+	}
+	if !filled.verified {
+		filled.verified = o.verified
 	}
 	if filled == *m {
 		return m
@@ -230,7 +237,6 @@ func (r *ReaderAt) pinOrVerify(resp *http.Response, total int64) string {
 		}
 		filled := pinned.completedBy(seen)
 		if filled == pinned || r.meta.CompareAndSwap(pinned, filled) {
-			r.verified.Store(true)
 			return ""
 		}
 	}

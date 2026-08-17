@@ -452,6 +452,29 @@ func TestStream_open_rejects(t *testing.T) {
 	}
 }
 
+// TestStream_open_overGrant covers a 206 granting more than the lane asked
+// for. The lane was declared for one stretch of the object and its reads are
+// cut to that stretch, so a body running past it is bytes nobody is going to
+// ask for, and a server sending them is not answering the range at all.
+func TestStream_open_overGrant(t *testing.T) {
+	content := testContent(128)
+	s := startHandlerServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(
+			"Content-Range",
+			fmt.Sprintf("bytes 0-%d/%d", len(content)-1, len(content)),
+		)
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(content)
+	})
+	r := newStreamReader(t, s.URL, nil, 0, 16)
+
+	if err := openLane(t, r); !errors.Is(err, ErrObjectChanged) {
+		t.Fatalf("opening the stream returned %v, want %v", err, ErrObjectChanged)
+	}
+	assertLaneDead(t, r)
+	assertLaneServesNothing(t, r, 0)
+}
+
 func TestStream_open_contentEncoding(t *testing.T) {
 	content := testContent(128)
 	s := startHandlerServer(t, func(w http.ResponseWriter, _ *http.Request) {

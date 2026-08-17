@@ -12,12 +12,15 @@ import (
 // length of the object. Everything the reader already holds — the fields cfg
 // carried into [New] among them — is checked against that response and fails
 // with an error matching [ErrObjectChanged] where the two disagree; whatever
-// was not yet known is pinned from it. A server handing back the whole entity
-// fails with an error matching [ErrRangeIgnored], instead of letting every
-// later read quietly download the object in full. The single exception is a
-// whole entity of zero bytes, which is read as an object of size zero: that is
-// how an empty one answers a range request on many servers, Go's own file
-// server among them.
+// was not yet known is pinned from it. A response that is neither that one byte
+// nor the refusal an object without it owes fails the same way: bytes from
+// somewhere else, more bytes than were asked for, and a refusal reporting an
+// object long enough to hold that byte are all a server not honouring Range. A
+// server handing back the whole entity fails with an error matching
+// [ErrRangeIgnored], instead of letting every later read quietly download the
+// object in full. The single exception is a whole entity of zero bytes, which is
+// read as an object of size zero: that is how an empty one answers a range
+// request on many servers, Go's own file server among them.
 //
 // Until some request happens, what the caller handed in is trusted rather than
 // verified, and how large the object is may be unknown. Probe is the way to
@@ -74,32 +77,19 @@ func (r *ReaderAt) probe(ctx context.Context) error {
 	var total int64
 	switch resp.StatusCode {
 	case http.StatusPartialContent:
-		start, _, reported, err := parseContentRange(resp.Header.Get("Content-Range"))
+		start, end, reported, err := parseContentRange(resp.Header.Get("Content-Range"))
 		if err != nil {
 			return fmt.Errorf("httprange: probing %s: %w", redactRawURL(r.url), err)
 		}
-		if start != 0 {
+		if start != 0 || end != 0 {
 			return fmt.Errorf(
-				"httprange: probing %s: asked for byte 0, got bytes from %d",
-				redactRawURL(r.url), start,
+				"%w: probing %s: got bytes %d-%d of %d, want 0-0",
+				ErrObjectChanged, redactRawURL(r.url), start, end, reported,
 			)
 		}
 		total = reported
 	case http.StatusRequestedRangeNotSatisfiable:
-		// An empty object has no first byte to hand over, so this is how it
-		// answers the probe. The complete length it has to report alongside the
-		// refusal is exactly what the probe came for.
-		start, _, reported, err := parseContentRange(resp.Header.Get("Content-Range"))
-		if err != nil {
-			return fmt.Errorf("httprange: probing %s: %w", redactRawURL(r.url), err)
-		}
-		if start != -1 {
-			return fmt.Errorf(
-				"httprange: probing %s: status 416 without an unsatisfied Content-Range",
-				redactRawURL(r.url),
-			)
-		}
-		total = reported
+		return r.probeUnsatisfied(resp)
 	case http.StatusOK:
 		// An empty body is the one whole-entity answer worth taking, and it is
 		// a common one: Go's own http.ServeContent replies 200 rather than 416
@@ -123,6 +113,33 @@ func (r *ReaderAt) probe(ctx context.Context) error {
 		return fmt.Errorf(
 			"%w: probing %s: %s",
 			ErrObjectChanged, redactRawURL(r.url), reason,
+		)
+	}
+	return nil
+}
+
+// probeUnsatisfied takes a 416 answering the probe the way
+// [ReaderAt.readUnsatisfied] takes one answering a read: an empty object has no
+// first byte to hand over, so this is how it refuses a request for one, and the
+// complete length reported alongside the refusal is exactly what the probe came
+// for. A refusal of a byte lying inside the object the response itself
+// describes is no answer at all, and a 416 saying nothing about the complete
+// length is not this case but a status the reader cannot work with.
+func (r *ReaderAt) probeUnsatisfied(resp *http.Response) error {
+	start, _, total, err := parseContentRange(resp.Header.Get("Content-Range"))
+	if err != nil || start != -1 {
+		return &StatusCodeError{Code: resp.StatusCode}
+	}
+	if reason := r.pinOrVerify(resp, total); reason != "" {
+		return fmt.Errorf(
+			"%w: probing %s: %s",
+			ErrObjectChanged, redactRawURL(r.url), reason,
+		)
+	}
+	if total > 0 {
+		return fmt.Errorf(
+			"%w: probing %s: range refused within %d bytes",
+			ErrObjectChanged, redactRawURL(r.url), total,
 		)
 	}
 	return nil

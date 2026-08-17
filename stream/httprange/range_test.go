@@ -640,6 +640,52 @@ func TestNewRange_concurrentReads(t *testing.T) {
 	wg.Wait()
 }
 
+// pollMetadata runs pollers over r until stop closes, each holding it to what
+// a description does: nothing at all until a response pins one, and the one
+// thing that response pinned from then on. A poller seeing anything in between
+// is a description settling in more than the one step.
+func pollMetadata(t *testing.T, r *ReaderAt, stop <-chan struct{}, wg *sync.WaitGroup) {
+	t.Helper()
+
+	for range 4 {
+		wg.Go(func() {
+			var (
+				settled Metadata
+				seen    bool
+			)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+
+				got, ok := r.Metadata()
+				switch {
+				case ok && !seen:
+					settled, seen = got, true
+				case ok:
+					if got != settled {
+						t.Errorf(
+							"Metadata() = %+v, having been %+v; what is pinned stands",
+							got, settled,
+						)
+						return
+					}
+				case seen:
+					t.Errorf("Metadata() went unsettled again, having settled at %+v", settled)
+					return
+				default:
+					if got != (Metadata{}) {
+						t.Errorf("Metadata() = (%+v, false), want nothing at all", got)
+						return
+					}
+				}
+			}
+		})
+	}
+}
+
 // TestNewRange_MetadataDuringStream states what may be asked of a reader while
 // its stream is being walked: what the reader knows of the object, at any
 // moment, without waiting on the walk and without disturbing it.
@@ -661,43 +707,7 @@ func TestNewRange_MetadataDuringStream(t *testing.T) {
 			stop = make(chan struct{})
 			wg   sync.WaitGroup
 		)
-		for range 4 {
-			wg.Go(func() {
-				var (
-					settled Metadata
-					seen    bool
-				)
-				for {
-					select {
-					case <-stop:
-						return
-					default:
-					}
-
-					got, ok := r.Metadata()
-					switch {
-					case ok && !seen:
-						settled, seen = got, true
-					case ok:
-						if got != settled {
-							t.Errorf(
-								"Metadata() = %+v, having been %+v; what is pinned stands",
-								got, settled,
-							)
-							return
-						}
-					case seen:
-						t.Errorf("Metadata() went unsettled again, having settled at %+v", settled)
-						return
-					default:
-						if got != (Metadata{}) {
-							t.Errorf("Metadata() = (%+v, false), want nothing at all", got)
-							return
-						}
-					}
-				}
-			})
-		}
+		pollMetadata(t, r, stop, &wg)
 
 		// The pollers run for as long as the walk does, however that walk ends.
 		defer wg.Wait()
@@ -715,6 +725,43 @@ func TestNewRange_MetadataDuringStream(t *testing.T) {
 			LastModified: s.modTime.UTC().Format(http.TimeFormat),
 			Size:         int64(len(content)),
 		}
+		if got, ok := r.Metadata(); got != want || !ok {
+			t.Fatalf("Metadata() after the walk = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+	})
+
+	// The same walk against a server sending neither an ETag nor a
+	// Last-Modified: nothing the response carries says which object this is, so
+	// what settles the description is the response having happened, and the
+	// size it reported settles with it rather than a moment later.
+	t.Run("without_validators", func(t *testing.T) {
+		content := testContent(1 << 20)
+		var reqLog requestLog
+		s := startHandlerServer(t, reqLog.wrap(handleStreamPartial(content, "")))
+
+		r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+		if err != nil {
+			t.Fatalf("NewRange returned error: %v", err)
+		}
+		defer r.Close()
+
+		var (
+			stop = make(chan struct{})
+			wg   sync.WaitGroup
+		)
+		pollMetadata(t, r, stop, &wg)
+
+		defer wg.Wait()
+		defer close(stop)
+
+		got := readInChunks(t, io.NewSectionReader(r, 0, math.MaxInt64), 4096)
+		if !bytes.Equal(got, content) {
+			t.Fatalf("the walk read %d bytes differing from the %d served", len(got), len(content))
+		}
+		if n := len(reqLog.snapshot()); n != 1 {
+			t.Fatalf("the walk cost %d requests, want the stream's own", n)
+		}
+		want := Metadata{Size: int64(len(content))}
 		if got, ok := r.Metadata(); got != want || !ok {
 			t.Fatalf("Metadata() after the walk = (%+v, %t), want (%+v, true)", got, ok, want)
 		}

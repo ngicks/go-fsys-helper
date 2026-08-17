@@ -702,12 +702,22 @@ func TestProbe_contentEncoding(t *testing.T) {
 	}
 }
 
+// TestProbe_badResponse covers the answers to a request for byte zero that are
+// no answer at all, each in the class its equivalent takes on a read: bytes
+// other than the one asked for describe another object, and a 416 that is not
+// the refusal an empty object owes is a status the reader cannot work with.
 func TestProbe_badResponse(t *testing.T) {
+	content := testContent(128)
+
 	for _, tc := range []struct {
-		name    string
-		handler http.HandlerFunc
+		name     string
+		handler  http.HandlerFunc
+		want     error
+		wantCode int
 	}{
 		{
+			// Neither the object nor the range is in question here; the
+			// response simply does not say what it carries.
 			name: "unknown_total",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Range", "bytes 0-0/*")
@@ -729,6 +739,29 @@ func TestProbe_badResponse(t *testing.T) {
 				w.WriteHeader(http.StatusPartialContent)
 				_, _ = w.Write([]byte{0})
 			},
+			want: ErrObjectChanged,
+		},
+		{
+			// One byte was asked for and a hundred came back, which is a
+			// server deciding for itself what a range means.
+			name: "over_grant",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Range", "bytes 0-99/128")
+				w.WriteHeader(http.StatusPartialContent)
+				_, _ = w.Write(content[:100])
+			},
+			want: ErrObjectChanged,
+		},
+		{
+			// Byte zero is there in every object holding any bytes at all, so
+			// a refusal reporting a hundred and twenty-eight of them refuses a
+			// byte the response itself says is there.
+			name: "unsatisfied_within_the_object",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Range", "bytes */128")
+				w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+			},
+			want: ErrObjectChanged,
 		},
 		{
 			name: "satisfiable_416",
@@ -736,6 +769,14 @@ func TestProbe_badResponse(t *testing.T) {
 				w.Header().Set("Content-Range", "bytes 0-0/128")
 				w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 			},
+			wantCode: http.StatusRequestedRangeNotSatisfiable,
+		},
+		{
+			name: "bare_416",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+			},
+			wantCode: http.StatusRequestedRangeNotSatisfiable,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -747,9 +788,25 @@ func TestProbe_badResponse(t *testing.T) {
 			}
 			defer r.Close()
 
-			if err := r.Probe(context.Background()); err == nil {
-				got, _ := r.Metadata()
-				t.Fatalf("Probe returned no error, size %d", got.Size)
+			err = r.Probe(context.Background())
+			switch {
+			case tc.want != nil:
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("Probe returned %v, want %v", err, tc.want)
+				}
+			case tc.wantCode != 0:
+				codeErr, ok := errors.AsType[*StatusCodeError](err)
+				if !ok || codeErr.Code != tc.wantCode {
+					t.Fatalf(
+						"Probe returned %v, want a *StatusCodeError of %d",
+						err, tc.wantCode,
+					)
+				}
+			default:
+				if err == nil {
+					got, _ := r.Metadata()
+					t.Fatalf("Probe returned no error, size %d", got.Size)
+				}
 			}
 		})
 	}

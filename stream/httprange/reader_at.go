@@ -212,7 +212,7 @@ func (r *ReaderAt) Metadata() (Metadata, bool) {
 	// A response of the reader's own settles the identity whatever it carried,
 	// which is more than its validators alone can say: a server sending none
 	// leaves them empty and the object pinned all the same.
-	identity := r.verified.Load() || m.etag != "" || m.lastModified != ""
+	identity := m.verified || m.etag != "" || m.lastModified != ""
 	return Metadata{
 		ETag:         m.etag,
 		LastModified: m.lastModified,
