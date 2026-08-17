@@ -13,3 +13,6 @@
   overlapping-download concerns that would break D1's stateless contract.
 - **Follow-up**: a future plan designing it as an explicit wrapper reader;
   the research doc's citations are its starting material.
+- **Picked up (partially)**: `doc/plan/2026-08-17-httprange_sequential_stream/`
+  takes the kept-open-stream piece (caller-declared sequential window);
+  chunk map / coalescing / auto-fetch remain unclaimed.
