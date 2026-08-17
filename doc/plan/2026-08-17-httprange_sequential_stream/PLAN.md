@@ -176,6 +176,10 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    on contradiction. In the same step add `Metadata`/`Metadata()` (D7)
    over the pinned state — the atomic `r.meta` load plus the settled
    size — since both features live on the same pin-or-verify plumbing.
+   Judgment call: `ok` means the object's *identity* is pinned (a
+   response seen, or `Config` carried a validator); the snapshot's
+   `Size` is filled from `cfg.Size` even while `ok` is false, since a
+   caller-supplied size is known without being pinned.
    Verifiable alone: resume-mismatch test (server with new ETag → first
    read fails), `ifRangeValue` sends the saved validator on the very
    first request, `Metadata()` reflects a Config pre-pin immediately

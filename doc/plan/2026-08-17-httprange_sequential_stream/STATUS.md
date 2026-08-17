@@ -1,11 +1,10 @@
 # STATUS — httprange sequential-stream lane
 
-Current state: **planned, pending final gate re-confirmation** — all
-open questions resolved (DECISION.md D1–D7), PLAN.md fully detailed
-with public surface delta, steps, and traceability. IDEA.md's gate was
-confirmed once (2026-08-18) then reset the same day when the user added
-the metadata-access requirement (D7); awaiting re-confirmation of the
-updated IDEA.md.
+Current state: **planned and finalized** — all open questions resolved
+(DECISION.md D1–D7), PLAN.md fully detailed with public surface delta,
+steps, and traceability. IDEA.md's gate confirmed 2026-08-18 and
+re-confirmed the same day after the metadata addition, with the
+section-view contract confirmed explicitly. Implementation not started.
 
 ## Planning checklist
 
@@ -21,7 +20,8 @@ updated IDEA.md.
 - [x] Implementation steps detailed (PLAN.md steps 1–6)
 - [x] Traceability walked: D1–D7 + inherited prior-D1 each mapped to
   steps (PLAN.md Traceability section); UC1–UC4 covered
-- [ ] IDEA.md gate re-confirmed by user after the D7 addition
+- [x] IDEA.md gate re-confirmed by user after the D7 addition, with
+  D5's section-view contract confirmed explicitly ✓
 
 ## Implementation checklist (mirrors PLAN.md steps — not started)
 
@@ -32,4 +32,5 @@ updated IDEA.md.
 - [ ] 5. Docs (`doc.go`, method docs)
 - [ ] 6. Test matrix incl. request counts, races, resume mismatch
 
-Next action: user re-confirms IDEA.md gate; then implementation step 1.
+Next action: implementation step 1 (Config validators + pin-or-verify +
+`Metadata()`), when the user asks for implementation.

@@ -1,7 +1,7 @@
 # IDEA — declared sequential window served by one streaming range request
 
-Gate: not confirmed (reset 2026-08-18: metadata-access requirement added
-after the first confirmation; awaiting re-confirmation)
+Gate: confirmed by user, 2026-08-18 (re-confirmed after the
+metadata-access addition and the explicit section-view contract)
 
 This is the follow-up that `doc/plan/2026-08-17-http_range_reader_at/HANDOFF.md`
 H1 hands off, scoped down from the full PDF.js-style chunk manager to the
@@ -32,10 +32,13 @@ up front. The reader then spends **one** HTTP range request
 its body as it streams in. Reads keep costing zero extra round trips for as
 long as they arrive in order. The moment the read pattern stops being
 sequential ("read is randomized"), the reader falls back to what the package
-does today: one bounded range request per `ReadAt`. The declaration is a
-hint about the future read pattern, never a change to what any read returns:
-byte-for-byte, `ReadAt` behaves as if the hint had not been given, only
-faster and with fewer requests.
+does today: one bounded range request per `ReadAt`. The declared stretch
+*is* the reader: like `io.NewSectionReader` over a local file, the reader
+is a view of exactly those bytes, with offsets relative to its start and
+EOF at its boundary. Within the view, expecting sequential reads is only a
+performance statement — a read returns the same bytes whether it was
+served from the stream or by a bounded request, so a wrong or abandoned
+expectation costs round trips, never correctness.
 
 ## Use cases
 
@@ -111,15 +114,17 @@ stateDiagram-v2
 ## Usability requirements
 
 - **Declaring must be one obvious step at construction.** The common cases
-  are "0 to end" and "N to end"; expressing them must not require computing
-  an end offset. Note `start == 0` is a meaningful value, so the API cannot
-  read a zero field as "no hint" (contract detail for PLAN.md).
+  are "0 to end" and "N to end"; expressing "to the end" must not require
+  knowing the object's size first (the `io.SectionReader` idiom of a
+  `math.MaxInt64` length, as `archive/tar` uses, covers it).
 - **No declaration, no change.** Callers who do not opt in get today's
   behavior, bit for bit; the zero `Config` stays usable.
-- **The hint saves the probe.** When a window is declared at `New`, the
-  streaming request itself proves range support and carries size,
+- **The declaration saves the probe.** When the object's size is unknown,
+  the streaming request itself proves range support and carries size,
   validators and origin — construction must not spend a separate probe
-  round trip on top of it.
+  round trip on top of it. When the caller already supplied the size,
+  construction does no I/O at all; an explicit probe stays available for
+  callers who want the failure point early rather than at the first read.
 - **Correctness never depends on the hint being right.** A wrong or
   abandoned declaration costs performance only. All existing guarantees —
   `ErrObjectChanged` on mutation, `ErrRangeIgnored`, redaction, bounded
