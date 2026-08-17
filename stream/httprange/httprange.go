@@ -27,9 +27,17 @@ type Doer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// Config describes how a [ReaderAt] talks to the remote object. The zero value
-// is usable: requests go through [http.DefaultClient] carrying no extra
-// headers, and the size of the object is discovered by probing it.
+// Config describes how a [ReaderAt] talks to the remote object, and what the
+// caller already knows about that object. The zero value is usable: requests
+// go through [http.DefaultClient] carrying no extra headers, and everything
+// about the object is learned from the first response.
+//
+// Size, ETag and LastModified are metadata rather than settings, and any
+// subset of them may be given. They are trusted, not verified, until a request
+// actually happens: the first response is checked against every one of them
+// and contradicts them with [ErrObjectChanged] before any of its bytes are
+// used. None of them decides when a request happens; see [ReaderAt.Probe] for
+// putting that check ahead of the first read.
 type Config struct {
 	// Client issues every request the reader makes. nil means
 	// [http.DefaultClient].
@@ -43,19 +51,14 @@ type Config struct {
 	// Accept-Encoding is overwritten with identity.
 	Header http.Header
 	// Size is the total size of the object in bytes. Greater than zero means
-	// the caller already knows it and vouches for it, which saves the reader a
-	// round trip at construction but leaves a server that does not support
-	// ranges to be found out by the first read. Zero, the usual case, asks the
-	// reader to go and find out.
+	// the caller already knows it, which spares the reader the request that
+	// would otherwise settle it. Zero, the usual case, leaves the size to the
+	// first response that reports it.
 	Size int64
 	// ETag and LastModified are validators the caller saved from an earlier
-	// response, for resuming. They pre-pin the object identity at construction
-	// and ride every request's If-Range, subject to the same strong-validator
-	// rule as validators the reader pinned itself.
-	//
-	// They are trusted, not verified, until a request actually happens: the
-	// first response is checked against them and contradicts them with
-	// [ErrObjectChanged] before any of its bytes are used. Empty means none.
+	// response, for resuming. They pre-pin the object identity and ride every
+	// request's If-Range, subject to the same strong-validator rule as
+	// validators the reader pinned itself. Empty means none.
 	ETag         string
 	LastModified string
 }
@@ -71,10 +74,10 @@ var ErrObjectChanged = errors.New("httprange: remote object changed")
 // ErrRangeIgnored reports that the server answered a ranged request with the
 // whole entity. Every read would then pull the object down in full while
 // looking like a small one, so the reader refuses instead. The error text says
-// whether this was caught by the probe at construction or by a later read.
+// whether this was caught by a probe or by a read.
 //
-// An entity of zero bytes is not reported this way; the probe reads it as an
-// object of size zero. See [New].
+// An entity of zero bytes is not reported this way; it is read as an object of
+// size zero. See [ReaderAt.Probe].
 var ErrRangeIgnored = errors.New("httprange: server ignored range request")
 
 // StatusCodeError reports a response status the reader cannot work with.
@@ -106,7 +109,8 @@ func (e *StatusCodeError) NotFound() bool {
 // [New].
 //
 // It is safe for concurrent use: each [ReaderAt.ReadAt] runs a request of its
-// own and everything it consults is settled once and only read afterwards.
+// own, and the description of the object those requests share settles one
+// property at a time, once, by whichever of them gets there first.
 type ReaderAt struct {
 	client Doer
 	url    string
@@ -119,37 +123,47 @@ type ReaderAt struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	size int64
-
-	// meta says which object the reader is reading. Validators the caller
-	// saved from an earlier response pin it at construction, and whatever they
-	// leave open the probe fills in, or, when the probe was skipped, the first
-	// successful ranged response does. Several goroutines may reach that at
-	// once, hence the atomic. Each field goes from empty to pinned once and is
-	// what later responses are held to from then on.
+	// meta says which object the reader is reading and how large it is.
+	// Whatever the caller handed in seeds it, and whatever that leaves open
+	// the first response to arrive fills in. Several goroutines may reach that
+	// at once, hence the atomic. Each property goes from unstated to settled
+	// once and is what later responses are held to from then on.
 	meta atomic.Pointer[objectMeta]
+	// verified says whether a response has been through pinOrVerify yet, which
+	// is what tells a description the caller vouched for apart from one the
+	// server has confirmed.
+	verified atomic.Bool
 }
 
 // objectMeta is what later responses get checked against: the validators the
-// object is known by and the origin its requests land on. A field is empty
-// while nothing has said what it holds, neither the caller nor any response so
-// far.
+// object is known by, the origin its requests land on and its total size. A
+// property is unstated while neither the caller nor any response so far has
+// said what it holds.
 type objectMeta struct {
 	etag         string
 	lastModified string
 	origin       string
+	// size is the total size of the object in bytes, meaningful only once
+	// sizeKnown says something has stated it. Zero cannot stand in for the
+	// unstated case: an object of zero bytes has a size of zero.
+	size      int64
+	sizeKnown bool
 }
 
-func metaFromResponse(resp *http.Response) *objectMeta {
+// metaFromResponse is what resp says about the object, total being the
+// complete length its status line and headers amount to.
+func metaFromResponse(resp *http.Response, total int64) *objectMeta {
 	return &objectMeta{
 		etag:         resp.Header.Get("ETag"),
 		lastModified: resp.Header.Get("Last-Modified"),
 		origin:       originOf(resp),
+		size:         total,
+		sizeKnown:    true,
 	}
 }
 
-// completedBy returns m with every field it leaves empty taken from o, or m
-// itself when there was nothing to fill in. A nil m holds nothing, so o
+// completedBy returns m with every property it leaves unstated taken from o,
+// or m itself when there was nothing to fill in. A nil m holds nothing, so o
 // completes all of it.
 func (m *objectMeta) completedBy(o *objectMeta) *objectMeta {
 	if m == nil {
@@ -165,6 +179,9 @@ func (m *objectMeta) completedBy(o *objectMeta) *objectMeta {
 	if filled.origin == "" {
 		filled.origin = o.origin
 	}
+	if !filled.sizeKnown {
+		filled.size, filled.sizeKnown = o.size, o.sizeKnown
+	}
 	if filled == *m {
 		return m
 	}
@@ -173,25 +190,41 @@ func (m *objectMeta) completedBy(o *objectMeta) *objectMeta {
 
 // pinOrVerify folds what resp says about the object into what the reader has
 // pinned, and reports what of the two contradicts the other, or "" when
-// nothing does. Every property is taken on its own: one nothing has pinned yet
-// is pinned to what the response carries, and one already pinned stands, so a
-// response disagreeing with it is describing another object.
+// nothing does. total is the complete length the response amounts to. Every
+// property is taken on its own: one nothing has pinned yet is pinned to what
+// the response carries, and one already pinned stands, so a response
+// disagreeing with it is describing another object.
+//
+// This is the whole of what a probe does with a response, and every request
+// the reader makes puts its own response through it, which is why the lazy
+// probe costs nothing beyond the read it rides on.
 //
 // Several goroutines can be doing this to the same half-filled description at
 // once, so a lost race is retried against what the winner pinned rather than
 // overwriting it.
-func (r *ReaderAt) pinOrVerify(resp *http.Response) string {
-	seen := metaFromResponse(resp)
+func (r *ReaderAt) pinOrVerify(resp *http.Response, total int64) string {
+	seen := metaFromResponse(resp, total)
 	for {
 		pinned := r.meta.Load()
-		if reason := pinned.mismatch(resp); reason != "" {
+		if reason := pinned.mismatch(resp, total); reason != "" {
 			return reason
 		}
 		filled := pinned.completedBy(seen)
 		if filled == pinned || r.meta.CompareAndSwap(pinned, filled) {
+			r.verified.Store(true)
 			return ""
 		}
 	}
+}
+
+// knownSize reports the total size of the object and whether anything has
+// stated it yet.
+func (r *ReaderAt) knownSize() (int64, bool) {
+	m := r.meta.Load()
+	if m == nil {
+		return 0, false
+	}
+	return m.size, m.sizeKnown
 }
 
 // originOf returns the scheme and host the response actually came from, which
@@ -207,24 +240,16 @@ func originOf(resp *http.Response) string {
 
 // New returns a [ReaderAt] over url.
 //
-// ctx bounds every request the reader will ever make, not merely the ones New
-// itself issues: once it is done the reader is too. cfg may be nil, which
-// means a zero [Config].
+// ctx bounds every request the reader will ever make: once it is done the
+// reader is too. cfg may be nil, which means a zero [Config].
 //
-// Unless cfg.Size already says how large the object is, New spends one small
-// ranged GET on learning that, on proving that the server honours Range at
-// all, and on noting the validators and the post-redirect origin it answered
-// with. A server handing back the whole entity fails here with an error
-// matching [ErrRangeIgnored], instead of letting every later read quietly
-// download the object in full. The single exception is a whole entity of zero
-// bytes, which New takes as an object of size zero: that is how an empty one
-// answers a range request on many servers, Go's own file server among them.
-//
-// With cfg.Size given there is no such request, so a server that does not do
-// ranges is found out by the first read, and the validators and origin are
-// pinned by the first response that succeeds. Validators cfg carries are
-// pinned before any of that, and the first response to contradict them fails
-// with an error matching [ErrObjectChanged], wherever it arrives.
+// Nothing goes on the wire here. Whatever cfg carries — a size, validators,
+// any subset of them, nothing at all — is what the reader starts out believing
+// about the object, and the first request it makes is the first chance to find
+// out whether that is true. A server that does not honour Range, a status the
+// reader cannot work with, and an object other than the one cfg describes all
+// surface at the first read, or at [ReaderAt.Probe] for a caller who wants to
+// know before any byte moves.
 func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error) {
 	if cfg == nil {
 		cfg = &Config{}
@@ -250,18 +275,15 @@ func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error) {
 		ctx:    sessionCtx,
 		cancel: cancel,
 	}
-	if cfg.ETag != "" || cfg.LastModified != "" {
+	if cfg.ETag != "" || cfg.LastModified != "" || cfg.Size > 0 {
 		// The origin stays open: which server answers is nothing the caller can
 		// have saved, and nothing is known about it until a response arrives.
-		r.meta.Store(&objectMeta{etag: cfg.ETag, lastModified: cfg.LastModified})
-	}
-	if cfg.Size > 0 {
-		r.size = cfg.Size
-		return r, nil
-	}
-	if err := r.probe(); err != nil {
-		cancel()
-		return nil, err
+		r.meta.Store(&objectMeta{
+			etag:         cfg.ETag,
+			lastModified: cfg.LastModified,
+			size:         cfg.Size,
+			sizeKnown:    cfg.Size > 0,
+		})
 	}
 	return r, nil
 }
@@ -292,8 +314,8 @@ func validateURL(raw string) error {
 // configured static headers go on first and the headers deciding what the
 // response means go on after, so a stray Range or If-Range handed in through
 // the configuration cannot survive into the wire request.
-func (r *ReaderAt) newRequest() (*http.Request, error) {
-	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.url, nil)
+func (r *ReaderAt) newRequest(ctx context.Context) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.url, nil)
 	if err != nil {
 		return nil, redactURLError(err)
 	}
@@ -305,82 +327,6 @@ func (r *ReaderAt) newRequest() (*http.Request, error) {
 	// arrived compressed have nothing to do with the offsets asked for.
 	req.Header.Set("Accept-Encoding", "identity")
 	return req, nil
-}
-
-// probe issues the single request New makes: a ranged GET for one byte, the
-// cheapest thing that both proves the server honours Range and makes it report
-// the complete length of the object.
-func (r *ReaderAt) probe() error {
-	req, err := r.newRequest()
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Range", "bytes=0-0")
-
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return redactURLError(err)
-	}
-	defer drainAndClose(resp.Body)
-
-	if err := checkContentEncoding(resp); err != nil {
-		return fmt.Errorf("httprange: probing %s: %w", redactRawURL(r.url), err)
-	}
-
-	switch resp.StatusCode {
-	case http.StatusPartialContent:
-		start, _, total, err := parseContentRange(resp.Header.Get("Content-Range"))
-		if err != nil {
-			return fmt.Errorf("httprange: probing %s: %w", redactRawURL(r.url), err)
-		}
-		if start != 0 {
-			return fmt.Errorf(
-				"httprange: probing %s: asked for byte 0, got bytes from %d",
-				redactRawURL(r.url), start,
-			)
-		}
-		r.size = total
-	case http.StatusRequestedRangeNotSatisfiable:
-		// An empty object has no first byte to hand over, so this is how it
-		// answers the probe. The complete length it has to report alongside the
-		// refusal is exactly what the probe came for.
-		start, _, total, err := parseContentRange(resp.Header.Get("Content-Range"))
-		if err != nil {
-			return fmt.Errorf("httprange: probing %s: %w", redactRawURL(r.url), err)
-		}
-		if start != -1 {
-			return fmt.Errorf(
-				"httprange: probing %s: status 416 without an unsatisfied Content-Range",
-				redactRawURL(r.url),
-			)
-		}
-		r.size = total
-	case http.StatusOK:
-		// An empty body is the one whole-entity answer worth taking, and it is
-		// a common one: Go's own http.ServeContent replies 200 rather than 416
-		// to a range request on an empty file. Nothing is lost by accepting it,
-		// since a body of zero bytes is the entire representation however it
-		// was asked for, and a reader of size zero never asks for a range
-		// again. Any other 200 really would drag the whole object down on
-		// every read.
-		if resp.Header.Get("Content-Range") != "" || resp.ContentLength != 0 {
-			return fmt.Errorf(
-				"%w: probing %s at construction",
-				ErrRangeIgnored, redactRawURL(r.url),
-			)
-		}
-		r.size = 0
-	default:
-		return &StatusCodeError{Code: resp.StatusCode}
-	}
-
-	if reason := r.pinOrVerify(resp); reason != "" {
-		return fmt.Errorf(
-			"%w: probing %s: %s",
-			ErrObjectChanged, redactRawURL(r.url), reason,
-		)
-	}
-	return nil
 }
 
 // checkContentEncoding refuses a body that did not arrive as the object's own

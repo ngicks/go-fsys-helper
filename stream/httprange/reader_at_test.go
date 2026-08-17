@@ -1,11 +1,13 @@
 package httprange
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -25,6 +27,10 @@ func TestReaderAt_ReadAt(t *testing.T) {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
+
+	// The cases below count requests against a settled size, which is what the
+	// probe settles; reads made before it are the unknown-size matrix's story.
+	mustProbe(t, r)
 
 	for _, tc := range []struct {
 		name     string
@@ -100,11 +106,118 @@ func TestReaderAt_ReadAt_rangeIgnored(t *testing.T) {
 	}
 	defer r.Close()
 
-	if got := r.Size(); got != int64(len(content)) {
-		t.Fatalf("Size() = %d, want %d", got, len(content))
+	mustProbe(t, r)
+
+	if got, _ := r.Metadata(); got.Size != int64(len(content)) {
+		t.Fatalf("Metadata().Size = %d, want %d", got.Size, len(content))
 	}
 	if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrRangeIgnored) {
 		t.Fatalf("ReadAt returned %v, want %v", err, ErrRangeIgnored)
+	}
+}
+
+// TestReaderAt_ReadAt_verifiesLazily covers the reader that never probed: the
+// first read's own response is what the validator the caller saved gets
+// checked against, and no request is spent on checking it.
+func TestReaderAt_ReadAt_verifiesLazily(t *testing.T) {
+	content := testContent(256)
+	var reqLog requestLog
+	s := startHandlerServer(t, reqLog.wrap(handlePartial(content, `"v2"`)))
+
+	r, err := New(context.Background(), s.URL, &Config{ETag: `"v1"`})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	buf := make([]byte, 16)
+	n, err := r.ReadAt(buf, 0)
+	if !errors.Is(err, ErrObjectChanged) {
+		t.Fatalf("ReadAt = (%d, %v), want %v", n, err, ErrObjectChanged)
+	}
+	if n != 0 || !bytes.Equal(buf, make([]byte, len(buf))) {
+		t.Fatalf("ReadAt = (%d, %v) with buffer %x, want no bytes touched", n, err, buf)
+	}
+	if got := len(reqLog.snapshot()); got != 1 {
+		t.Fatalf("the read cost %d requests, want the read alone", got)
+	}
+}
+
+// TestReaderAt_ReadAt_unknownSize covers reads made before anything has said
+// how large the object is: the request goes out as it was asked for, and the
+// answer both settles the size and says where the object ends.
+func TestReaderAt_ReadAt_unknownSize(t *testing.T) {
+	content := testContent(256)
+	size := int64(len(content))
+
+	for _, tc := range []struct {
+		name     string
+		content  []byte
+		off      int64
+		wantN    int
+		wantSize int64
+	}{
+		{name: "past_end", content: content, off: size + 64, wantSize: size},
+		{name: "straddles_end", content: content, off: size - 8, wantN: 8, wantSize: size},
+		{name: "empty_object", content: nil, off: 0, wantSize: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := startConformantServer(t, tc.content)
+
+			r, err := New(context.Background(), s.URL, nil)
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			defer r.Close()
+
+			buf := make([]byte, 16)
+			n, err := r.ReadAt(buf, tc.off)
+			if n != tc.wantN || !errors.Is(err, io.EOF) {
+				t.Fatalf(
+					"ReadAt(make([]byte, %d), %d) = (%d, %v), want (%d, %v)",
+					len(buf), tc.off, n, err, tc.wantN, io.EOF,
+				)
+			}
+			if n > 0 && !bytes.Equal(buf[:n], tc.content[tc.off:tc.off+int64(n)]) {
+				t.Fatalf(
+					"ReadAt returned %x, want %x",
+					buf[:n], tc.content[tc.off:tc.off+int64(n)],
+				)
+			}
+			if got, ok := r.Metadata(); got.Size != tc.wantSize || !ok {
+				t.Fatalf(
+					"Metadata() = (%+v, %t), want size %d and true",
+					got, ok, tc.wantSize,
+				)
+			}
+			if got := s.requestCount(); got != 1 {
+				t.Fatalf("the read cost %d requests, want 1", got)
+			}
+		})
+	}
+}
+
+// TestReaderAt_wholeObjectWithoutSize walks the object front to back the way
+// the package documentation says a scan may, with nothing having settled the
+// size beforehand and the object's own end ending the walk.
+func TestReaderAt_wholeObjectWithoutSize(t *testing.T) {
+	content := testContent(1024)
+	s := startConformantServer(t, content)
+
+	r, err := New(context.Background(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	got, err := io.ReadAll(
+		bufio.NewReaderSize(io.NewSectionReader(r, 0, math.MaxInt64), 256),
+	)
+	if err != nil {
+		t.Fatalf("reading the object returned error: %v", err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Fatalf("read %d bytes differing from the %d served", len(got), len(content))
 	}
 }
 
@@ -118,6 +231,8 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
+
+		mustProbe(t, r)
 
 		changed := testContent(len(content))
 		for i := range changed {
@@ -149,6 +264,8 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 		}
 		defer r.Close()
 
+		mustProbe(t, r)
+
 		if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
 		}
@@ -166,6 +283,8 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
+
+		mustProbe(t, r)
 
 		if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
@@ -192,6 +311,8 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
+
+		mustProbe(t, r)
 
 		if _, err := r.ReadAt(make([]byte, 16), 64); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
@@ -223,13 +344,15 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 		}
 		defer r.Close()
 
+		mustProbe(t, r)
+
 		if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
 		}
 	})
 }
 
-// TestReaderAt_ReadAt_originChanged pins a read to the origin construction
+// TestReaderAt_ReadAt_originChanged pins a read to the origin the probe
 // settled on, which is the far end of any redirect rather than the URL asked
 // for.
 func TestReaderAt_ReadAt_originChanged(t *testing.T) {
@@ -250,6 +373,8 @@ func TestReaderAt_ReadAt_originChanged(t *testing.T) {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
+
+	mustProbe(t, r)
 
 	_, err = r.ReadAt(make([]byte, 16), 0)
 	if !errors.Is(err, ErrObjectChanged) {
@@ -275,6 +400,8 @@ func TestReaderAt_ReadAt_statusError(t *testing.T) {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
+
+	mustProbe(t, r)
 
 	_, err = r.ReadAt(make([]byte, 16), 0)
 	codeErr, ok := errors.AsType[*StatusCodeError](err)
@@ -337,6 +464,7 @@ func TestReaderAt_ReadAt_weakETag(t *testing.T) {
 			}
 			defer r.Close()
 
+			mustProbe(t, r)
 			if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
 				t.Fatalf("ReadAt returned error: %v", err)
 			}
@@ -410,6 +538,23 @@ func TestReaderAt_Metadata(t *testing.T) {
 		}
 	})
 
+	t.Run("nothing_known", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		// Zero and not ok, which is how an object nobody has looked at yet
+		// tells itself apart from an empty one.
+		want := Metadata{}
+		if got, ok := r.Metadata(); got != want || ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, false)", got, ok, want)
+		}
+	})
+
 	t.Run("from_probe", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
@@ -418,6 +563,8 @@ func TestReaderAt_Metadata(t *testing.T) {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
+
+		mustProbe(t, r)
 
 		want := Metadata{
 			ETag:         s.etag,
@@ -486,6 +633,8 @@ func TestReaderAt_ReadAt_shortBody(t *testing.T) {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
+
+	mustProbe(t, r)
 
 	n, err := r.ReadAt(make([]byte, 16), 0)
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
@@ -599,7 +748,10 @@ func TestReaderAt_iotest(t *testing.T) {
 	}
 	defer r.Close()
 
-	if err := iotest.TestReader(io.NewSectionReader(r, 0, r.Size()), content); err != nil {
+	mustProbe(t, r)
+
+	meta, _ := r.Metadata()
+	if err := iotest.TestReader(io.NewSectionReader(r, 0, meta.Size), content); err != nil {
 		t.Fatalf("iotest.TestReader returned error: %v", err)
 	}
 }

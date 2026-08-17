@@ -16,10 +16,11 @@ import (
 
 // The package must stay free of any dependency on the parent module, so the
 // interfaces it is meant to fit are pinned from an external test file instead.
+// A size the reader only learns from the server is no part of a type, so it
+// travels as a value alongside the reader instead of as a method on it.
 var (
-	_ io.ReaderAt        = (*httprange.ReaderAt)(nil)
-	_ io.Closer          = (*httprange.ReaderAt)(nil)
-	_ stream.ReadAtSizer = (*httprange.ReaderAt)(nil)
+	_ io.ReaderAt = (*httprange.ReaderAt)(nil)
+	_ io.Closer   = (*httprange.ReaderAt)(nil)
 )
 
 func TestZipRoundTrip(t *testing.T) {
@@ -36,19 +37,31 @@ func TestZipRoundTrip(t *testing.T) {
 		}
 	}()
 
-	if r.Size() != int64(len(archive)) {
-		t.Fatalf("ReaderAt.Size() = %d, want %d", r.Size(), len(archive))
+	// An archive is read from its tail, so the size has to be known before the
+	// first read rather than settled by it.
+	if err := r.Probe(context.Background()); err != nil {
+		t.Fatalf("ReaderAt.Probe: %v", err)
+	}
+	meta, ok := r.Metadata()
+	if !ok || meta.Size != int64(len(archive)) {
+		t.Fatalf(
+			"ReaderAt.Metadata() = (%+v, %t), want size %d and true",
+			meta, ok, len(archive),
+		)
 	}
 
-	sized := stream.SizedReadersFromReadAtSizer([]*httprange.ReaderAt{r})
-	if len(sized) != 1 {
-		t.Fatalf("SizedReadersFromReadAtSizer returned %d readers, want 1", len(sized))
-	}
-	if sized[0].Size != r.Size() {
-		t.Errorf("SizedReaderAt.Size = %d, want %d", sized[0].Size, r.Size())
-	}
+	// A multi-reader caller pairs the reader with the size it was told, which
+	// is what the reader hands out in place of a Size method.
+	sized := stream.NewMultiReadAtSeekCloser([]stream.SizedReaderAt{
+		{R: r, Size: meta.Size},
+	})
+	defer func() {
+		if err := sized.Close(); err != nil {
+			t.Errorf("MultiReadAtSeekCloser.Close: %v", err)
+		}
+	}()
 
-	zr, err := zip.NewReader(r, r.Size())
+	zr, err := zip.NewReader(sized, meta.Size)
 	if err != nil {
 		t.Fatalf("zip.NewReader: %v", err)
 	}

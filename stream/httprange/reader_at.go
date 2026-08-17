@@ -15,11 +15,20 @@ import (
 // trip; see the package documentation for how to keep a sequential scan from
 // paying that per buffer.
 //
-// EOF follows [io.SectionReader]: an offset at or past the size of the object
-// returns (0, [io.EOF]) without asking the server anything, which for a
-// zero-length object is every read. Below that, an empty p returns (0, nil),
-// also without a request. A read reaching the last byte of the object returns
-// (n, io.EOF) along with the bytes it got.
+// EOF follows [io.SectionReader] once the size of the object is known: an
+// offset at or past it returns (0, [io.EOF]) without asking the server
+// anything, which for a zero-length object is every read, and a read reaching
+// the last byte returns (n, io.EOF) along with the bytes it got. An empty p
+// returns (0, nil) and asks nothing either way.
+//
+// Before the size is known — nothing said it and no request has settled it —
+// the request goes out for exactly the bytes asked for and the answer settles
+// it: an object ending inside the range comes back as the bytes up to its end
+// plus io.EOF, and a range starting past that end as (0, io.EOF).
+//
+// Whichever request the reader makes first also carries the check
+// [ReaderAt.Probe] describes, over its own response, so a caller who never
+// probes still has every response held to what the reader knows.
 //
 // A response describing an object other than the one the reader was built
 // against fails with an error matching [ErrObjectChanged], and one carrying
@@ -34,17 +43,21 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	if off < 0 {
 		return 0, fmt.Errorf("httprange.ReaderAt.ReadAt: negative offset %d", off)
 	}
-	if off >= r.size {
-		return 0, io.EOF
+	if size, known := r.knownSize(); known {
+		if off >= size {
+			return 0, io.EOF
+		}
+		if avail := size - off; int64(len(p)) > avail {
+			p = p[:avail]
+		}
 	}
+	// No range covers no bytes, so there is nothing to ask for even where the
+	// end of the object is still an open question.
 	if len(p) == 0 {
 		return 0, nil
 	}
-	if avail := r.size - off; int64(len(p)) > avail {
-		p = p[:avail]
-	}
 
-	req, err := r.newRequest()
+	req, err := r.newRequest(r.ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -69,7 +82,22 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 
 	switch resp.StatusCode {
 	case http.StatusPartialContent:
+	case http.StatusRequestedRangeNotSatisfiable:
+		return 0, r.readUnsatisfied(resp, off)
 	case http.StatusOK:
+		// An empty entity is an object of zero bytes rather than a server
+		// dropping the range, whatever was asked for and whatever If-Range
+		// went with it; see [ReaderAt.Probe]. Held against a size that says
+		// otherwise it fails below as the changed object it describes.
+		if resp.Header.Get("Content-Range") == "" && resp.ContentLength == 0 {
+			if reason := r.pinOrVerify(resp, 0); reason != "" {
+				return 0, fmt.Errorf(
+					"%w: reading %s at offset %d: %s",
+					ErrObjectChanged, redactRawURL(r.url), off, reason,
+				)
+			}
+			return 0, io.EOF
+		}
 		if ifRange != "" {
 			// A conditional range answered in full is HTTP saying the validator
 			// no longer matches, not that ranges are unsupported.
@@ -86,9 +114,11 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 		return 0, &StatusCodeError{Code: resp.StatusCode}
 	}
 
-	if err := r.checkPartial(resp, off, int64(len(p))); err != nil {
+	avail, total, err := r.checkPartial(resp, off, int64(len(p)))
+	if err != nil {
 		return 0, err
 	}
+	p = p[:avail]
 
 	n, err := io.ReadFull(resp.Body, p)
 	if err != nil {
@@ -100,15 +130,37 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 			redactRawURL(r.url), off, redactURLError(err),
 		)
 	}
-	if off+int64(n) == r.size {
+	if off+int64(n) == total {
 		return n, io.EOF
 	}
 	return n, nil
 }
 
-// Size returns the total size of the remote object in bytes. It is settled
-// when the reader is built and does not change afterwards.
-func (r *ReaderAt) Size() int64 { return r.size }
+// readUnsatisfied takes a 416 for what it says: the request asked past the end
+// of the object, which only a read made before the size was settled can do,
+// and the complete length reported alongside the refusal settles it. A refusal
+// of a range lying inside the object the response itself describes is no
+// answer at all, and a 416 saying nothing about the complete length is not
+// this case but a status the reader cannot work with.
+func (r *ReaderAt) readUnsatisfied(resp *http.Response, off int64) error {
+	start, _, total, err := parseContentRange(resp.Header.Get("Content-Range"))
+	if err != nil || start != -1 {
+		return &StatusCodeError{Code: resp.StatusCode}
+	}
+	if reason := r.pinOrVerify(resp, total); reason != "" {
+		return fmt.Errorf(
+			"%w: reading %s at offset %d: %s",
+			ErrObjectChanged, redactRawURL(r.url), off, reason,
+		)
+	}
+	if off < total {
+		return fmt.Errorf(
+			"%w: reading %s at offset %d: range refused within %d bytes",
+			ErrObjectChanged, redactRawURL(r.url), off, total,
+		)
+	}
+	return io.EOF
+}
 
 // Metadata is a snapshot of what a [ReaderAt] has pinned about the remote
 // object: the validators later responses are held to, and Size, the total size
@@ -125,21 +177,31 @@ type Metadata struct {
 }
 
 // Metadata reports what the reader has pinned about the remote object, and
-// whether the identity of that object is settled: false until a response has
-// been seen, when the configuration carried no validator of its own either.
-// Size is filled in regardless, since a size the caller vouched for is known
-// without any of this being pinned.
+// whether that snapshot is settled: the object's identity is known, from a
+// response or from the validators the configuration carried, and so is its
+// size. A snapshot that is not settled is what the reader holds so far, and
+// Size in it is zero for want of anything better; ok is what tells that apart
+// from the zero size of an empty object.
 //
 // Saving the snapshot is how a download resumes later: hand the validators
 // back through [Config] and the reader refuses to splice bytes of another
 // object onto the ones already saved. It may be called while reads are in
-// flight, never waits for them, and issues no request of its own.
+// flight, never waits for them, and issues no request of its own; for a size
+// before any read, see [ReaderAt.Probe].
 func (r *ReaderAt) Metadata() (Metadata, bool) {
 	m := r.meta.Load()
 	if m == nil {
-		return Metadata{Size: r.size}, false
+		return Metadata{}, false
 	}
-	return Metadata{ETag: m.etag, LastModified: m.lastModified, Size: r.size}, true
+	// A response of the reader's own settles the identity whatever it carried,
+	// which is more than its validators alone can say: a server sending none
+	// leaves them empty and the object pinned all the same.
+	identity := r.verified.Load() || m.etag != "" || m.lastModified != ""
+	return Metadata{
+		ETag:         m.etag,
+		LastModified: m.lastModified,
+		Size:         m.size,
+	}, identity && m.sizeKnown
 }
 
 // Close stops the reader: it cancels a context derived from the one handed to
@@ -156,44 +218,55 @@ func (r *ReaderAt) Close() error {
 // checkPartial decides whether a 206 really is the stretch of bytes that was
 // asked for, out of the object the reader was built against, before any of its
 // body is believed. length is how many bytes the request asked for, after the
-// clamp against the end of the object.
-func (r *ReaderAt) checkPartial(resp *http.Response, off, length int64) error {
+// clamp against the end of the object where there was a size to clamp against.
+// It reports how many of those bytes the response carries, and the complete
+// length it reports them out of.
+//
+// Ending short of the last byte asked for is only ever the object's own end:
+// a read made before the size was settled may ask past it, and the server
+// answering the part that exists is the answer. Any other short range is a
+// stretch of bytes nobody asked for, and taking it would leave the tail of the
+// caller's buffer holding whatever it held before.
+func (r *ReaderAt) checkPartial(resp *http.Response, off, length int64) (int64, int64, error) {
 	start, end, total, err := parseContentRange(resp.Header.Get("Content-Range"))
 	if err != nil {
-		return fmt.Errorf(
+		return 0, 0, fmt.Errorf(
 			"httprange: reading %s at offset %d: %w",
 			redactRawURL(r.url), off, err,
 		)
 	}
 	wantEnd := off + length - 1
-	if start != off || end != wantEnd || total != r.size {
-		return fmt.Errorf(
-			"%w: reading %s at offset %d: got bytes %d-%d of %d, want %d-%d of %d",
+	if start != off || end > wantEnd || (end != wantEnd && end != total-1) {
+		return 0, 0, fmt.Errorf(
+			"%w: reading %s at offset %d: got bytes %d-%d of %d, want %d-%d",
 			ErrObjectChanged, redactRawURL(r.url), off,
-			start, end, total, off, wantEnd, r.size,
+			start, end, total, off, wantEnd,
 		)
 	}
 
-	// Whatever nothing has pinned yet this response gets to say: with the probe
-	// skipped it is the first word on what the object is, and it completes a
-	// description the caller only knew part of.
-	if reason := r.pinOrVerify(resp); reason != "" {
-		return fmt.Errorf(
+	// Whatever nothing has pinned yet this response gets to say, the complete
+	// length among it: with no probe made it is the first word on what the
+	// object is, and it completes a description the caller only knew part of.
+	if reason := r.pinOrVerify(resp, total); reason != "" {
+		return 0, 0, fmt.Errorf(
 			"%w: reading %s at offset %d: %s",
 			ErrObjectChanged, redactRawURL(r.url), off, reason,
 		)
 	}
-	return nil
+	return end - start + 1, total, nil
 }
 
-// mismatch says what about resp contradicts m, or "" when nothing does. Each
-// property is compared only where both sides state it: a response leaving out
-// its validators, a Doer not recording the request it answered, or a
-// description holding nothing yet says nothing either way and is not held
-// against the response.
-func (m *objectMeta) mismatch(resp *http.Response) string {
+// mismatch says what about resp contradicts m, or "" when nothing does. total
+// is the complete length resp amounts to. Each property is compared only where
+// both sides state it: a response leaving out its validators, a Doer not
+// recording the request it answered, or a description holding nothing yet says
+// nothing either way and is not held against the response.
+func (m *objectMeta) mismatch(resp *http.Response, total int64) string {
 	if m == nil {
 		return ""
+	}
+	if m.sizeKnown && total != m.size {
+		return fmt.Sprintf("complete length %d, want %d", total, m.size)
 	}
 	if got := resp.Header.Get("ETag"); got != "" && m.etag != "" && got != m.etag {
 		return fmt.Sprintf("ETag %s, want %s", got, m.etag)

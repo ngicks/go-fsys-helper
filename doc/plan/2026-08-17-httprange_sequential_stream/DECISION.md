@@ -26,6 +26,23 @@ protocol:
   request-counting handler, asserting exactly one request for a full
   copy) rather than a human-observed access log, since no human is
   watching the run.
+- **The probe request sends no If-Range** (step 1/2 implementation): a
+  changed object would answer a conditional range with the whole
+  entity — an unasked-for download and a poorer account than the
+  response's own validators, which pin-or-verify already compares.
+  Why-not comment lives in probe.go.
+- **`Probe(ctx)` obeys both its own ctx and the reader's lifetime
+  ctx** via `context.AfterFunc(r.ctx, cancel)` over a child of the
+  call's ctx, failing as soon as either is done.
+- **Size state lives inside the same CAS'd `objectMeta` pointer as the
+  validators** (`size` + `sizeKnown`), so concurrent first responses
+  settle validators and size atomically together; `Metadata()`'s ok
+  requires the size to be known so `ok && Size==0` means an empty
+  object unambiguously.
+- **zip_test now feeds the reader through
+  `stream.SizedReaderAt{R: r, Size: meta.Size}`** (the multi-reader
+  path the size-method removal points callers to) instead of the
+  deleted compile-time `stream.ReadAtSizer` pin.
 
 ## D1 — Stream lane fused into `ReaderAt`, superseding prior D7's rejection (2026-08-18, user)
 

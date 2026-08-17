@@ -215,22 +215,176 @@ func assertNoSecret(t *testing.T, err error) {
 	}
 }
 
-func TestNew_probe(t *testing.T) {
+// mustProbe runs the probe a test wants to have happened, which is what pins
+// the object where the reader would otherwise leave it to the first read.
+func mustProbe(t *testing.T, r *ReaderAt) {
+	t.Helper()
+
+	if err := r.Probe(context.Background()); err != nil {
+		t.Fatalf("Probe returned error: %v", err)
+	}
+}
+
+// TestNew_noRequest states the whole of what construction does about the
+// network: nothing, whatever the caller handed in.
+func TestNew_noRequest(t *testing.T) {
 	content := testContent(1024)
-	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-	defer r.Close()
+	for _, tc := range []struct {
+		name string
+		cfg  *Config
+	}{
+		{name: "nothing_known", cfg: nil},
+		{name: "size_known", cfg: &Config{Size: int64(len(content))}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := startConformantServer(t, content)
 
-	if got := r.Size(); got != int64(len(content)) {
-		t.Fatalf("Size() = %d, want %d", got, len(content))
+			r, err := New(context.Background(), s.URL, tc.cfg)
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			defer r.Close()
+
+			if got := s.requestCount(); got != 0 {
+				t.Fatalf("New made %d requests, want 0", got)
+			}
+		})
 	}
-	if got := s.requestCount(); got != 1 {
-		t.Fatalf("New made %d requests, want 1", got)
-	}
+}
+
+func TestProbe(t *testing.T) {
+	const lastModified = "Mon, 06 May 2024 07:08:09 GMT"
+	content := testContent(1024)
+	size := int64(len(content))
+
+	t.Run("settles_everything", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		mustProbe(t, r)
+
+		want := Metadata{ETag: s.etag, LastModified: lastModified, Size: size}
+		if got, ok := r.Metadata(); got != want || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+		if got := s.requestCount(); got != 1 {
+			t.Fatalf("Probe made %d requests, want 1", got)
+		}
+	})
+
+	t.Run("mismatch", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			cfg  *Config
+		}{
+			{name: "etag", cfg: &Config{ETag: `"v2"`}},
+			{
+				name: "last_modified",
+				cfg:  &Config{LastModified: "Tue, 07 May 2024 07:08:09 GMT"},
+			},
+			{name: "size", cfg: &Config{Size: size + 1}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				s := startConformantServer(t, content)
+
+				r, err := New(context.Background(), s.URL, tc.cfg)
+				if err != nil {
+					t.Fatalf("New returned error: %v", err)
+				}
+				defer r.Close()
+
+				if err := r.Probe(context.Background()); !errors.Is(err, ErrObjectChanged) {
+					t.Fatalf("Probe returned %v, want %v", err, ErrObjectChanged)
+				}
+			})
+		}
+	})
+
+	t.Run("partial_metadata", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		// Half a description, and the half that is there is the half the
+		// response is held to; the rest is what the probe is for.
+		r, err := New(context.Background(), s.URL, &Config{LastModified: lastModified})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		mustProbe(t, r)
+
+		want := Metadata{ETag: s.etag, LastModified: lastModified, Size: size}
+		if got, ok := r.Metadata(); got != want || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+	})
+
+	t.Run("fires_again_when_verified", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		mustProbe(t, r)
+		mustProbe(t, r)
+
+		if got := s.requestCount(); got != 2 {
+			t.Fatalf("two probes made %d requests, want 2", got)
+		}
+
+		s.swap(content, `"v2"`)
+
+		if err := r.Probe(context.Background()); !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("Probe over a re-tagged object = %v, want %v", err, ErrObjectChanged)
+		}
+	})
+
+	t.Run("reader_closed", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		if err := r.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+
+		if err := r.Probe(context.Background()); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Probe after Close = %v, want %v", err, context.Canceled)
+		}
+		if got := s.requestCount(); got != 0 {
+			t.Fatalf("Probe after Close made %d requests, want 0", got)
+		}
+	})
+
+	t.Run("own_context_canceled", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if err := r.Probe(ctx); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Probe with a canceled context = %v, want %v", err, context.Canceled)
+		}
+		// The reader itself is untouched by the context that call carried.
+		mustProbe(t, r)
+	})
 }
 
 func TestNew_configuredSize(t *testing.T) {
@@ -246,8 +400,8 @@ func TestNew_configuredSize(t *testing.T) {
 	if got := s.requestCount(); got != 0 {
 		t.Fatalf("New made %d requests with a configured size, want 0", got)
 	}
-	if got := r.Size(); got != int64(len(content)) {
-		t.Fatalf("Size() = %d, want %d", got, len(content))
+	if got, _ := r.Metadata(); got.Size != int64(len(content)) {
+		t.Fatalf("Metadata().Size = %d, want %d", got.Size, len(content))
 	}
 
 	buf := make([]byte, 16)
@@ -306,17 +460,20 @@ func TestNew_savedValidators(t *testing.T) {
 		assertNoBytesOfAnotherObject(t, r)
 	})
 
-	t.Run("probe_at_construction", func(t *testing.T) {
+	t.Run("explicit_probe", func(t *testing.T) {
 		s := startConformantServer(t, content)
 		s.swap(content, `"v2"`)
 
+		// No size either, so nothing here is known well enough to read
+		// against; the probe is what turns that into an answer.
 		r, err := New(context.Background(), s.URL, &Config{ETag: savedETag})
-		if err == nil {
-			r.Close()
-			t.Fatal("New returned no error against a re-tagged object")
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
 		}
-		if !errors.Is(err, ErrObjectChanged) {
-			t.Fatalf("New returned %v, want %v", err, ErrObjectChanged)
+		defer r.Close()
+
+		if err := r.Probe(context.Background()); !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("Probe over a re-tagged object = %v, want %v", err, ErrObjectChanged)
 		}
 	})
 
@@ -424,7 +581,7 @@ func TestNew_invalidURL(t *testing.T) {
 			r, err := New(context.Background(), tc.rawURL, &Config{Client: client})
 			if err == nil {
 				r.Close()
-				t.Fatalf("New returned no error, size %d", r.Size())
+				t.Fatal("New returned no error")
 			}
 			if !strings.Contains(err.Error(), tc.wantMsg) {
 				t.Fatalf("New returned %v, want it to say %q", err, tc.wantMsg)
@@ -434,17 +591,22 @@ func TestNew_invalidURL(t *testing.T) {
 	}
 }
 
-func TestNew_rangeIgnored(t *testing.T) {
+func TestProbe_rangeIgnored(t *testing.T) {
 	content := testContent(128)
 	s := startHandlerServer(t, handleWhole(content))
 
-	_, err := New(context.Background(), s.URL, nil)
-	if !errors.Is(err, ErrRangeIgnored) {
-		t.Fatalf("New returned %v, want %v", err, ErrRangeIgnored)
+	r, err := New(context.Background(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	if err := r.Probe(context.Background()); !errors.Is(err, ErrRangeIgnored) {
+		t.Fatalf("Probe returned %v, want %v", err, ErrRangeIgnored)
 	}
 }
 
-func TestNew_emptyObject(t *testing.T) {
+func TestProbe_emptyObject(t *testing.T) {
 	t.Run("unsatisfied_range", func(t *testing.T) {
 		s := startHandlerServer(t, func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Range", "bytes */0")
@@ -500,8 +662,12 @@ func assertEmptyObject(t *testing.T, rawURL string) {
 	}
 	defer r.Close()
 
-	if got := r.Size(); got != 0 {
-		t.Fatalf("Size() = %d, want 0", got)
+	mustProbe(t, r)
+
+	// Zero and settled, which is an empty object; the validators alongside it
+	// are whatever the server happened to send.
+	if got, ok := r.Metadata(); got.Size != 0 || !ok {
+		t.Fatalf("Metadata() = (%+v, %t), want size 0 and true", got, ok)
 	}
 	n, err := r.ReadAt(make([]byte, 8), 0)
 	if n != 0 || !errors.Is(err, io.EOF) {
@@ -509,7 +675,7 @@ func assertEmptyObject(t *testing.T, rawURL string) {
 	}
 }
 
-func TestNew_contentEncoding(t *testing.T) {
+func TestProbe_contentEncoding(t *testing.T) {
 	s := startHandlerServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Set("Content-Range", "bytes 0-0/128")
@@ -517,19 +683,25 @@ func TestNew_contentEncoding(t *testing.T) {
 		_, _ = w.Write([]byte{0})
 	})
 
-	_, err := New(context.Background(), s.URL, nil)
+	r, err := New(context.Background(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	err = r.Probe(context.Background())
 	if err == nil {
-		t.Fatal("New returned no error")
+		t.Fatal("Probe returned no error")
 	}
 	if errors.Is(err, ErrRangeIgnored) {
-		t.Fatalf("New returned %v, want an error other than %v", err, ErrRangeIgnored)
+		t.Fatalf("Probe returned %v, want an error other than %v", err, ErrRangeIgnored)
 	}
 	if !strings.Contains(err.Error(), "Content-Encoding") {
-		t.Fatalf("New returned %v, want it to name Content-Encoding", err)
+		t.Fatalf("Probe returned %v, want it to name Content-Encoding", err)
 	}
 }
 
-func TestNew_badProbeResponse(t *testing.T) {
+func TestProbe_badResponse(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		handler http.HandlerFunc
@@ -569,15 +741,20 @@ func TestNew_badProbeResponse(t *testing.T) {
 			s := startHandlerServer(t, tc.handler)
 
 			r, err := New(context.Background(), s.URL, nil)
-			if err == nil {
-				r.Close()
-				t.Fatalf("New returned no error, size %d", r.Size())
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			defer r.Close()
+
+			if err := r.Probe(context.Background()); err == nil {
+				got, _ := r.Metadata()
+				t.Fatalf("Probe returned no error, size %d", got.Size)
 			}
 		})
 	}
 }
 
-func TestNew_statusError(t *testing.T) {
+func TestProbe_statusError(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		code     int
@@ -593,10 +770,16 @@ func TestNew_statusError(t *testing.T) {
 				http.Error(w, http.StatusText(tc.code), tc.code)
 			})
 
-			_, err := New(context.Background(), s.URL, nil)
+			r, err := New(context.Background(), s.URL, nil)
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			defer r.Close()
+
+			err = r.Probe(context.Background())
 			codeErr, ok := errors.AsType[*StatusCodeError](err)
 			if !ok {
-				t.Fatalf("New returned %v, want a *StatusCodeError", err)
+				t.Fatalf("Probe returned %v, want a *StatusCodeError", err)
 			}
 			if codeErr.Code != tc.code {
 				t.Fatalf("Code = %d, want %d", codeErr.Code, tc.code)
@@ -606,7 +789,7 @@ func TestNew_statusError(t *testing.T) {
 			}
 			if errors.Is(err, fs.ErrNotExist) {
 				t.Fatalf(
-					"New returned %v matching fs.ErrNotExist; a remote object is not a file",
+					"Probe returned %v matching fs.ErrNotExist; a remote object is not a file",
 					err,
 				)
 			}
@@ -617,31 +800,40 @@ func TestNew_statusError(t *testing.T) {
 func TestSecretsStayOutOfErrorText(t *testing.T) {
 	content := testContent(128)
 
-	t.Run("construction_status", func(t *testing.T) {
+	t.Run("probe_status", func(t *testing.T) {
 		s := startHandlerServer(t, func(w http.ResponseWriter, _ *http.Request) {
 			http.Error(w, "no such object", http.StatusNotFound)
 		})
 
-		_, err := New(context.Background(), secretURL(t, s.URL), nil)
+		r, err := New(context.Background(), secretURL(t, s.URL), nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		err = r.Probe(context.Background())
 		if err == nil {
-			t.Fatal("New returned no error")
+			t.Fatal("Probe returned no error")
 		}
 		assertNoSecret(t, err)
 	})
 
-	t.Run("construction_unreachable", func(t *testing.T) {
-		_, err := New(context.Background(), secretURL(t, deadServerURL(t)), nil)
+	t.Run("probe_unreachable", func(t *testing.T) {
+		r, err := New(context.Background(), secretURL(t, deadServerURL(t)), nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		err = r.Probe(context.Background())
 		if err == nil {
-			t.Fatal("New returned no error")
+			t.Fatal("Probe returned no error")
 		}
 		assertNoSecret(t, err)
 	})
 
 	t.Run("read_range_ignored", func(t *testing.T) {
-		s := startHandlerServer(t, handleSequence(
-			handlePartial(content, ""),
-			handleWhole(content),
-		))
+		s := startHandlerServer(t, handleWhole(content))
 
 		r, err := New(context.Background(), secretURL(t, s.URL), nil)
 		if err != nil {
@@ -698,6 +890,7 @@ func TestNew_staticHeaders(t *testing.T) {
 		}
 		defer r.Close()
 
+		mustProbe(t, r)
 		if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
 			t.Fatalf("ReadAt returned error: %v", err)
 		}
@@ -721,10 +914,7 @@ func TestNew_staticHeaders(t *testing.T) {
 
 	t.Run("stays_out_of_error_text", func(t *testing.T) {
 		content := testContent(128)
-		s := startHandlerServer(t, handleSequence(
-			handlePartial(content, ""),
-			handleWhole(content),
-		))
+		s := startHandlerServer(t, handleWhole(content))
 
 		r, err := New(context.Background(), s.URL, &Config{
 			Header: http.Header{"Authorization": {authorization}},
