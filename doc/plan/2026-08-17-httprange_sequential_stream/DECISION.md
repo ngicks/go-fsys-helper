@@ -3,25 +3,139 @@
 Inherited constraints quoted from
 `doc/plan/2026-08-17-http_range_reader_at/DECISION.md`:
 
-- D1 (operative): "concurrent-safe only — every ReadAt a self-contained
-  bounded range request … no shared mutable stream state." The stream lane
-  necessarily revisits the second half; the concurrency promise itself
-  must survive untouched.
-- D7 (operative): "explicitly out of scope now and, if sequential
-  performance matters later, belongs in a future explicit adapter or
-  wrapper"; "**Rejected**: fusing an opportunistic sequential lane into
-  the base reader". This plan is that "later"; whether the caller-declared
-  lane may live in the base reader anyway is Q1.
+- D1 (prior plan, operative): "concurrent-safe only — every ReadAt a
+  self-contained bounded range request … no shared mutable stream state."
+  This plan's D1 (below) revisits the second half by user decision; the
+  concurrency promise itself must survive untouched.
+- D7 (prior plan, operative): "explicitly out of scope now and, if
+  sequential performance matters later, belongs in a future explicit
+  adapter or wrapper"; "**Rejected**: fusing an opportunistic sequential
+  lane into the base reader". Superseded in part by this plan's D1.
 
-## Stubs (pending)
+## D1 — Stream lane fused into `ReaderAt`, superseding prior D7's rejection (2026-08-18, user)
 
-- **Q1 — fused into ReaderAt (supersedes D7's rejection) vs separate
-  wrapper.** Tentative: fused.
-- **Q2 — randomized read kills the stream vs bypasses it.** Tentative:
-  kill.
-- **Q3 — mid-stream error: surface + permanent fallback vs transparent
-  bounded completion.** Tentative: surface + fallback.
-- **Q4 — declaration API shape** (unset-representation given start==0 is
-  meaningful; saved-validator resume in or out).
-- **Q5 — declared window with caller-supplied Size**: lazy vs eager stream.
-- **Q6 — end-bounded windows now or later.**
+**Choice**: the declared-range stream lane lives inside
+`httprange.ReaderAt` (constructor `NewRange`, D5). This supersedes prior
+D7's rejected-alternatives line for the caller-declared case.
+
+**Rationale**: what D7 rejected was an *opportunistic* lane; this one only
+exists when the caller declares it. Declaring at construction lets the
+streaming request double as the probe, so the hint costs no extra round
+trip; a wrapper would need a separate probe or an awkward size/meta
+handoff plus a second exported type.
+
+**Rejected**: a separate wrapper type honoring prior D7 literally.
+
+## D2 — First randomized read kills the stream permanently (2026-08-18, user)
+
+**Choice**: a `ReadAt` at any offset other than the stream's current
+position closes the stream for good; that read and every later read take
+today's bounded per-read path. One stream per reader, never re-armed.
+
+**Rationale**: matches the request's own words ("fire single range request
+until read is randomized") and keeps the state machine one-way. A caller
+with a second sequential stretch builds a new reader.
+
+**Rejected**: bypass — keeping the stream open for the next in-order read
+while mismatches go bounded. More state, an idle-stream lifetime problem,
+and the declared use cases (full download, resume) are strictly
+sequential anyway.
+
+## D3 — Mid-stream failure is final; retry is the caller's (2026-08-18, user)
+
+**Choice**: when the streaming body errors or ends short, the failing
+`ReadAt` returns the bytes it got plus the error, and the stream is dead.
+The reader neither reopens the stream nor completes the failed read with a
+bounded request. Later reads take the bounded path as with D2.
+
+**Rationale** (user, verbatim): "Let it fail. Failed connection needs
+explicit retry mechanism and it is caller's responsibility." Consistent
+with the package's existing no-retry stance (retries belong to the
+caller's `Doer`); recovery is the documented resume flow (IDEA.md UC2).
+
+**Rejected**: transparently finishing the failed read via a bounded
+request, or reopening the stream at the failure point.
+
+## D4 — Exported `Probe`; `New` defaults unchanged; eager stream only when size is unknown (2026-08-18, user)
+
+**Choice**: export `(*ReaderAt).Probe(ctx)` as an explicit verify-now
+call (range proof, size cross-check, meta pin-or-verify). `New` keeps
+today's default (probe unless `cfg.Size > 0`). `NewRange` never spends a
+separate probe: with size unknown it opens the stream at construction
+(the streaming response doubles as the probe); with `cfg.Size > 0` it
+does no I/O at construction and opens the stream on the first in-order
+read — "explicit Probe for clearer failure point detection, or lazy
+called right before first Read call" (user).
+
+**Rationale**: probing is not only about size — it pins metadata — but
+when the size is set, pinning can equally happen from the first real
+response; the caller chooses early failure (Probe) or fewest requests
+(lazy).
+
+**Rejected**: always-eager (loses `Size>0`'s no-I/O construction);
+always-lazy (breaks `Size()`'s settled-at-construction contract when
+size is unknown).
+
+## D5 — `NewRange(ctx, url, off, n, cfg)`: a section view, `io.SectionReader`'s rules (2026-08-18, user)
+
+**Choice**: `NewRange` takes `(off, n int64)` — `io.SectionReader`'s
+argument shape, per the user's correction — and returns a *view* of
+`[off, off+n)`: relative offsets, `Size()` = view length, EOF at the
+boundary. `n` beyond the remainder clamps; `math.MaxInt64` is the
+documented "off to EOF" idiom (user: archive/tar's practice with
+`io.SectionReader`); `n <= 0` yields an empty view exactly as a negative
+`n` does in `io.SectionReader` (EOF on first read). Documented as "New,
+slightly optimized" — `NewRange(url, 0, math.MaxInt64, cfg)` ≡ `New`
+plus the stream lane. Straddling-End semantics dissolve: the boundary is
+simply the view's EOF.
+
+**Rationale**: the user invoked "same rule as io.SectionReader"; the
+view reading matches that rule, the `(off, n)` signature, and the use
+cases (resume = `NewRange(url, n, math.MaxInt64)` + `io.Copy`, no
+wrapping).
+
+**Rejected**: whole-object reader with `(off, n)` as a mere streaming
+hint (two boundary notions, wrapping still needed for resume); a
+`Window` config struct and the name `NewSequential` (user: "Just use
+(start, end int64). Name it NewRange"); `n < 0` meaning to-EOF (user:
+"n < 0 in io.SectionReader works as io.EOF on first read attempt").
+
+## D6 — Saved validators as `Config.ETag` / `Config.LastModified`, added now (2026-08-18, user)
+
+**Choice**: two new `Config` fields carrying validators the caller saved
+from an earlier response. When set they pre-pin the object identity at
+construction: they ride `If-Range` (same strong-validator rule as pinned
+ones) and any response contradicting them fails with `ErrObjectChanged`.
+Serves `New` and `NewRange` alike.
+
+**Rationale**: `newRequest` deliberately strips `If-Range` from
+`Config.Header`, so without first-class fields a resuming caller cannot
+make the reader verify the object is still the one their local bytes
+came from — new-object bytes would silently splice onto stale local
+bytes.
+
+**Rejected**: deferring to a HANDOFF entry; validator fields on a
+constructor-local struct (no such struct survives D5).
+
+## D7 — Expose pinned metadata: `(*ReaderAt).Metadata()` (2026-08-18, user)
+
+**Choice**: callers can read the object metadata after or in the middle
+of downloading: `Metadata() (Metadata, bool)` with
+`type Metadata struct { ETag, LastModified string; Size int64 }` — a
+snapshot of what is pinned so far, `false` until anything is pinned
+(possible only on a lazily-opened reader before its first request;
+`Config` validators count as pinned). Safe to call concurrently with
+reads. `Metadata.Size` is the total object size, which `NewRange`'s
+view-length `Size()` no longer exposes.
+
+**Rationale** (user): "we also need to be able to let callers get
+metadata after or in-mid downloading" — it completes D6's resume loop:
+save `Metadata().ETag`/`.LastModified` (plus how many bytes landed)
+during this attempt, feed them back through `Config` on the next.
+Shape notes (assistant judgment): a struct snapshot beats per-field
+methods for atomicity of the pair; the pinned origin stays internal —
+it is an anti-redirect-swap guard, not object identity a caller should
+persist.
+
+**Rejected**: individual `ETag()`/`LastModified()` methods; exposing
+origin.

@@ -1,6 +1,7 @@
 # IDEA — declared sequential window served by one streaming range request
 
-Gate: not confirmed
+Gate: not confirmed (reset 2026-08-18: metadata-access requirement added
+after the first confirmation; awaiting re-confirmation)
 
 This is the follow-up that `doc/plan/2026-08-17-http_range_reader_at/HANDOFF.md`
 H1 hands off, scoped down from the full PDF.js-style chunk manager to the
@@ -17,9 +18,10 @@ and its rejected-alternatives line says verbatim:
 > **Rejected**: fusing an opportunistic sequential lane into the base reader
 
 The difference from what D7 rejected: the lane here is not *opportunistic* —
-the caller **declares** the expected range up front. Whether that difference
-is enough to put the lane inside `ReaderAt` (superseding D7's rejection) or
-whether it must stay a separate wrapper is open question Q1.
+the caller **declares** the expected range up front. On that ground the user
+decided (this plan's D1) that the lane lives **inside `ReaderAt`**,
+superseding D7's rejected-alternatives line; D7's "explicit adapter or
+wrapper" wording no longer binds this feature.
 
 ## How it should be
 
@@ -57,12 +59,14 @@ faster and with fewer requests.
 - **Actor**: the same mirroring program, restarted after an interruption.
 - **Situation**: `N` bytes already sit on disk from the previous attempt.
 - **Intent**: fetch bytes `N-` to the end as one request and append.
-- **Walkthrough**: the caller declares "I will read from N to the end". The
-  construction request is `Range: bytes=N-`; validators pinned from its
-  response guard against the object having changed since is left to the
-  caller (they may pass validators they saved — open question Q4 territory,
-  see PLAN.md). Sequential reads from `N` stream from the one body until the
-  end.
+- **Walkthrough**: during the first attempt the caller reads the object's
+  metadata off the reader — even mid-download — and saves the validators
+  next to the partial file. On restart they declare "I will read from N to
+  the end" and hand those saved validators back in; the construction
+  request is `Range: bytes=N-` carrying them as `If-Range`, so an object
+  that changed since the first attempt fails with `ErrObjectChanged`
+  instead of silently splicing new bytes onto stale local ones. Sequential
+  reads from `N` stream from the one body until the end.
 
 ### UC3 — declared window, then the pattern breaks
 
@@ -74,10 +78,12 @@ faster and with fewer requests.
 - **Intent**: the read must still be correct and still be served — just at
   the ordinary one-round-trip price. The declared hint must never make a
   read fail or block that would have succeeded without it.
-- **Walkthrough**: the mismatched read triggers the fallback (kill vs
-  bypass is open question Q2), goes out as a bounded range request exactly
-  as today, and returns the right bytes. Later reads keep working; whether
-  a *later sequential* read can still use the stream depends on Q2.
+- **Walkthrough**: the first mismatched read **kills the stream for good**
+  (this plan's D2): it goes out as a bounded range request exactly as
+  today and returns the right bytes, and every later read — in-order or
+  not — takes the bounded path too. One stream per reader, never re-armed;
+  a caller who knows a second sequential stretch is coming builds a new
+  reader for it.
 
 ### UC4 — the stream dies mid-window
 
@@ -87,16 +93,17 @@ faster and with fewer requests.
   working recovery story — which this package already defines: resume, per
   UC2, from `start+M`.
 - **Walkthrough**: the read that hits the failure returns the bytes it got
-  plus the error (mirroring today's `io.ErrUnexpectedEOF` behavior). What
-  later reads do — permanent fallback to bounded requests vs transparent
-  retry — is open question Q3; the package's existing no-retry stance
-  (Doer owns retries) leans toward fallback.
+  plus the error (mirroring today's `io.ErrUnexpectedEOF` behavior) and
+  the stream is dead (this plan's D3). The reader never reopens or
+  retries it — "failed connection needs explicit retry mechanism and it
+  is caller's responsibility" (user). Later reads take the bounded path;
+  a caller wanting the stream economics back resumes per UC2.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Streaming : window declared at construction
     Streaming --> Streaming : ReadAt at stream position\n(served from open body)
-    Streaming --> Fallback : read is randomized (Q2)\nor stream errors (Q3)
+    Streaming --> Fallback : read is randomized\nor stream errors (permanent)
     Fallback --> Fallback : every ReadAt a bounded\nrange request (today's path)
     [*] --> Fallback : no window declared\n(today's behavior, unchanged)
 ```
@@ -117,10 +124,15 @@ stateDiagram-v2
   abandoned declaration costs performance only. All existing guarantees —
   `ErrObjectChanged` on mutation, `ErrRangeIgnored`, redaction, bounded
   per-read fallback — hold on both lanes.
+- **Metadata is readable after or in the middle of downloading.** What
+  the reader has pinned about the object — validators, total size — is
+  available to the caller at any moment, concurrently with reads, so the
+  resume loop closes: save it during this attempt, pass it back on the
+  next. It never blocks and never fires a request of its own.
 - **Concurrency stays safe and stays documented.** `ReaderAt` promises
   concurrent use today; with a stream inside it, concurrent randomized
   reads must neither corrupt the stream lane nor serialize behind it.
 - **Failure reads like the rest of the package.** Mid-stream death follows
   the existing vocabulary (`io.ErrUnexpectedEOF` with partial bytes,
-  redacted URLs); recovery is the documented resume flow (UC2), not a
-  hidden retry loop — unless Q3 resolves otherwise.
+  redacted URLs); recovery is the documented resume flow (UC2), never a
+  hidden retry loop — retries stay the caller's responsibility.

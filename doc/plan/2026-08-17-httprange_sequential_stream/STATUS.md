@@ -1,17 +1,35 @@
 # STATUS — httprange sequential-stream lane
 
-Current state: **not started** — rough scaffold written; idea gate not
-passed (IDEA.md `Gate: not confirmed`). Open questions Q1–Q3 block the
-gate; Q4–Q6 follow it.
+Current state: **planned, pending final gate re-confirmation** — all
+open questions resolved (DECISION.md D1–D7), PLAN.md fully detailed
+with public surface delta, steps, and traceability. IDEA.md's gate was
+confirmed once (2026-08-18) then reset the same day when the user added
+the metadata-access requirement (D7); awaiting re-confirmation of the
+updated IDEA.md.
 
-## Checklist
+## Planning checklist
 
-- [ ] Idea gate: Q1 (fused vs wrapper / D7 supersession), Q2 (randomized
-  read: kill vs bypass), Q3 (mid-stream error) resolved with user;
-  IDEA.md confirmed
-- [ ] Contract round: Q4–Q6 resolved; Public surface delta written
-- [ ] PLAN.md implementation steps detailed
-- [ ] Traceability gate walked (incl. inherited D1/D7 clauses)
-- [ ] Implementation (steps TBD)
+- [x] Idea questions resolved: D1 "lives inside httprange.ReaderAt …
+  supersedes prior D7" ✓, D2 "closes the stream for good … never
+  re-armed" ✓, D3 "let it fail … retry is caller's responsibility" ✓
+- [x] Contract questions resolved: D4 "explicit Probe … or lazy" ✓,
+  D5 "(off, n) … same rule as io.SectionReader … math.MaxInt64 for
+  off-EOF" ✓, D6 "Add Config fields now" ✓
+- [x] D7 "get metadata after or in-mid downloading" folded into
+  IDEA/PLAN (Metadata type + accessor, step 1)
+- [x] Public surface delta written (PLAN.md)
+- [x] Implementation steps detailed (PLAN.md steps 1–6)
+- [x] Traceability walked: D1–D7 + inherited prior-D1 each mapped to
+  steps (PLAN.md Traceability section); UC1–UC4 covered
+- [ ] IDEA.md gate re-confirmed by user after the D7 addition
 
-Next action: run open-question round 1 (Q1–Q3) with the user.
+## Implementation checklist (mirrors PLAN.md steps — not started)
+
+- [ ] 1. Config validators + pin-or-verify + `Metadata()` (D6, D7)
+- [ ] 2. Exported `Probe(ctx)` (D4)
+- [ ] 3. Stream lane in `stream.go` (D1–D4)
+- [ ] 4. `NewRange` + `ReadAt` wiring, view semantics (D2, D3, D5)
+- [ ] 5. Docs (`doc.go`, method docs)
+- [ ] 6. Test matrix incl. request counts, races, resume mismatch
+
+Next action: user re-confirms IDEA.md gate; then implementation step 1.
