@@ -21,11 +21,12 @@ protocol:
 - **STATUS.md checkbox updates ride the same commit as the step they
   describe** — one commit per implementation step keeps the tree
   bisectable and the status honest at every commit.
-- **The "manual `io.Copy` smoke against a real HTTP server" bar is run
-  as a scripted scratchpad program** (Go `http.FileServer` behind a
-  request-counting handler, asserting exactly one request for a full
-  copy) rather than a human-observed access log, since no human is
-  watching the run.
+- **The "manual `io.Copy` smoke against a real HTTP server" bar landed
+  as a permanent test** — `acceptance_test.go`'s `TestFullCopy_oneRequest`
+  (a 4 MiB copy out of a real `http.FileServer` behind a
+  request-counting handler, asserting byte equality and exactly one
+  request) — rather than a human-observed access log, since no human
+  was watching the run.
 - **The probe request sends no If-Range** (step 1/2 implementation): a
   changed object would answer a conditional range with the whole
   entity — an unasked-for download and a poorer account than the
@@ -55,6 +56,17 @@ protocol:
 - **`Close` cancels the reader's context before killing the lane**, so
   closing never blocks behind a stalled stream read (tested by a
   stalling server).
+- **Review-fix round (post-implementation)**: the probe's response gate
+  was aligned with its read/stream siblings — a 416 `bytes */N` with
+  N > 0 answering `bytes=0-0` is `ErrObjectChanged` (byte 0 was
+  satisfiable, so the refusal is a contradiction), an over-granting
+  206 is rejected the same way, and the probe's error classes now
+  match `checkPartial`/`readUnsatisfied`. The verified flag moved
+  inside the CAS'd `objectMeta` (amending the size-CAS entry above) so
+  a validator-less server cannot leave a window where `Metadata()`
+  reports a size without ok. The over-grant guard on both read paths —
+  what keeps a hostile 206 from writing past the caller's buffer — got
+  pinning tests, each proven non-vacuous by mutation.
 
 ## D1 — Stream lane fused into `ReaderAt`, superseding prior D7's rejection (2026-08-18, user)
 
