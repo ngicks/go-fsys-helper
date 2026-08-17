@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -36,6 +37,44 @@ func TestZipRoundTrip(t *testing.T) {
 			t.Errorf("ReaderAt.Close: %v", err)
 		}
 	}()
+
+	assertZipRoundTrip(t, r, archive, members)
+}
+
+// TestZipRoundTrip_streaming runs the same round trip over the reader built for
+// a front-to-back walk, which an archive is the opposite of: the central
+// directory at the tail is the first thing read, so the stream is gone before
+// it ever opens and every read of the walk that follows is a bounded request.
+// What comes back is the archive all the same.
+func TestZipRoundTrip_streaming(t *testing.T) {
+	archive, members := buildTestZip(t)
+	srv := serveZip(t, archive)
+
+	r, err := httprange.NewRange(
+		context.Background(), srv.URL+"/test.zip", 0, math.MaxInt64, nil,
+	)
+	if err != nil {
+		t.Fatalf("httprange.NewRange: %v", err)
+	}
+	defer func() {
+		if err := r.Close(); err != nil {
+			t.Errorf("ReaderAt.Close: %v", err)
+		}
+	}()
+
+	assertZipRoundTrip(t, r, archive, members)
+}
+
+// assertZipRoundTrip reads every member of the archive r serves and states that
+// each one holds what it was built from. The multi-reader it pairs r with
+// closes r on its way out, so r serves nothing once this returns.
+func assertZipRoundTrip(
+	t *testing.T,
+	r *httprange.ReaderAt,
+	archive []byte,
+	members map[string][]byte,
+) {
+	t.Helper()
 
 	// An archive is read from its tail, so the size has to be known before the
 	// first read rather than settled by it.

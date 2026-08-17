@@ -129,6 +129,50 @@ func TestNewRange_wholeObject(t *testing.T) {
 	}
 }
 
+// TestNewRange_knownSizeStream is the full copy made by a caller who already
+// knows how large the object is. Knowing it settles where the walk ends without
+// a request, and buys the stream no request either: construction asks nothing,
+// the first read in order opens the one stream, and the rest of the walk rides
+// that same one.
+func TestNewRange_knownSizeStream(t *testing.T) {
+	content := testContent(4096)
+	s := startConformantServer(t, content)
+
+	r, err := NewRange(
+		context.Background(), s.URL, 0, math.MaxInt64, &Config{Size: int64(len(content))},
+	)
+	if err != nil {
+		t.Fatalf("NewRange returned error: %v", err)
+	}
+	defer r.Close()
+
+	if got := s.requestCount(); got != 0 {
+		t.Fatalf("NewRange made %d requests with a configured size, want 0", got)
+	}
+
+	head := make([]byte, 64)
+	if n, err := r.ReadAt(head, 0); n != len(head) || err != nil {
+		t.Fatalf("ReadAt = (%d, %v), want (%d, <nil>)", n, err, len(head))
+	}
+	if !bytes.Equal(head, content[:len(head)]) {
+		t.Fatalf("ReadAt at offset 0 returned %x, want the object's first bytes", head)
+	}
+	if got := s.requestCount(); got != 1 {
+		t.Fatalf("the first read cost %d requests, want the stream's own", got)
+	}
+
+	rest := readInChunks(t, io.NewSectionReader(r, int64(len(head)), math.MaxInt64), 256)
+	if !bytes.Equal(rest, content[len(head):]) {
+		t.Fatalf(
+			"the rest of the walk read %d bytes differing from the %d left",
+			len(rest), len(content)-len(head),
+		)
+	}
+	if got := s.requestCount(); got != 1 {
+		t.Fatalf("copying the object cost %d requests in all, want 1", got)
+	}
+}
+
 // TestNewRange_resume is the download picked up where an earlier one stopped:
 // the section runs from what is already saved to the end of the object, and
 // the validators saved with those bytes ride the one request it takes.
@@ -163,6 +207,95 @@ func TestNewRange_resume(t *testing.T) {
 	if got := headers[0].Get("If-Range"); got != savedETag {
 		t.Fatalf("the stream sent If-Range %q, want %q", got, savedETag)
 	}
+}
+
+// TestNewRange_probeThenStream is the resuming caller who wants the object
+// checked before any byte of it moves: the probe and the stream, and nothing
+// besides. What the stream is conditioned on is the validator the probe pinned,
+// which is the object as the server has it rather than as the caller remembered
+// it.
+func TestNewRange_probeThenStream(t *testing.T) {
+	const saved = 256
+	content := testContent(1024)
+
+	for _, tc := range []struct {
+		name string
+		cfg  func(s *conformantServer) *Config
+	}{
+		{
+			name: "saved_etag",
+			cfg:  func(s *conformantServer) *Config { return &Config{ETag: s.etag} },
+		},
+		{
+			// Only a Last-Modified was saved; the probe pins the strong ETag
+			// alongside it, and that is the stronger of the two to condition on.
+			name: "validator_from_probe",
+			cfg: func(s *conformantServer) *Config {
+				return &Config{LastModified: s.modTime.UTC().Format(http.TimeFormat)}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := startConformantServer(t, content)
+
+			r, err := NewRange(context.Background(), s.URL, saved, math.MaxInt64, tc.cfg(s))
+			if err != nil {
+				t.Fatalf("NewRange returned error: %v", err)
+			}
+			defer r.Close()
+
+			mustProbe(t, r)
+
+			got := readInChunks(t, io.NewSectionReader(r, 0, math.MaxInt64), 128)
+			if !bytes.Equal(got, content[saved:]) {
+				t.Fatalf(
+					"read %d bytes, want the %d left after %d",
+					len(got), len(content)-saved, saved,
+				)
+			}
+
+			headers := s.requestHeaders()
+			if len(headers) != 2 {
+				t.Fatalf("probing and resuming cost %d requests, want 2", len(headers))
+			}
+			if got := headers[0].Get("Range"); got != "bytes=0-0" {
+				t.Fatalf("the probe asked for Range %q, want %q", got, "bytes=0-0")
+			}
+			// The probe carries no If-Range of its own: a changed object would
+			// answer one with the whole entity, which is both a download nobody
+			// asked for and a poorer account than the mismatch it reports.
+			if got := headers[0].Values("If-Range"); len(got) != 0 {
+				t.Fatalf("the probe sent If-Range %q, want none at all", got)
+			}
+			if got := headers[1].Get("Range"); got != "bytes=256-" {
+				t.Fatalf("the stream asked for Range %q, want %q", got, "bytes=256-")
+			}
+			if got := headers[1].Get("If-Range"); got != s.etag {
+				t.Fatalf("the stream sent If-Range %q, want the pinned %q", got, s.etag)
+			}
+		})
+	}
+}
+
+// TestNewRange_resumeMismatch covers the resumed download whose object moved on
+// while it was stopped: the stream's own response is where the saved validator
+// is checked, and nothing of what is there now reaches the caller to be spliced
+// onto the bytes they already have.
+func TestNewRange_resumeMismatch(t *testing.T) {
+	content := testContent(1024)
+	s := startConformantServer(t, content)
+	s.swap(content, `"v2"`)
+
+	r, err := NewRange(
+		context.Background(), s.URL, 256, math.MaxInt64, &Config{ETag: `"v1"`},
+	)
+	if err != nil {
+		t.Fatalf("NewRange returned error: %v", err)
+	}
+	defer r.Close()
+
+	assertNoBytesOfAnotherObject(t, r)
+	assertLaneDead(t, r)
 }
 
 // TestNewRange_boundedSection covers the section that ends before the object
@@ -505,6 +638,156 @@ func TestNewRange_concurrentReads(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// TestNewRange_MetadataDuringStream states what may be asked of a reader while
+// its stream is being walked: what the reader knows of the object, at any
+// moment, without waiting on the walk and without disturbing it.
+func TestNewRange_MetadataDuringStream(t *testing.T) {
+	// A description goes from nothing to what the response pinned, in one step
+	// and once; a reader alongside the walk sees one or the other of those and
+	// never anything in between.
+	t.Run("alongside_the_walk", func(t *testing.T) {
+		content := testContent(1 << 20)
+		s := startConformantServer(t, content)
+
+		r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+		if err != nil {
+			t.Fatalf("NewRange returned error: %v", err)
+		}
+		defer r.Close()
+
+		var (
+			stop = make(chan struct{})
+			wg   sync.WaitGroup
+		)
+		for range 4 {
+			wg.Go(func() {
+				var (
+					settled Metadata
+					seen    bool
+				)
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+
+					got, ok := r.Metadata()
+					switch {
+					case ok && !seen:
+						settled, seen = got, true
+					case ok:
+						if got != settled {
+							t.Errorf(
+								"Metadata() = %+v, having been %+v; what is pinned stands",
+								got, settled,
+							)
+							return
+						}
+					case seen:
+						t.Errorf("Metadata() went unsettled again, having settled at %+v", settled)
+						return
+					default:
+						if got != (Metadata{}) {
+							t.Errorf("Metadata() = (%+v, false), want nothing at all", got)
+							return
+						}
+					}
+				}
+			})
+		}
+
+		// The pollers run for as long as the walk does, however that walk ends.
+		defer wg.Wait()
+		defer close(stop)
+
+		got := readInChunks(t, io.NewSectionReader(r, 0, math.MaxInt64), 4096)
+		if !bytes.Equal(got, content) {
+			t.Fatalf("the walk read %d bytes differing from the %d served", len(got), len(content))
+		}
+		if n := s.requestCount(); n != 1 {
+			t.Fatalf("the walk cost %d requests, want the stream's own", n)
+		}
+		want := Metadata{
+			ETag:         s.etag,
+			LastModified: s.modTime.UTC().Format(http.TimeFormat),
+			Size:         int64(len(content)),
+		}
+		if got, ok := r.Metadata(); got != want || !ok {
+			t.Fatalf("Metadata() after the walk = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+	})
+
+	// The stream and the lock over it are what a read holds while the body it
+	// is reading has nothing to give; Metadata holds neither.
+	t.Run("while_a_read_is_blocked", func(t *testing.T) {
+		content := testContent(256)
+		arrived := make(chan struct{})
+		release := make(chan struct{})
+		defer close(release)
+
+		// The response promises the whole object, hands over a few bytes and
+		// stops there, leaving the read that wanted more waiting on the body.
+		s := startHandlerServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("ETag", `"v1"`)
+			w.Header().Set(
+				"Content-Range",
+				fmt.Sprintf("bytes 0-%d/%d", len(content)-1, len(content)),
+			)
+			w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(content[:16])
+			w.(http.Flusher).Flush()
+
+			close(arrived)
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+		})
+
+		r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+		if err != nil {
+			t.Fatalf("NewRange returned error: %v", err)
+		}
+		defer r.Close()
+
+		// However this read ends is other tests' subject; here it is what holds
+		// the stream while Metadata is asked for.
+		go func() { _, _ = r.ReadAt(make([]byte, 128), 0) }()
+
+		// The handler says when its bytes went out; the response reaching the
+		// reader, and with it the description it pins, follows shortly after.
+		<-arrived
+		stop := make(chan struct{})
+		defer close(stop)
+		settled := make(chan Metadata, 1)
+		go func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if got, ok := r.Metadata(); ok {
+					settled <- got
+					return
+				}
+			}
+		}()
+
+		want := Metadata{ETag: `"v1"`, Size: int64(len(content))}
+		select {
+		case got := <-settled:
+			if got != want {
+				t.Fatalf("Metadata() = %+v, want %+v", got, want)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("Metadata did not settle while a stream read was blocked on the body")
+		}
+	})
 }
 
 // TestNewRange_CloseDuringStreamRead states that closing never waits for the
