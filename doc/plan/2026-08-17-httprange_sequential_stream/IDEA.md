@@ -1,10 +1,11 @@
 # IDEA — declared sequential window served by one streaming range request
 
-Gate: confirmed by user, 2026-08-18 (re-confirmed after the
-metadata-access addition and the explicit section-view contract; the
-D8/D9 probe framing — Probe as the one validator, run lazily by the
-first request or explicitly — folded afterwards at the user's
-direction, same request counts and use-case behavior)
+Gate: not confirmed (reset 2026-08-18 for D10: construction never
+performs I/O — `New` stops probing, `Size()` settles lazily — a
+user-directed behavior change to the existing API; awaiting
+re-confirmation. Earlier confirmations: 2026-08-18 initial, re-confirmed
+same day after the metadata addition + section-view contract; D8/D9
+probe framing folded at the user's direction)
 
 This is the follow-up that `doc/plan/2026-08-17-http_range_reader_at/HANDOFF.md`
 H1 hands off, scoped down from the full PDF.js-style chunk manager to the
@@ -54,11 +55,13 @@ expectation costs round trips, never correctness.
 - **Intent**: the whole transfer should be one GET, the way `curl -O` does
   it — not `size/bufsize` separate ranged round trips.
 - **Walkthrough**: the caller declares "I will read from 0 to the end" when
-  building the reader. The construction request is `Range: bytes=0-` and its
-  `Content-Range` answers what the probe used to answer (size, validators,
-  origin), so declaring the window costs no extra round trip. Every `ReadAt`
-  the copy issues lands exactly at the stream's current position and is
-  served from the open body. The copy completes having made one request.
+  building the reader; building costs nothing, since construction never
+  performs I/O. The first read opens the one `Range: bytes=0-` request,
+  whose `Content-Range` answers everything a probe would (size,
+  validators, origin) and is validated as the probe's own response.
+  Every `ReadAt` the copy issues lands exactly at the stream's current
+  position and is served from the open body. The copy completes having
+  made exactly one request.
 
 ### UC2 — resume a partial download
 
@@ -114,7 +117,7 @@ expectation costs round trips, never correctness.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Streaming : window declared at construction
+    [*] --> Streaming : range declared\n(stream opens on first read)
     Streaming --> Streaming : ReadAt at stream position\n(served from open body)
     Streaming --> Fallback : read is randomized\nor stream errors (permanent)
     Fallback --> Fallback : every ReadAt a bounded\nrange request (today's path)
@@ -127,21 +130,25 @@ stateDiagram-v2
   are "0 to end" and "N to end"; expressing "to the end" must not require
   knowing the object's size first (the `io.SectionReader` idiom of a
   `math.MaxInt64` length, as `archive/tar` uses, covers it).
-- **No declaration, no change.** Callers who do not opt in get today's
-  behavior, bit for bit; the zero `Config` stays usable.
-- **The declaration saves the probe.** When the object's size is unknown,
-  the streaming request itself proves range support and carries size,
-  validators and origin — construction must not spend a separate probe
-  round trip on top of it. When the caller already supplied the size,
-  construction does no I/O at all; an explicit probe stays available for
-  callers who want the failure point early rather than at the first read.
-  The probe doubles as the validator of whatever metadata the caller
-  handed in — supplied pieces, even partial, are checked against the
-  actually fetched data; missing pieces are learned from it. And there
-  is only one probe: called explicitly it is its own tiny request; left
-  implicit it runs lazily inside the first request the reader makes,
-  whose response is validated as the probe's own — laziness never costs
-  an extra round trip.
+- **Reads behave as today; construction gets lighter, for everyone.**
+  The zero `Config` stays usable and `ReadAt` returns exactly what it
+  returns today — but construction never performs I/O anymore, `New`
+  included. A bad server or changed object surfaces at the first read,
+  or at an explicit probe for callers who want the failure point
+  earlier. The size, likewise, is something the reader knows once told
+  (via `Config`) or once a response has said — never something
+  construction goes out to fetch.
+- **Nothing is eager.** Construction never spends a request. The probe
+  is always lazy or explicit, never eager-implicit: left alone it runs
+  inside the first request the reader makes, whose response is
+  validated as the probe's own — so laziness never costs an extra
+  round trip — and called explicitly it is its own tiny request, for
+  callers who want the failure point before any byte moves. Supplying
+  metadata in `Config` — the size included — seeds what the reader
+  knows; it never changes *when* requests happen. The probe doubles as
+  the validator of whatever was handed in: supplied pieces, even
+  partial, are checked against the actually fetched data; missing
+  pieces are learned from it.
 - **Correctness never depends on the hint being right.** A wrong or
   abandoned declaration costs performance only. All existing guarantees —
   `ErrObjectChanged` on mutation, `ErrRangeIgnored`, redaction, bounded

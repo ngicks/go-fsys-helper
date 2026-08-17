@@ -11,20 +11,24 @@ requests — plus exported `Probe` and `Metadata`, and saved-validator
   over `[off, off+n)` whose in-order reads are served by a single
   `Range: bytes=off-…` request (IDEA.md UC1/UC2). A front-to-back
   `io.Copy` over it makes exactly one HTTP request.
-- Declaring the range replaces the construction probe when the size is
-  unknown — no extra round trip versus `New` (D4).
+- Construction never performs I/O (D10) — `New` and `NewRange` alike.
+  Verification and size discovery happen lazily inside the reader's
+  first request at no extra round trip, or explicitly via `Probe`;
+  never eagerly at construction.
 - A randomized read still succeeds, at one bounded request, and never
   blocks or fails because of the stream (UC3, D2).
 - Caller-supplied metadata (`Config.Size`/`ETag`/`LastModified`, any
-  subset) is trusted until a request happens and validated the moment
-  one does: the probe runs lazily inside the reader's first request at
-  no extra round trip, or explicitly via `Probe` up front (D4/D6/D8/D9)
-  — a resume caller probing first learns of a changed object there, as
-  `ErrObjectChanged`, before any byte lands. The
+  subset) seeds what the reader knows — `Size` included, gating nothing
+  — and is trusted until a request happens, validated the moment one
+  does (D4/D6/D8/D9/D10): a resume caller probing first learns of a
+  changed object there, as `ErrObjectChanged`, before any byte lands. The
   metadata to save for the next attempt is readable off the reader
   after or in the middle of downloading (D7).
-- `New`'s behavior without new fields is unchanged; the existing test
-  suite passes untouched.
+- `ReadAt` semantics are unchanged for `New` callers; construction-time
+  behavior changes deliberately (D10): `New` no longer probes, so a bad
+  server or changed object surfaces at the first read or an explicit
+  `Probe`. Existing tests asserting construction-time probing are
+  adapted to the new failure point; all others pass untouched.
 - `go test -race ./...` green, including concurrent mixed
   sequential/random reads against one reader.
 
@@ -42,7 +46,6 @@ requests — plus exported `Probe` and `Metadata`, and saved-validator
 - Retry policy: stays with the caller's `Doer` (D3).
 - Re-arming: one stream per reader; no second stream after a kill (D2) or
   a mid-stream failure (D3).
-- Changing `New`'s probe default (D4 keeps it).
 
 ## Context
 
@@ -78,16 +81,19 @@ flag). View arithmetic (relative→absolute, clamp, boundary EOF —
   the read takes today's bounded path with the translated absolute
   offset.
 
-Stream opening (D4): eager at `New`-time when the size is unknown — the
-`Range: bytes=off-…` response then doubles as the probe (size from
-`Content-Range` total, meta pin, range proof). Lazy when `cfg.Size > 0`:
-no I/O at construction, the stream opens under the lock on the first
-in-order read; callers wanting an early failure point call `Probe`
-first. Verification is one routine with three triggers (D9): the
-construction request when the size is unknown, lazily inside the
-reader's first request otherwise (that request's response serves as
-the probe's — no extra round trip), or an explicit `Probe` call ahead
-of both. The streaming response passes the same gate as any read: status
+Stream opening (D4 as amended by D10): always lazy — construction does
+no I/O whatever `cfg` says; the stream opens under the lock on the
+first in-order read, and callers wanting an earlier failure point call
+`Probe` first. Verification is one routine with two triggers (D9/D10):
+lazily inside the reader's first request (that request's response
+serves as the probe's — no extra round trip), or an explicit `Probe`
+call ahead of it. While the size is unsettled, first requests go out
+unclamped and the response settles it: a 206's `Content-Range` total
+pins the size (a response clamped at the object's end returns its
+bytes plus EOF), a 416 with `bytes */N` pins it and reads as EOF, and
+the empty-object 200-with-empty-body carve-out adopts size zero as the
+old construction probe did. The streaming response passes the same gate
+as any read: status
 206 (416 with `bytes */N` = empty view), `checkContentEncoding`,
 `Content-Range` start/total check, meta pin-or-verify, `If-Range` when
 meta is pinned.
@@ -124,10 +130,27 @@ package httprange
 // optimized for reading the section mostly front to back: one streaming
 // range request serves in-order reads until the first out-of-order read
 // or stream error, after which every read is a bounded request of its
-// own, as under New. cfg.Size semantics match New: zero means the
-// stream opens at construction and doubles as the probe; positive means
-// no I/O until the first read (call Probe for an early failure point).
+// own, as under New. Construction performs no I/O regardless of cfg
+// (D10): the stream opens on the first in-order read and its response
+// is validated as the probe's own; call Probe for an earlier failure
+// point. For a full copy without knowing the size, wrap with
+// io.NewSectionReader(r, 0, math.MaxInt64) and let EOF end the copy.
 func NewRange(ctx context.Context, url string, off, n int64, cfg *Config) (*ReaderAt, error)
+
+// Changed behavior (signature unchanged): New no longer issues a probe
+// at construction — construction never performs I/O (D10). Size
+// discovery and range verification happen lazily at the first read, or
+// explicitly via Probe. Errors New used to report at construction
+// (unsupported ranges, bad status, changed object) surface there
+// instead.
+func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error)
+
+// Changed behavior: Size is no longer settled at construction. It
+// reports what is known — cfg.Size if supplied, the value settled by
+// the first response otherwise — and 0 while the size is still
+// unknown; Metadata()'s ok distinguishes "unknown" from "empty
+// object". Call Probe first to settle it before reading.
+func (r *ReaderAt) Size() int64
 
 // Probe validates the reader's picture of the remote object against
 // what the server actually has, right now: one GET Range: bytes=0-0
@@ -142,8 +165,8 @@ func NewRange(ctx context.Context, url string, off, n int64, cfg *Config) (*Read
 // this call only.
 //
 // The same probe also runs lazily: when it was never called, the first
-// request the reader makes — the construction probe, the stream
-// opening, or the first bounded read — doubles as it, its response
+// request the reader makes — the stream opening or the first bounded
+// read — doubles as it, its response
 // validated the same way before any of its bytes are used, so the lazy
 // path never costs an extra request. Once the probe has run, the
 // reader's metadata is verified, and every later response is checked
@@ -215,14 +238,22 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    validators, each independently — through the step-1 pin-or-verify
    helper (`ErrObjectChanged` on any contradiction, pin what was
    empty) and flips a verified flag. The adopt-response half is what
-   the lazy triggers reuse: `New`'s construction probe calls both
-   halves as today; the first bounded read and the stream open (steps
-   3–4) feed it their own response, so laziness costs no extra
-   request. Exported `Probe(ctx)` calls both halves explicitly and
-   also re-verifies when already verified. Verifiable alone:
-   probe-after-Size-config test, probe-mismatch test, partial-metadata
-   probes (only LastModified supplied → it is checked, ETag+size get
-   pinned), first-read-verifies-lazily test.
+   the lazy triggers reuse: the first bounded read and the stream open
+   (steps 3–4) feed it their own response, so laziness costs no extra
+   request; exported `Probe(ctx)` calls both halves explicitly and
+   re-verifies when already verified. `New` stops calling it at
+   construction (D10): construction does no I/O, and `ReadAt` learns
+   to run before the size is settled — the request goes out unclamped,
+   and the response settles it (206 `Content-Range` total; a response
+   clamped at the object's end → bytes + EOF; 416 `bytes */N` → size
+   pinned, EOF; the empty-object 200-with-empty-body carve-out → size
+   zero). `Size()` reports 0 until settled. Existing tests asserting
+   construction-time probing move to first-read/Probe assertions.
+   Verifiable alone: no-request-at-construction test, probe-mismatch
+   test, partial-metadata probes (only LastModified supplied → it is
+   checked, ETag+size get pinned), first-read-verifies-lazily test,
+   unknown-size read matrix (past-EOF → 416 → EOF; read clamped at
+   end; empty object).
 3. **Stream lane (D1/D2/D3/D4)** — new file `stream.go`: the lane
    struct (mutex, body, atomic absolute pos, alive/lazy-pending state),
    `openStream` building `Range: bytes=off-` or `bytes=off-(end-1)`,
@@ -231,10 +262,12 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    start/total check, meta pin-or-verify from step 1), `kill()` closing
    the body via `drainAndClose`. No wiring into `ReadAt` yet.
    Verifiable alone: unit tests over the gate against a stub server.
-4. **`NewRange` + `ReadAt` wiring (D5)** — `httprange.go`/`reader_at.go`:
-   constructor (validate `off >= 0`, clamp/empty-view rules, eager open
-   when size unknown — including 416 empty-view and n<=0 no-request
-   paths), view translation at the top of `ReadAt` (relative offset,
+4. **`NewRange` + `ReadAt` wiring (D5, D10)** — `httprange.go`/
+   `reader_at.go`: constructor (validate `off >= 0`; no I/O — D10),
+   lazy open on the first in-order read reusing step 2's
+   unsettled-size handling (416 → empty view; `n <= 0` → empty view
+   with no request ever), view translation at the top of `ReadAt`
+   (relative offset,
    `Size()` = view length, boundary EOF per `io.SectionReader`), lane
    fast-path check before the lock, fallback + permanent kill on
    mismatch or body error (partial bytes + error surfaced as today's
@@ -242,9 +275,12 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    Verifiable: UC1/UC2 request-count tests pass end to end.
 5. **Docs** — `doc.go`: replace the "price is one HTTP round trip per
    ReadAt … give such a scan a buffer" paragraph's story with the two
-   options (buffer, or `NewRange` when the range is known up front);
-   method docs per the surface delta; note the concurrency story of the
-   lane on the `ReaderAt` doc (`httprange.go:95-99`).
+   options (buffer, or `NewRange` when the range is known up front),
+   and rewrite the construction story for D10 — `New` no longer
+   probes; nothing does I/O until the first read or an explicit
+   `Probe`, and `Size()` settles lazily. Method docs per the surface
+   delta; note the concurrency story of the lane on the `ReaderAt` doc
+   (`httprange.go:95-99`).
 6. **Test matrix** — `stream/httprange`: request-count assertions
    (UC1 full copy = 1 request; UC2 resume = 1), fallback matrix (UC3:
    out-of-order read kills, later in-order reads stay bounded; killed
@@ -282,6 +318,13 @@ observing exactly one access-log line for a full copy.
 - Lazy lane + concurrent first reads: two goroutines both at `pos` —
   the lock serializes opening; the loser sees `pos` advanced and falls
   back (acceptable: hint is performance-only).
+- Unsettled-size reads (D10) add cases the old construction probe
+  preempted — 416-as-EOF, end-clamped 206, empty-object 200 — now on
+  the read path itself; each concurrent first read may run them at
+  once, and all must adopt consistently through the pin-or-verify CAS.
+- `New`'s failure point moves (D10): callers relying on construction
+  errors need `Probe` — a doc-visible behavior change, called out in
+  step 5.
 
 ## Open questions
 
@@ -309,6 +352,11 @@ None — Q1–Q6 resolved as DECISION.md D1–D6.
   also call Probe" → step 2 (request/adopt-response split, verified
   flag), steps 3–4 (stream open and first bounded read feed the lazy
   trigger); step 6 first-read-verifies-lazily test.
+- D10 "specifying size should not make it lazy; … Probe is always lazy
+  or explicit, not eager implicit" → step 2 (`New` stops probing at
+  construction, unsettled-size `ReadAt`, `Size()` lazily settled),
+  step 4 (`NewRange` constructor does no I/O); documented step 5;
+  step 6 no-request-at-construction and unknown-size tests.
 - Inherited prior-D1 concurrency promise → step 4 design + step 6 race
   test.
 - IDEA use cases: UC1/UC2 → steps 3–4, proven step 6 request counts;

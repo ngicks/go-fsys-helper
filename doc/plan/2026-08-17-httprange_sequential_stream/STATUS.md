@@ -1,10 +1,11 @@
 # STATUS — httprange sequential-stream lane
 
-Current state: **planned and finalized** — all open questions resolved
-(DECISION.md D1–D7), PLAN.md fully detailed with public surface delta,
-steps, and traceability. IDEA.md's gate confirmed 2026-08-18 and
-re-confirmed the same day after the metadata addition, with the
-section-view contract confirmed explicitly. Implementation not started.
+Current state: **planned; gate reset by D10, awaiting re-confirmation**
+— decisions D1–D10 recorded and traced through PLAN.md. D10
+(construction never performs I/O; `New` stops probing; `Size()`
+settles lazily) is a user-directed behavior change to the existing
+API, so IDEA.md's gate was reset pending one more confirmation.
+Implementation not started.
 
 ## Planning checklist
 
@@ -21,9 +22,13 @@ section-view contract confirmed explicitly. Implementation not started.
   IDEA/PLAN (no behavior change; guard live only once a request
   happens, Probe the explicit act)
 - [x] D9 "Probe is now lazy thing that also can be called explicitly.
-  First Read also call Probe" — one probe routine, three triggers
-  (construction / lazy-in-first-request / explicit), folded into
-  IDEA/PLAN step 2
+  First Read also call Probe" — one probe routine, folded into
+  IDEA/PLAN step 2 (trigger list since narrowed by D10)
+- [x] D10 "specifying size should not make it lazy; … Probe is always
+  lazy or explicit, not eager implicit" — construction does no I/O
+  anywhere, `Size()` lazily settled, unsettled-size read handling;
+  folded into IDEA/PLAN (steps 2, 4, 5, 6)
+- [ ] IDEA.md gate re-confirmed after D10 (behavior change to `New`)
 - [x] Public surface delta written (PLAN.md)
 - [x] Implementation steps detailed (PLAN.md steps 1–6)
 - [x] Traceability walked: D1–D7 + inherited prior-D1 each mapped to
@@ -40,5 +45,5 @@ section-view contract confirmed explicitly. Implementation not started.
 - [ ] 5. Docs (`doc.go`, method docs)
 - [ ] 6. Test matrix incl. request counts, races, resume mismatch
 
-Next action: implementation step 1 (Config validators + pin-or-verify +
-`Metadata()`), when the user asks for implementation.
+Next action: user re-confirms the gate post-D10; then implementation
+step 1 (Config validators + pin-or-verify + `Metadata()`) on request.

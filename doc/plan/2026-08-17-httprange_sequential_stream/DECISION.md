@@ -197,3 +197,41 @@ efficient but fail on first read").
 (doubles the first read's round trips for nothing the response itself
 cannot prove); Probe-only validation with no lazy trigger (a caller
 who never probes would get unverified splices — contradicts D6/D8).
+
+## D10 — Construction never performs I/O; `Config.Size` gates nothing (2026-08-18, user)
+
+**Choice**: "Now Config have all metadata including size, specifying
+size should not make it lazy; even contrarily, Probe is always lazy or
+explicit, not eager implicit" (user, near-verbatim). Construction —
+`New` and `NewRange` alike — performs no I/O, ever. This supersedes
+D4's "`New` keeps today's default (probe unless `cfg.Size > 0`)" and
+the eager stream open, and amends D9's trigger list down to two: the
+probe runs lazily inside the reader's first request (whose response is
+validated as the probe's own — no extra round trip), or explicitly via
+`Probe(ctx)`. `cfg.Size` becomes seeded metadata exactly like
+`ETag`/`LastModified`: trusted until verified, gating nothing about
+when requests happen.
+
+**Consequences accepted with the choice**:
+- `New`'s observable behavior changes: errors it used to report at
+  construction (no range support, bad status, changed object) surface
+  at the first read or an explicit `Probe`. Existing tests asserting
+  construction-time probing move accordingly.
+- `Size()` is no longer settled at construction: it reports the known
+  value (from `Config` or the first response) and 0 while unknown;
+  `Metadata()`'s ok distinguishes unknown from empty. Callers wanting
+  it settled first call `Probe`.
+- Reads may run before the size is settled: the request goes out
+  unclamped and the response settles it — 206 `Content-Range` total
+  pins the size (a response clamped at the object's end returns its
+  bytes plus EOF), 416 `bytes */N` pins it and reads as EOF, and the
+  empty-object 200-with-empty-body carve-out (prior plan D14) adopts
+  size zero on the read path instead of the construction probe.
+- The full-copy idiom without a known size is
+  `io.NewSectionReader(r, 0, math.MaxInt64)` + `io.Copy`, ending at
+  EOF — it needs no `Size()` call and keeps UC1 at exactly one
+  request.
+
+**Rejected**: keeping construction-time probing for `New` (the "eager
+implicit" the user excluded); making `Size()` itself probe (blocking
+network I/O inside an accessor that has no ctx and no error path).
