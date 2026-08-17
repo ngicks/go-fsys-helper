@@ -110,6 +110,38 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 // when the reader is built and does not change afterwards.
 func (r *ReaderAt) Size() int64 { return r.size }
 
+// Metadata is a snapshot of what a [ReaderAt] has pinned about the remote
+// object: the validators later responses are held to, and Size, the total size
+// of the object in bytes.
+//
+// The origin the reader pins alongside these is deliberately left out. It
+// guards against a redirect landing a later request on some other server, and
+// says nothing about which object this is, so it is not something to save and
+// hand back through [Config].
+type Metadata struct {
+	ETag         string
+	LastModified string
+	Size         int64
+}
+
+// Metadata reports what the reader has pinned about the remote object, and
+// whether the identity of that object is settled: false until a response has
+// been seen, when the configuration carried no validator of its own either.
+// Size is filled in regardless, since a size the caller vouched for is known
+// without any of this being pinned.
+//
+// Saving the snapshot is how a download resumes later: hand the validators
+// back through [Config] and the reader refuses to splice bytes of another
+// object onto the ones already saved. It may be called while reads are in
+// flight, never waits for them, and issues no request of its own.
+func (r *ReaderAt) Metadata() (Metadata, bool) {
+	m := r.meta.Load()
+	if m == nil {
+		return Metadata{Size: r.size}, false
+	}
+	return Metadata{ETag: m.etag, LastModified: m.lastModified, Size: r.size}, true
+}
+
 // Close stops the reader: it cancels a context derived from the one handed to
 // [New], which aborts the requests still in flight and fails every read from
 // then on. The context the caller passed to New is left untouched. There is
@@ -142,15 +174,10 @@ func (r *ReaderAt) checkPartial(resp *http.Response, off, length int64) error {
 		)
 	}
 
-	// With the probe skipped this response is the first word on what the object
-	// is. Several goroutines can arrive here at once, so the first one to land
-	// sets the description and every other one is checked against that.
-	m := r.meta.Load()
-	if m == nil {
-		r.meta.CompareAndSwap(nil, metaFromResponse(resp))
-		m = r.meta.Load()
-	}
-	if reason := m.mismatch(resp); reason != "" {
+	// Whatever nothing has pinned yet this response gets to say: with the probe
+	// skipped it is the first word on what the object is, and it completes a
+	// description the caller only knew part of.
+	if reason := r.pinOrVerify(resp); reason != "" {
 		return fmt.Errorf(
 			"%w: reading %s at offset %d: %s",
 			ErrObjectChanged, redactRawURL(r.url), off, reason,
@@ -161,9 +188,13 @@ func (r *ReaderAt) checkPartial(resp *http.Response, off, length int64) error {
 
 // mismatch says what about resp contradicts m, or "" when nothing does. Each
 // property is compared only where both sides state it: a response leaving out
-// its validators, or a Doer not recording the request it answered, says
-// nothing either way and is not held against the response.
+// its validators, a Doer not recording the request it answered, or a
+// description holding nothing yet says nothing either way and is not held
+// against the response.
 func (m *objectMeta) mismatch(resp *http.Response) string {
+	if m == nil {
+		return ""
+	}
 	if got := resp.Header.Get("ETag"); got != "" && m.etag != "" && got != m.etag {
 		return fmt.Sprintf("ETag %s, want %s", got, m.etag)
 	}

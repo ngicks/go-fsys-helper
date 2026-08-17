@@ -270,6 +270,130 @@ func TestNew_configuredSize(t *testing.T) {
 	}
 }
 
+// TestNew_savedValidators covers the resuming caller: validators saved from an
+// earlier download are handed back through the configuration, and bytes of
+// anything else are refused before they can be spliced onto what is already
+// saved.
+func TestNew_savedValidators(t *testing.T) {
+	const savedETag = `"v1"`
+	content := testContent(256)
+	size := int64(len(content))
+
+	t.Run("if_range_answered_in_full", func(t *testing.T) {
+		s := startConformantServer(t, content)
+		s.swap(content, `"v2"`)
+
+		r, err := New(context.Background(), s.URL, &Config{Size: size, ETag: savedETag})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		assertNoBytesOfAnotherObject(t, r)
+	})
+
+	t.Run("etag_in_partial_response", func(t *testing.T) {
+		// A server paying no attention to If-Range answers the range anyway, so
+		// the saved validator is what the response gets held to.
+		s := startHandlerServer(t, handlePartial(content, `"v2"`))
+
+		r, err := New(context.Background(), s.URL, &Config{Size: size, ETag: savedETag})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		assertNoBytesOfAnotherObject(t, r)
+	})
+
+	t.Run("probe_at_construction", func(t *testing.T) {
+		s := startConformantServer(t, content)
+		s.swap(content, `"v2"`)
+
+		r, err := New(context.Background(), s.URL, &Config{ETag: savedETag})
+		if err == nil {
+			r.Close()
+			t.Fatal("New returned no error against a re-tagged object")
+		}
+		if !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("New returned %v, want %v", err, ErrObjectChanged)
+		}
+	})
+
+	t.Run("sent_as_if_range", func(t *testing.T) {
+		const lastModified = "Mon, 06 May 2024 07:08:09 GMT"
+
+		for _, tc := range []struct {
+			name         string
+			etag         string
+			lastModified string
+			wantIfRange  string
+		}{
+			{name: "etag", etag: savedETag, wantIfRange: savedETag},
+			{
+				name: "weak_etag_falls_back", etag: `W/` + savedETag,
+				lastModified: lastModified, wantIfRange: lastModified,
+			},
+			{name: "weak_etag_alone", etag: `W/` + savedETag},
+			{
+				name: "last_modified", lastModified: lastModified,
+				wantIfRange: lastModified,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var reqLog requestLog
+				// The object answers with no validators of its own, leaving what
+				// the caller saved as the only thing the reader can be holding.
+				s := startHandlerServer(t, reqLog.wrap(handlePartial(content, "")))
+
+				r, err := New(context.Background(), s.URL, &Config{
+					Size:         size,
+					ETag:         tc.etag,
+					LastModified: tc.lastModified,
+				})
+				if err != nil {
+					t.Fatalf("New returned error: %v", err)
+				}
+				defer r.Close()
+
+				if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
+					t.Fatalf("ReadAt returned error: %v", err)
+				}
+
+				headers := reqLog.snapshot()
+				if len(headers) != 1 {
+					t.Fatalf("server saw %d requests, want the read alone", len(headers))
+				}
+				if tc.wantIfRange == "" {
+					if got := headers[0].Values("If-Range"); len(got) != 0 {
+						t.Fatalf("read sent If-Range %q, want none at all", got)
+					}
+					return
+				}
+				if got := headers[0].Get("If-Range"); got != tc.wantIfRange {
+					t.Fatalf("If-Range = %q, want %q", got, tc.wantIfRange)
+				}
+			})
+		}
+	})
+}
+
+// assertNoBytesOfAnotherObject states what a saved validator buys: the read
+// fails and leaves the buffer as it found it, so nothing of whatever the server
+// is serving now can end up next to what the caller saved earlier.
+func assertNoBytesOfAnotherObject(t *testing.T, r *ReaderAt) {
+	t.Helper()
+
+	buf := make([]byte, 16)
+	n, err := r.ReadAt(buf, 0)
+	if !errors.Is(err, ErrObjectChanged) {
+		t.Fatalf("ReadAt = (%d, %v), want %v", n, err, ErrObjectChanged)
+	}
+	if n != 0 || !bytes.Equal(buf, make([]byte, len(buf))) {
+		t.Fatalf("ReadAt = (%d, %v) with buffer %x, want no bytes touched", n, err, buf)
+	}
+}
+
 func TestNew_invalidURL(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

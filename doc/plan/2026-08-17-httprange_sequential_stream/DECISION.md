@@ -12,6 +12,21 @@ Inherited constraints quoted from
   adapter or wrapper"; "**Rejected**: fusing an opportunistic sequential
   lane into the base reader". Superseded in part by this plan's D1.
 
+## Implementation-run judgment calls [automatic] (2026-08-18, assistant)
+
+Recorded during the autonomous implementation run (user away; goal
+mode). Each was decided without user input per the orchestrator
+protocol:
+
+- **STATUS.md checkbox updates ride the same commit as the step they
+  describe** — one commit per implementation step keeps the tree
+  bisectable and the status honest at every commit.
+- **The "manual `io.Copy` smoke against a real HTTP server" bar is run
+  as a scripted scratchpad program** (Go `http.FileServer` behind a
+  request-counting handler, asserting exactly one request for a full
+  copy) rather than a human-observed access log, since no human is
+  watching the run.
+
 ## D1 — Stream lane fused into `ReaderAt`, superseding prior D7's rejection (2026-08-18, user)
 
 **Choice**: the declared-range stream lane lives inside

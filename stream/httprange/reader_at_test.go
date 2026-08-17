@@ -363,6 +363,108 @@ func TestReaderAt_ReadAt_weakETag(t *testing.T) {
 	}
 }
 
+func TestReaderAt_Metadata(t *testing.T) {
+	const (
+		etag         = `"v1"`
+		lastModified = "Mon, 06 May 2024 07:08:09 GMT"
+	)
+	content := testContent(256)
+	size := int64(len(content))
+
+	t.Run("config_pre_pin", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(context.Background(), s.URL, &Config{
+			Size:         size,
+			ETag:         etag,
+			LastModified: lastModified,
+		})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		want := Metadata{ETag: etag, LastModified: lastModified, Size: size}
+		if got, ok := r.Metadata(); got != want || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+		if got := s.requestCount(); got != 0 {
+			t.Fatalf("Metadata() cost %d requests, want 0", got)
+		}
+	})
+
+	t.Run("size_alone", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(context.Background(), s.URL, &Config{Size: size})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		// A size the caller vouched for is known without the object it belongs
+		// to being pinned, which is what ok reports on.
+		want := Metadata{Size: size}
+		if got, ok := r.Metadata(); got != want || ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, false)", got, ok, want)
+		}
+	})
+
+	t.Run("from_probe", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(context.Background(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		want := Metadata{
+			ETag:         s.etag,
+			LastModified: s.modTime.UTC().Format(http.TimeFormat),
+			Size:         size,
+		}
+		if got, ok := r.Metadata(); got != want || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+	})
+
+	t.Run("completed_by_first_response", func(t *testing.T) {
+		servePartial := func(etag string) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Last-Modified", lastModified)
+				handlePartial(content, etag)(w, r)
+			}
+		}
+		s := startHandlerServer(t, handleSequence(
+			servePartial(etag),
+			servePartial(`"v2"`),
+		))
+
+		// Half a description: the caller saved a Last-Modified and no ETag.
+		r, err := New(context.Background(), s.URL, &Config{
+			Size:         size,
+			LastModified: lastModified,
+		})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
+			t.Fatalf("ReadAt returned error: %v", err)
+		}
+
+		want := Metadata{ETag: etag, LastModified: lastModified, Size: size}
+		if got, ok := r.Metadata(); got != want || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+		if _, err := r.ReadAt(make([]byte, 16), 32); !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("ReadAt after the ETag changed = %v, want %v", err, ErrObjectChanged)
+		}
+	})
+}
+
 func TestReaderAt_ReadAt_shortBody(t *testing.T) {
 	content := testContent(256)
 	s := startHandlerServer(t, handleSequence(

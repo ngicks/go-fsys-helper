@@ -48,6 +48,16 @@ type Config struct {
 	// ranges to be found out by the first read. Zero, the usual case, asks the
 	// reader to go and find out.
 	Size int64
+	// ETag and LastModified are validators the caller saved from an earlier
+	// response, for resuming. They pre-pin the object identity at construction
+	// and ride every request's If-Range, subject to the same strong-validator
+	// rule as validators the reader pinned itself.
+	//
+	// They are trusted, not verified, until a request actually happens: the
+	// first response is checked against them and contradicts them with
+	// [ErrObjectChanged] before any of its bytes are used. Empty means none.
+	ETag         string
+	LastModified string
 }
 
 // ErrObjectChanged reports that what answered a read is not the object the
@@ -111,16 +121,19 @@ type ReaderAt struct {
 
 	size int64
 
-	// meta says which object the reader is reading. The probe fills it in; when
-	// the probe was skipped the first successful ranged response does instead,
-	// which several goroutines may reach at once, hence the atomic. Nothing
-	// rewrites it once set.
+	// meta says which object the reader is reading. Validators the caller
+	// saved from an earlier response pin it at construction, and whatever they
+	// leave open the probe fills in, or, when the probe was skipped, the first
+	// successful ranged response does. Several goroutines may reach that at
+	// once, hence the atomic. Each field goes from empty to pinned once and is
+	// what later responses are held to from then on.
 	meta atomic.Pointer[objectMeta]
 }
 
 // objectMeta is what later responses get checked against: the validators the
-// object was first seen with and the origin its requests landed on. A field is
-// empty when the response did not carry it.
+// object is known by and the origin its requests land on. A field is empty
+// while nothing has said what it holds, neither the caller nor any response so
+// far.
 type objectMeta struct {
 	etag         string
 	lastModified string
@@ -132,6 +145,52 @@ func metaFromResponse(resp *http.Response) *objectMeta {
 		etag:         resp.Header.Get("ETag"),
 		lastModified: resp.Header.Get("Last-Modified"),
 		origin:       originOf(resp),
+	}
+}
+
+// completedBy returns m with every field it leaves empty taken from o, or m
+// itself when there was nothing to fill in. A nil m holds nothing, so o
+// completes all of it.
+func (m *objectMeta) completedBy(o *objectMeta) *objectMeta {
+	if m == nil {
+		return o
+	}
+	filled := *m
+	if filled.etag == "" {
+		filled.etag = o.etag
+	}
+	if filled.lastModified == "" {
+		filled.lastModified = o.lastModified
+	}
+	if filled.origin == "" {
+		filled.origin = o.origin
+	}
+	if filled == *m {
+		return m
+	}
+	return &filled
+}
+
+// pinOrVerify folds what resp says about the object into what the reader has
+// pinned, and reports what of the two contradicts the other, or "" when
+// nothing does. Every property is taken on its own: one nothing has pinned yet
+// is pinned to what the response carries, and one already pinned stands, so a
+// response disagreeing with it is describing another object.
+//
+// Several goroutines can be doing this to the same half-filled description at
+// once, so a lost race is retried against what the winner pinned rather than
+// overwriting it.
+func (r *ReaderAt) pinOrVerify(resp *http.Response) string {
+	seen := metaFromResponse(resp)
+	for {
+		pinned := r.meta.Load()
+		if reason := pinned.mismatch(resp); reason != "" {
+			return reason
+		}
+		filled := pinned.completedBy(seen)
+		if filled == pinned || r.meta.CompareAndSwap(pinned, filled) {
+			return ""
+		}
 	}
 }
 
@@ -163,7 +222,9 @@ func originOf(resp *http.Response) string {
 //
 // With cfg.Size given there is no such request, so a server that does not do
 // ranges is found out by the first read, and the validators and origin are
-// pinned by the first response that succeeds.
+// pinned by the first response that succeeds. Validators cfg carries are
+// pinned before any of that, and the first response to contradict them fails
+// with an error matching [ErrObjectChanged], wherever it arrives.
 func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error) {
 	if cfg == nil {
 		cfg = &Config{}
@@ -188,6 +249,11 @@ func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error) {
 		header: header,
 		ctx:    sessionCtx,
 		cancel: cancel,
+	}
+	if cfg.ETag != "" || cfg.LastModified != "" {
+		// The origin stays open: which server answers is nothing the caller can
+		// have saved, and nothing is known about it until a response arrives.
+		r.meta.Store(&objectMeta{etag: cfg.ETag, lastModified: cfg.LastModified})
 	}
 	if cfg.Size > 0 {
 		r.size = cfg.Size
@@ -308,7 +374,12 @@ func (r *ReaderAt) probe() error {
 		return &StatusCodeError{Code: resp.StatusCode}
 	}
 
-	r.meta.Store(metaFromResponse(resp))
+	if reason := r.pinOrVerify(resp); reason != "" {
+		return fmt.Errorf(
+			"%w: probing %s: %s",
+			ErrObjectChanged, redactRawURL(r.url), reason,
+		)
+	}
 	return nil
 }
 
