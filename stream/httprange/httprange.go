@@ -133,6 +133,12 @@ type ReaderAt struct {
 	// is what tells a description the caller vouched for apart from one the
 	// server has confirmed.
 	verified atomic.Bool
+
+	// stream is the one range request serving the reads that arrive in order,
+	// for a caller who said up front which stretch of the object they would
+	// read that way. nil, the shape a reader over the whole object takes, is a
+	// reader whose every read is a bounded request of its own.
+	stream *stream
 }
 
 // objectMeta is what later responses get checked against: the validators the

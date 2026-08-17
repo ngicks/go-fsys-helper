@@ -43,7 +43,7 @@ Implementation not started.
 
 - [x] 1. Config validators + pin-or-verify + `Metadata()` (D6, D7)
 - [x] 2. Probe as the single lazy/explicit verification (D4, D8, D9)
-- [ ] 3. Stream lane in `stream.go` (D1–D4)
+- [x] 3. Stream lane in `stream.go` (D1–D4)
 - [ ] 4. `NewRange` + `ReadAt` wiring, view semantics (D2, D3, D5)
 - [ ] 5. Docs (`doc.go`, method docs)
 - [ ] 6. Test matrix incl. request counts, races, resume mismatch
