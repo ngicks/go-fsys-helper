@@ -121,38 +121,23 @@ a view).
 ```go
 package httprange
 
+// ===================== Added =====================
+
 // NewRange returns a ReaderAt over the section [off, off+n) of the
 // remote object, as io.NewSectionReader does for a local one: offsets
-// are relative to off, and reads hit EOF at the boundary. n larger than the remainder is clamped; use
-// math.MaxInt64 to say "from off to the end" (archive/tar's idiom for
-// io.SectionReader); n <= 0 yields an empty view. It is New, slightly
-// optimized for reading the section mostly front to back: one streaming
-// range request serves in-order reads until the first out-of-order read
-// or stream error, after which every read is a bounded request of its
-// own, as under New. Construction performs no I/O regardless of cfg
-// (D10): the stream opens on the first in-order read and its response
-// is validated as the probe's own; call Probe for an earlier failure
-// point. For a full copy without knowing the size, wrap with
+// are relative to off, and reads hit EOF at the boundary. n larger
+// than the remainder is clamped; use math.MaxInt64 to say "from off to
+// the end" (archive/tar's idiom for io.SectionReader); n <= 0 yields
+// an empty view. It is New, slightly optimized for reading the section
+// mostly front to back: one streaming range request serves in-order
+// reads until the first out-of-order read or stream error, after which
+// every read is a bounded request of its own, as under New.
+// Construction performs no I/O regardless of cfg (D10): the stream
+// opens on the first in-order read and its response is validated as
+// the probe's own; call Probe for an earlier failure point. For a full
+// copy without knowing the size, wrap with
 // io.NewSectionReader(r, 0, math.MaxInt64) and let EOF end the copy.
 func NewRange(ctx context.Context, url string, off, n int64, cfg *Config) (*ReaderAt, error)
-
-// Changed behavior (signature unchanged): New no longer issues a probe
-// at construction — construction never performs I/O (D10). Size
-// discovery and range verification happen lazily at the first read, or
-// explicitly via Probe. Errors New used to report at construction
-// (unsupported ranges, bad status, changed object) surface there
-// instead.
-func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error)
-
-// Removed (D11): the Size method. With the size lazily settled (D10),
-// a settled-at-construction accessor no longer exists; Metadata() is
-// the one place the size is exposed (Metadata.Size, valid when ok and
-// the size has been supplied or settled). ReaderAt consequently stops
-// satisfying stream.ReadAtSizeCloser — an interface living in
-// stream/seq_reader_at.go, which the prior plan's D6 already slates
-// for removal; multi-reader callers pass
-// stream.SizedReaderAt{R: r, Size: m.Size} instead.
-// func (r *ReaderAt) Size() int64   // deleted
 
 // Probe validates the reader's picture of the remote object against
 // what the server actually has, right now: one GET Range: bytes=0-0
@@ -168,18 +153,47 @@ func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error)
 //
 // The same probe also runs lazily: when it was never called, the first
 // request the reader makes — the stream opening or the first bounded
-// read — doubles as it, its response
-// validated the same way before any of its bytes are used, so the lazy
-// path never costs an extra request. Once the probe has run, the
-// reader's metadata is verified, and every later response is checked
-// against it. Calling Probe on an already-verified reader fires and
-// re-verifies.
+// read — doubles as it, its response validated the same way before any
+// of its bytes are used, so the lazy path never costs an extra
+// request. Once the probe has run, the reader's metadata is verified,
+// and every later response is checked against it. Calling Probe on an
+// already-verified reader fires and re-verifies.
 func (r *ReaderAt) Probe(ctx context.Context) error
 
+// Metadata is a snapshot of what the reader has pinned about the remote
+// object. Size is the total size of the object (never a NewRange view's
+// length) and, with ReaderAt.Size removed (D11), the only exposure of
+// the size; zero with ok=false means not yet known.
+type Metadata struct {
+    ETag         string
+    LastModified string
+    Size         int64
+}
+
+// Metadata reports the pinned object metadata and whether the object's
+// identity is settled yet — false until a response has been seen, when
+// Config carried no metadata either. It is safe to call while reads
+// are in flight, never blocks on them, and never issues a request of
+// its own.
+func (r *ReaderAt) Metadata() (Metadata, bool)
+
+// ============ Changed (signatures unchanged) ============
+
+// New no longer issues a probe at construction — construction never
+// performs I/O (D10). Size discovery and range verification happen
+// lazily at the first read, or explicitly via Probe. Errors New used
+// to report at construction (unsupported ranges, bad status, changed
+// object) surface there instead.
+func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error)
+
+// Config gains the two validator fields; the existing three are
+// untouched, though Size joins ETag/LastModified as seeded metadata:
+// trusted until a response verifies it, gating nothing about when
+// requests happen (D10).
 type Config struct {
     Client Doer        // unchanged
     Header http.Header // unchanged
-    Size   int64       // unchanged
+    Size   int64       // unchanged in shape; see above
 
     // ETag and LastModified are validators the caller saved from an
     // earlier response, for resuming. They pre-pin the object identity
@@ -194,26 +208,21 @@ type Config struct {
     LastModified string
 }
 
-// Metadata is a snapshot of what the reader has pinned about the remote
-// object. Size is the total size of the object (never a NewRange view's
-// length) and, since ReaderAt.Size is removed (D11), the only exposure
-// of the size; zero with ok=false means not yet known.
-type Metadata struct {
-    ETag         string
-    LastModified string
-    Size         int64
-}
+// ==================== Removed ====================
 
-// Metadata reports the pinned object metadata and whether anything is
-// pinned yet (false only on a lazily-opened reader before its first
-// request, when Config carried no validators either). It is safe to
-// call while reads are in flight, never blocks on them, and never
-// issues a request of its own.
-func (r *ReaderAt) Metadata() (Metadata, bool)
+// Deleted (D11): the size is exposed through Metadata() alone. With
+// the size lazily settled (D10) a settled-at-construction accessor no
+// longer exists. ReaderAt consequently stops satisfying
+// stream.ReadAtSizeCloser — an interface living in
+// stream/seq_reader_at.go, which the prior plan's D6 already slates
+// for removal; multi-reader callers pass
+// stream.SizedReaderAt{R: r, Size: m.Size} instead.
+func (r *ReaderAt) Size() int64
 ```
 
-Everything else exported is unchanged. `NewRange(ctx, url, 0,
-math.MaxInt64, nil)` is `New` plus the streaming lane.
+Everything exported and not listed above is unchanged.
+`NewRange(ctx, url, 0, math.MaxInt64, nil)` is `New` plus the
+streaming lane.
 
 ## Implementation steps
 
