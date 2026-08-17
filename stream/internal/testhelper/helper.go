@@ -29,12 +29,12 @@ func AssertNotErrorsIs(t *testing.T, err, target error) {
 	}
 }
 
-func AssertErrorsAs[T any](t *testing.T, err error) T {
+func AssertErrorsAs[T error](t *testing.T, err error) T {
 	t.Helper()
-	var e T
-	if !errors.As(err, &e) {
+	e, ok := errors.AsType[T](err)
+	if !ok {
 		t.Fatalf(
-			"errors.As(err, target) returned false, expected to be type %T, but is %#v",
+			"errors.AsType(err) returned false, expected to be type %T, but is %#v",
 			e,
 			err,
 		)
