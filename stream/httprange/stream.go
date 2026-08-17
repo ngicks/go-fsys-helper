@@ -36,8 +36,9 @@ const (
 //
 // A read at any other offset is served by a bounded request of its own, just
 // as every read is on a reader with no lane, and it must not pay for the
-// lane's existence: pos alone is what tells it so, which is why pos is atomic
-// and why mu is taken only by a read the lane is actually going to serve.
+// lane's existence: pos and dead are what tell it so, which is why both are
+// atomic and why mu is taken only by a read the lane is going to serve or a
+// caller closing it.
 type stream struct {
 	// mu guards body, state and limit, and serializes the one open.
 	mu    sync.Mutex
@@ -55,31 +56,23 @@ type stream struct {
 	// position in between, and a position on its own says nothing about the
 	// lane still being alive.
 	pos atomic.Int64
+	// dead is what state says, for a reader who cannot take mu to hear it: a
+	// read arriving anywhere but at pos has to know whether there is a lane
+	// left to close, and a lane already closed must cost it nothing at all.
+	dead atomic.Bool
 
-	// base and length are the view the lane was declared for, as absolute
-	// offsets into the object, and never change once it is built. length is
-	// math.MaxInt64 for a view running to the end of the object, wherever that
-	// turns out to be, and is otherwise greater than zero: a view with nothing
-	// in it has nothing to stream and gets no lane at all.
-	base   int64
-	length int64
+	// view is the stretch of the object the lane was declared for and never
+	// changes once it is built. Its length is greater than zero: a view with
+	// nothing in it has nothing to stream and gets no lane at all.
+	view
 }
 
-// newStream returns the lane for the view [base, base+length), pending until
-// the first read it can serve opens it.
-func newStream(base, length int64) *stream {
-	s := &stream{base: base, length: length}
-	s.pos.Store(base)
+// newStream returns the lane for v, pending until the first read it can serve
+// opens it.
+func newStream(v view) *stream {
+	s := &stream{view: v}
+	s.pos.Store(v.base)
 	return s
-}
-
-// end returns the absolute offset one past the last byte of the view, or
-// math.MaxInt64 where the view runs to the end of the object.
-func (s *stream) end() int64 {
-	if s.length >= math.MaxInt64-s.base {
-		return math.MaxInt64
-	}
-	return s.base + s.length
 }
 
 // kill closes the lane for good, handing the connection underneath back where
@@ -87,7 +80,14 @@ func (s *stream) end() int64 {
 // number of times and from anywhere, which is what makes it the single way a
 // lane ends, whether that is a read out of order, a body that failed, or the
 // reader closing.
+//
+// Only the caller doing the closing waits for a read holding mu to be done
+// with the body; every other read has heard by then and is on its way. Handing
+// the wait to a goroutine of its own would buy that one caller little — it is
+// about to spend a whole round trip — for a lane whose end nobody would then
+// be waiting on.
 func (s *stream) kill() {
+	s.dead.Store(true)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.killLocked()
@@ -100,6 +100,34 @@ func (s *stream) killLocked() {
 		s.body = nil
 	}
 	s.state = streamDead
+	s.dead.Store(true)
+}
+
+// laneReadAt hands p to the lane where the lane is the one holding off, and
+// closes the lane for good where it is not. off is an absolute offset into the
+// object. served says whether the lane answered; where it did not, the read is
+// the caller's own bounded request to make.
+//
+// Nothing here takes mu until the lane is going to serve the read, so a read
+// arriving anywhere else pays two atomic loads for the lane's existence, and
+// the one that finds a lane still alive pays for closing it.
+func (r *ReaderAt) laneReadAt(p []byte, off int64) (n int, served bool, err error) {
+	s := r.stream
+	if s == nil || s.dead.Load() {
+		return 0, false, nil
+	}
+	if s.pos.Load() != off {
+		// The lane serves one stretch of the object read front to back. A read
+		// anywhere else says the caller is not doing that, and the connection
+		// the lane is holding is worth more handed back than kept for reads
+		// that are not going to arrive.
+		s.kill()
+		return 0, false, nil
+	}
+	// A read losing the position between here and mu is not that: someone else
+	// is reading in order and this read merely arrived second. It takes the
+	// bounded path without taking the lane down with it.
+	return r.streamReadAt(p, off)
 }
 
 // streamReadAt serves p out of the lane's body, off being the absolute offset
@@ -117,8 +145,9 @@ func (s *stream) killLocked() {
 // hand over — the body reached the end of the view or the end of the object,
 // or there was never anything there to stream — and the lane is dead by then.
 // A body failing or ending short comes back instead as the bytes read so far
-// plus the error, [io.ErrUnexpectedEOF] for the short case, for the caller to
-// put its own words around.
+// plus the error, [io.ErrUnexpectedEOF] for the short case, in the words a
+// bounded read puts around a failure of its own: which request carried the
+// bytes is nothing the caller asked about.
 func (r *ReaderAt) streamReadAt(p []byte, off int64) (n int, served bool, err error) {
 	s := r.stream
 
@@ -164,7 +193,10 @@ func (r *ReaderAt) streamReadAt(p []byte, off int64) (n int, served bool, err er
 			readErr = io.ErrUnexpectedEOF
 		}
 		s.killLocked()
-		return n, true, readErr
+		return n, true, fmt.Errorf(
+			"httprange: reading %s at offset %d: %w",
+			redactRawURL(r.url), off, redactURLError(readErr),
+		)
 	}
 }
 
@@ -183,7 +215,7 @@ func (r *ReaderAt) openStream() error {
 
 	req, err := r.newRequest(r.ctx)
 	if err != nil {
-		s.state = streamDead
+		s.killLocked()
 		return err
 	}
 	// A view running to the end of the object, or past where the object is
@@ -207,14 +239,14 @@ func (r *ReaderAt) openStream() error {
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		s.state = streamDead
+		s.killLocked()
 		return redactURLError(err)
 	}
 
 	granted, err := r.checkStream(resp, start, wantEnd, ifRange != "")
 	if err != nil {
 		drainAndClose(resp.Body)
-		s.state = streamDead
+		s.killLocked()
 		return err
 	}
 

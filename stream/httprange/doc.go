@@ -16,9 +16,11 @@
 //
 // The price is one HTTP round trip per ReadAt. Walking an object front to back
 // a few kilobytes at a time is therefore painfully slow; give such a scan a
-// buffer so that it turns into a handful of large requests instead. The size
-// is nothing the scan needs to know: reads run before it is settled, and the
-// object's own end is what ends the walk.
+// buffer so that it turns into a handful of large requests instead, or, where
+// the stretch to be walked is known when the reader is built, hand it to
+// [NewRange] and have one streaming request serve the whole walk. The size is
+// nothing the scan needs to know either way: reads run before it is settled,
+// and the object's own end is what ends the walk.
 //
 //	r, err := httprange.New(ctx, url, nil)
 //	if err != nil {

@@ -8,18 +8,22 @@ import (
 	"strings"
 )
 
-// ReadAt implements [io.ReaderAt].
+// ReadAt implements [io.ReaderAt]. off is relative to the section the reader
+// was built over, which for [New] is the whole object and for [NewRange] the
+// section it names.
 //
-// Every call is a request of its own, so calls may run concurrently and none
-// of them leaves anything behind for the others. A read costs one HTTP round
-// trip; see the package documentation for how to keep a sequential scan from
-// paying that per buffer.
+// Every call is a request of its own, apart from the reads a [NewRange] reader
+// serves out of its one stream, so calls may run concurrently and none of them
+// leaves anything behind for the others. A read that costs a request costs one
+// HTTP round trip; see the package documentation for how to keep a sequential
+// scan from paying that per buffer.
 //
-// EOF follows [io.SectionReader] once the size of the object is known: an
-// offset at or past it returns (0, [io.EOF]) without asking the server
-// anything, which for a zero-length object is every read, and a read reaching
-// the last byte returns (n, io.EOF) along with the bytes it got. An empty p
-// returns (0, nil) and asks nothing either way.
+// EOF follows [io.SectionReader]: an offset at or past the end of the section
+// returns (0, [io.EOF]) without asking the server anything, and a read
+// reaching the last byte of the section returns (n, io.EOF) along with the
+// bytes it got. The same holds of the end of the object once its size is
+// known, wherever the section reaches past it, which for a zero-length object
+// is every read. An empty p returns (0, nil) and asks nothing either way.
 //
 // Before the size is known — nothing said it and no request has settled it —
 // the request goes out for exactly the bytes asked for and the answer settles
@@ -38,30 +42,40 @@ import (
 // status the server answers with comes back as a [*StatusCodeError]. No error
 // text this package writes contains the query, fragment or userinfo of the
 // URL, nor anything from the configured headers, and a transport error naming
-// the URL is rewritten the same way as far as [Doer] leaves room for.
+// the URL is rewritten the same way as far as [Doer] leaves room for. The
+// offsets such an error names are offsets into the object, which is what went
+// out on the wire.
 func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	if off < 0 {
 		return 0, fmt.Errorf("httprange.ReaderAt.ReadAt: negative offset %d", off)
 	}
+	p, abs, inside := r.locate(p, off)
+	if !inside {
+		return 0, io.EOF
+	}
 	if size, known := r.knownSize(); known {
-		if off >= size {
+		if abs >= size {
 			return 0, io.EOF
 		}
-		if avail := size - off; int64(len(p)) > avail {
+		if avail := size - abs; int64(len(p)) > avail {
 			p = p[:avail]
 		}
 	}
 	// No range covers no bytes, so there is nothing to ask for even where the
-	// end of the object is still an open question.
+	// end of the object is still an open question — and nothing worth opening
+	// the stream of a reader that has one.
 	if len(p) == 0 {
 		return 0, nil
+	}
+	if n, served, err := r.laneReadAt(p, abs); served {
+		return n, err
 	}
 
 	req, err := r.newRequest(r.ctx)
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))-1))
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", abs, abs+int64(len(p))-1))
 	ifRange := ifRangeValue(r.meta.Load())
 	if ifRange != "" {
 		req.Header.Set("If-Range", ifRange)
@@ -76,14 +90,14 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	if err := checkContentEncoding(resp); err != nil {
 		return 0, fmt.Errorf(
 			"httprange: reading %s at offset %d: %w",
-			redactRawURL(r.url), off, err,
+			redactRawURL(r.url), abs, err,
 		)
 	}
 
 	switch resp.StatusCode {
 	case http.StatusPartialContent:
 	case http.StatusRequestedRangeNotSatisfiable:
-		return 0, r.readUnsatisfied(resp, off)
+		return 0, r.readUnsatisfied(resp, abs)
 	case http.StatusOK:
 		// An empty entity is an object of zero bytes rather than a server
 		// dropping the range, whatever was asked for and whatever If-Range
@@ -93,7 +107,7 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 			if reason := r.pinOrVerify(resp, 0); reason != "" {
 				return 0, fmt.Errorf(
 					"%w: reading %s at offset %d: %s",
-					ErrObjectChanged, redactRawURL(r.url), off, reason,
+					ErrObjectChanged, redactRawURL(r.url), abs, reason,
 				)
 			}
 			return 0, io.EOF
@@ -103,18 +117,18 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 			// no longer matches, not that ranges are unsupported.
 			return 0, fmt.Errorf(
 				"%w: reading %s at offset %d: If-Range did not match",
-				ErrObjectChanged, redactRawURL(r.url), off,
+				ErrObjectChanged, redactRawURL(r.url), abs,
 			)
 		}
 		return 0, fmt.Errorf(
 			"%w: reading %s at offset %d",
-			ErrRangeIgnored, redactRawURL(r.url), off,
+			ErrRangeIgnored, redactRawURL(r.url), abs,
 		)
 	default:
 		return 0, &StatusCodeError{Code: resp.StatusCode}
 	}
 
-	avail, total, err := r.checkPartial(resp, off, int64(len(p)))
+	avail, total, err := r.checkPartial(resp, abs, int64(len(p)))
 	if err != nil {
 		return 0, err
 	}
@@ -127,10 +141,12 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 		}
 		return n, fmt.Errorf(
 			"httprange: reading %s at offset %d: %w",
-			redactRawURL(r.url), off, redactURLError(err),
+			redactRawURL(r.url), abs, redactURLError(err),
 		)
 	}
-	if off+int64(n) == total {
+	// The end of the section ends a read as the end of the object does,
+	// whatever the object holds past it.
+	if reached := abs + int64(n); reached == total || reached == r.end() {
 		return n, io.EOF
 	}
 	return n, nil
@@ -206,12 +222,20 @@ func (r *ReaderAt) Metadata() (Metadata, bool) {
 
 // Close stops the reader: it cancels a context derived from the one handed to
 // [New], which aborts the requests still in flight and fails every read from
-// then on. The context the caller passed to New is left untouched. There is
+// then on, and hands back the connection a [NewRange] reader's stream was
+// holding. The context the caller passed to New is left untouched. There is
 // nothing else to release, so it always reports success.
 func (r *ReaderAt) Close() error {
 	// A context.CancelFunc may be called any number of times, which is all
 	// Close needs in order to be idempotent.
+	//
+	// Cancelling first is what keeps Close from waiting: closing the stream
+	// waits for the read holding its body to be done with it, and cancelling
+	// is what makes that read be done with it.
 	r.cancel()
+	if r.stream != nil {
+		r.stream.kill()
+	}
 	return nil
 }
 

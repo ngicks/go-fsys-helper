@@ -43,6 +43,18 @@ protocol:
   `stream.SizedReaderAt{R: r, Size: meta.Size}`** (the multi-reader
   path the size-method removal points callers to) instead of the
   deleted compile-time `stream.ReadAtSizer` pin.
+- **The lane carries a lock-free `dead` flag beside the mutex-guarded
+  state** so the randomized-read fast-path check never touches the
+  lock, and `kill()` raises the flag before blocking on the mutex —
+  only the closer can ever wait behind an in-flight body read.
+- **A lost open-race does not kill the lane**: `ReadAt`'s outside-lock
+  check kills on a genuine position mismatch; a reader that passed the
+  check but lost the lock race falls back to a bounded request for
+  that read without killing, since the position — not the loser — says
+  whether the pattern is still sequential.
+- **`Close` cancels the reader's context before killing the lane**, so
+  closing never blocks behind a stalled stream read (tested by a
+  stalling server).
 
 ## D1 — Stream lane fused into `ReaderAt`, superseding prior D7's rejection (2026-08-18, user)
 

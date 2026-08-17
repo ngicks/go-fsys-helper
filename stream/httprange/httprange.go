@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -106,11 +107,12 @@ func (e *StatusCodeError) NotFound() bool {
 }
 
 // ReaderAt reads a remote HTTP object through range requests. Build one with
-// [New].
+// [New], or with [NewRange] for a section of the object.
 //
-// It is safe for concurrent use: each [ReaderAt.ReadAt] runs a request of its
-// own, and the description of the object those requests share settles one
-// property at a time, once, by whichever of them gets there first.
+// It is safe for concurrent use: every [ReaderAt.ReadAt] but the ones a
+// [NewRange] reader serves out of its one stream runs a request of its own,
+// and the description of the object those requests share settles one property
+// at a time, once, by whichever of them gets there first.
 type ReaderAt struct {
 	client Doer
 	url    string
@@ -134,10 +136,15 @@ type ReaderAt struct {
 	// server has confirmed.
 	verified atomic.Bool
 
+	// view is the stretch of the object this reader hands out, and what the
+	// offsets its caller reads at are relative to. A reader over the whole
+	// object is the view running from zero to wherever the object ends.
+	view
+
 	// stream is the one range request serving the reads that arrive in order,
 	// for a caller who said up front which stretch of the object they would
-	// read that way. nil, the shape a reader over the whole object takes, is a
-	// reader whose every read is a bounded request of its own.
+	// read that way. nil — what [New] builds, and what a view with nothing in
+	// it gets — is a reader whose every read is a bounded request of its own.
 	stream *stream
 }
 
@@ -244,7 +251,10 @@ func originOf(resp *http.Response) string {
 	return resp.Request.URL.Scheme + "://" + resp.Request.URL.Host
 }
 
-// New returns a [ReaderAt] over url.
+// New returns a [ReaderAt] over url. Every read it serves is a bounded request
+// of its own; a caller who knows up front that they will walk one stretch of
+// the object front to back wants [NewRange], which serves such reads out of a
+// single streaming request.
 //
 // ctx bounds every request the reader will ever make: once it is done the
 // reader is too. cfg may be nil, which means a zero [Config].
@@ -280,6 +290,7 @@ func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error) {
 		header: header,
 		ctx:    sessionCtx,
 		cancel: cancel,
+		view:   view{length: math.MaxInt64},
 	}
 	if cfg.ETag != "" || cfg.LastModified != "" || cfg.Size > 0 {
 		// The origin stays open: which server answers is nothing the caller can

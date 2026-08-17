@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -846,6 +847,30 @@ func TestSecretsStayOutOfErrorText(t *testing.T) {
 			t.Fatal("ReadAt returned no error")
 		}
 		assertNoSecret(t, err)
+		if !strings.Contains(err.Error(), "/obj") {
+			t.Fatalf("ReadAt returned %v, want it to name the redacted url", err)
+		}
+	})
+
+	t.Run("stream_range_ignored", func(t *testing.T) {
+		s := startHandlerServer(t, handleWhole(content))
+
+		r, err := NewRange(context.Background(), secretURL(t, s.URL), 0, math.MaxInt64, nil)
+		if err != nil {
+			t.Fatalf("NewRange returned error: %v", err)
+		}
+		defer r.Close()
+
+		_, err = r.ReadAt(make([]byte, 16), 0)
+		if err == nil {
+			t.Fatal("ReadAt returned no error")
+		}
+		assertNoSecret(t, err)
+		// The words the stream's own failures are put in, which no read of a
+		// reader built by New can produce.
+		if !strings.Contains(err.Error(), "streaming") {
+			t.Fatalf("ReadAt returned %v, want the stream's own wording", err)
+		}
 		if !strings.Contains(err.Error(), "/obj") {
 			t.Fatalf("ReadAt returned %v, want it to name the redacted url", err)
 		}

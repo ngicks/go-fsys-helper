@@ -16,20 +16,19 @@ import (
 )
 
 // newStreamReader returns a reader over rawURL carrying a lane for the view
-// [base, base+length), which is what a caller declaring a range up front gets
-// once the lane is wired into reads.
+// [base, base+length), which is what a caller declaring a range up front gets.
+// The tests below drive that lane directly, at offsets into the object rather
+// than into the view.
 func newStreamReader(t *testing.T, rawURL string, cfg *Config, base, length int64) *ReaderAt {
 	t.Helper()
 
-	r, err := New(context.Background(), rawURL, cfg)
+	r, err := NewRange(context.Background(), rawURL, base, length, cfg)
 	if err != nil {
-		t.Fatalf("New returned error: %v", err)
+		t.Fatalf("NewRange returned error: %v", err)
 	}
-	r.stream = newStream(base, length)
 	// A lane left open holds a response body, and a test server does not
 	// finish closing while one is still outstanding.
 	t.Cleanup(func() {
-		r.stream.kill()
 		_ = r.Close()
 	})
 	return r
