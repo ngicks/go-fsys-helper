@@ -1,9 +1,10 @@
 # IDEA — declared sequential window served by one streaming range request
 
 Gate: confirmed by user, 2026-08-18 (re-confirmed after the
-metadata-access addition and the explicit section-view contract; D8's
-Probe-as-validator framing correction folded afterwards at the user's
-direction — same mechanism, corrected wording)
+metadata-access addition and the explicit section-view contract; the
+D8/D9 probe framing — Probe as the one validator, run lazily by the
+first request or explicitly — folded afterwards at the user's
+direction, same request counts and use-case behavior)
 
 This is the follow-up that `doc/plan/2026-08-17-http_range_reader_at/HANDOFF.md`
 H1 hands off, scoped down from the full PDF.js-style chunk manager to the
@@ -72,9 +73,11 @@ expectation costs round trips, never correctness.
   The explicit way is to probe: the probe fetches the object's actual
   metadata and checks every supplied piece against it, so a changed
   object surfaces right there as `ErrObjectChanged`, before any byte
-  lands. A caller who skips the probe gets the same check from the first
-  request the reader makes — the `Range: bytes=N-` stream open, carrying
-  the saved validators as `If-Range` — before any of its bytes are used.
+  lands. A caller who skips the explicit call still runs the probe —
+  lazily, inside the first request the reader makes: the
+  `Range: bytes=N-` stream open, carrying the saved validators as
+  `If-Range`, is validated as the probe's own response before any of
+  its bytes are used.
   Sequential reads from `N` then stream from the one body until the end,
   never splicing new-object bytes onto stale local ones.
 
@@ -134,7 +137,11 @@ stateDiagram-v2
   callers who want the failure point early rather than at the first read.
   The probe doubles as the validator of whatever metadata the caller
   handed in — supplied pieces, even partial, are checked against the
-  actually fetched data; missing pieces are learned from it.
+  actually fetched data; missing pieces are learned from it. And there
+  is only one probe: called explicitly it is its own tiny request; left
+  implicit it runs lazily inside the first request the reader makes,
+  whose response is validated as the probe's own — laziness never costs
+  an extra round trip.
 - **Correctness never depends on the hint being right.** A wrong or
   abandoned declaration costs performance only. All existing guarantees —
   `ErrObjectChanged` on mutation, `ErrRangeIgnored`, redaction, bounded

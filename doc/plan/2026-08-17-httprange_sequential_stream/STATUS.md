@@ -20,6 +20,10 @@ section-view contract confirmed explicitly. Implementation not started.
   actually fetched data on Probe time" — framing corrected across
   IDEA/PLAN (no behavior change; guard live only once a request
   happens, Probe the explicit act)
+- [x] D9 "Probe is now lazy thing that also can be called explicitly.
+  First Read also call Probe" — one probe routine, three triggers
+  (construction / lazy-in-first-request / explicit), folded into
+  IDEA/PLAN step 2
 - [x] Public surface delta written (PLAN.md)
 - [x] Implementation steps detailed (PLAN.md steps 1–6)
 - [x] Traceability walked: D1–D7 + inherited prior-D1 each mapped to
@@ -30,7 +34,7 @@ section-view contract confirmed explicitly. Implementation not started.
 ## Implementation checklist (mirrors PLAN.md steps — not started)
 
 - [ ] 1. Config validators + pin-or-verify + `Metadata()` (D6, D7)
-- [ ] 2. Exported `Probe(ctx)` as validator of held metadata (D4, D8)
+- [ ] 2. Probe as the single lazy/explicit verification (D4, D8, D9)
 - [ ] 3. Stream lane in `stream.go` (D1–D4)
 - [ ] 4. `NewRange` + `ReadAt` wiring, view semantics (D2, D3, D5)
 - [ ] 5. Docs (`doc.go`, method docs)

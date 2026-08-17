@@ -161,3 +161,39 @@ it read as a passive property of the fields, when the guard exists
 **Rejected**: keeping the passive framing; making validation
 Probe-only (first stream/read responses still verify, as before —
 Probe just makes the point in time explicit).
+
+## D9 — One probe, lazily run by the first request, explicitly callable (2026-08-18, user)
+
+**Choice**: "Probe is now lazy thing that also can be called
+explicitly. First Read also call Probe" (user, verbatim). Verification
+is a single probe routine with three triggers: (1) the construction
+request when the size is unknown (`New`'s `bytes=0-0`; `NewRange`'s
+eager stream open — its response is the probe's); (2) lazily, invoked
+by the reader's first request when construction skipped it — the first
+bounded read or the lazy stream open feeds its *own* response to the
+probe's validation, so the lazy path costs no extra round trip; (3)
+explicitly, via `Probe(ctx)`, which fires its `bytes=0-0` request ahead
+of any read (and re-verifies when called on an already-verified
+reader). Until the probe has run, held metadata is trusted; after, it
+is verified and every later response is checked against it.
+
+**Rationale**: replaces D8's "the first response also verifies, as a
+backstop" description with a single named mechanism — probe — instead
+of validation logic scattered across paths. Keeps every request-count
+property: lazy verification piggybacks on the request that was
+happening anyway.
+
+**Assistant judgment (noted for review)**: explicit `Probe` on a
+`NewRange` reader fires the tiny `bytes=0-0` request rather than
+opening the stream, because Probe's ctx bounds that call alone while
+the stream must outlive it on the reader's own context; the stream
+still opens on the first in-order read, carrying `If-Range` with the
+now-verified validators. A probed resume therefore costs two requests
+(tiny probe + stream) — the price of choosing the early failure point,
+per the user's earlier framing ("explicit probe ahead of time or
+efficient but fail on first read").
+
+**Rejected**: first Read firing a separate probe request before its own
+(doubles the first read's round trips for nothing the response itself
+cannot prove); Probe-only validation with no lazy trigger (a caller
+who never probes would get unverified splices — contradicts D6/D8).

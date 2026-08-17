@@ -17,9 +17,10 @@ requests — plus exported `Probe` and `Metadata`, and saved-validator
   blocks or fails because of the stream (UC3, D2).
 - Caller-supplied metadata (`Config.Size`/`ETag`/`LastModified`, any
   subset) is trusted until a request happens and validated the moment
-  one does; `Probe` is the explicit way to make that moment happen up
-  front (D4/D6/D8) — a resume caller probing first learns of a changed
-  object there, as `ErrObjectChanged`, before any byte lands. The
+  one does: the probe runs lazily inside the reader's first request at
+  no extra round trip, or explicitly via `Probe` up front (D4/D6/D8/D9)
+  — a resume caller probing first learns of a changed object there, as
+  `ErrObjectChanged`, before any byte lands. The
   metadata to save for the next attempt is readable off the reader
   after or in the middle of downloading (D7).
 - `New`'s behavior without new fields is unchanged; the existing test
@@ -82,7 +83,11 @@ Stream opening (D4): eager at `New`-time when the size is unknown — the
 `Content-Range` total, meta pin, range proof). Lazy when `cfg.Size > 0`:
 no I/O at construction, the stream opens under the lock on the first
 in-order read; callers wanting an early failure point call `Probe`
-first. The streaming response passes the same gate as any read: status
+first. Verification is one routine with three triggers (D9): the
+construction request when the size is unknown, lazily inside the
+reader's first request otherwise (that request's response serves as
+the probe's — no extra round trip), or an explicit `Probe` call ahead
+of both. The streaming response passes the same gate as any read: status
 206 (416 with `bytes */N` = empty view), `checkContentEncoding`,
 `Content-Range` start/total check, meta pin-or-verify, `If-Range` when
 meta is pinned.
@@ -135,6 +140,15 @@ func NewRange(ctx context.Context, url string, off, n int64, cfg *Config) (*Read
 // verified; Probe is the explicit way to put that verification — and
 // the failure point — here rather than at the first read. ctx bounds
 // this call only.
+//
+// The same probe also runs lazily: when it was never called, the first
+// request the reader makes — the construction probe, the stream
+// opening, or the first bounded read — doubles as it, its response
+// validated the same way before any of its bytes are used, so the lazy
+// path never costs an extra request. Once the probe has run, the
+// reader's metadata is verified, and every later response is checked
+// against it. Calling Probe on an already-verified reader fires and
+// re-verifies.
 func (r *ReaderAt) Probe(ctx context.Context) error
 
 type Config struct {
@@ -194,15 +208,21 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    read fails), `ifRangeValue` sends the saved validator on the very
    first request, `Metadata()` reflects a Config pre-pin immediately
    and probe results after.
-2. **Exported `Probe(ctx)` (D4, D8)** — `httprange.go`: refactor
-   `probe()` to take a ctx and to run every already-held metadatum —
-   `cfg.Size` and the pre-pinned/pinned validators, each independently
-   — through the step-1 pin-or-verify helper against the fetched
-   response (`ErrObjectChanged` on any contradiction, pin what was
-   empty). `New` keeps calling it as today; the exported wrapper
-   documents scope of ctx. Verifiable alone: probe-after-Size-config
-   test, probe-mismatch test, partial-metadata probes (only
-   LastModified supplied → it is checked, ETag+size get pinned).
+2. **Probe as the single lazy/explicit verification (D4, D8, D9)** —
+   `httprange.go`: split today's `probe()` into the request half (the
+   `bytes=0-0` GET) and an adopt-response half that runs every
+   already-held metadatum — `cfg.Size` and the pre-pinned/pinned
+   validators, each independently — through the step-1 pin-or-verify
+   helper (`ErrObjectChanged` on any contradiction, pin what was
+   empty) and flips a verified flag. The adopt-response half is what
+   the lazy triggers reuse: `New`'s construction probe calls both
+   halves as today; the first bounded read and the stream open (steps
+   3–4) feed it their own response, so laziness costs no extra
+   request. Exported `Probe(ctx)` calls both halves explicitly and
+   also re-verifies when already verified. Verifiable alone:
+   probe-after-Size-config test, probe-mismatch test, partial-metadata
+   probes (only LastModified supplied → it is checked, ETag+size get
+   pinned), first-read-verifies-lazily test.
 3. **Stream lane (D1/D2/D3/D4)** — new file `stream.go`: the lane
    struct (mutex, body, atomic absolute pos, alive/lazy-pending state),
    `openStream` building `Range: bytes=off-` or `bytes=off-(end-1)`,
@@ -285,6 +305,10 @@ None — Q1–Q6 resolved as DECISION.md D1–D6.
 - D8 "Probe … should be also a validator; … validate against actually
   fetched data on Probe time" → step 2; documented in the surface
   delta's Probe/Config comments; step 6 partial-metadata probe tests.
+- D9 "Probe is now lazy … also can be called explicitly. First Read
+  also call Probe" → step 2 (request/adopt-response split, verified
+  flag), steps 3–4 (stream open and first bounded read feed the lazy
+  trigger); step 6 first-read-verifies-lazily test.
 - Inherited prior-D1 concurrency promise → step 4 design + step 6 race
   test.
 - IDEA use cases: UC1/UC2 → steps 3–4, proven step 6 request counts;
