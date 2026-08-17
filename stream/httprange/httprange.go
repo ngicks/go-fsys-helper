@@ -52,9 +52,9 @@ type Config struct {
 	// Accept-Encoding is overwritten with identity.
 	Header http.Header
 	// Size is the total size of the object in bytes. Greater than zero means
-	// the caller already knows it, which spares the reader the request that
-	// would otherwise settle it. Zero, the usual case, leaves the size to the
-	// first response that reports it.
+	// the caller already knows it, so a read landing past the end of an object
+	// that long ends at [io.EOF] without asking the server anything. Zero, the
+	// usual case, leaves the size to the first response that reports it.
 	Size int64
 	// ETag and LastModified are validators the caller saved from an earlier
 	// response, for resuming. They pre-pin the object identity and ride every
@@ -64,18 +64,20 @@ type Config struct {
 	LastModified string
 }
 
-// ErrObjectChanged reports that what answered a read is not the object the
+// ErrObjectChanged reports that what answered a request is not the object the
 // reader was built against: a different length, a different validator, bytes
 // from an offset other than the one asked for, or a response from an origin
-// other than the one construction settled on. The bytes of such a response are
-// never handed to the caller, since mixing them with earlier reads would
+// other than the one earlier responses settled. The bytes of such a response
+// are never handed to the caller, since mixing them with earlier reads would
 // produce an object that never existed.
 var ErrObjectChanged = errors.New("httprange: remote object changed")
 
 // ErrRangeIgnored reports that the server answered a ranged request with the
 // whole entity. Every read would then pull the object down in full while
-// looking like a small one, so the reader refuses instead. The error text says
-// whether this was caught by a probe or by a read.
+// looking like a small one, so the reader refuses instead. Construction asks
+// nothing of the server, so this surfaces at the first read, at the request a
+// [NewRange] reader streams from, or at [ReaderAt.Probe], whichever comes
+// first; the error text says which of the three met it.
 //
 // An entity of zero bytes is not reported this way; it is read as an object of
 // size zero. See [ReaderAt.Probe].
@@ -109,10 +111,14 @@ func (e *StatusCodeError) NotFound() bool {
 // ReaderAt reads a remote HTTP object through range requests. Build one with
 // [New], or with [NewRange] for a section of the object.
 //
-// It is safe for concurrent use: every [ReaderAt.ReadAt] but the ones a
-// [NewRange] reader serves out of its one stream runs a request of its own,
-// and the description of the object those requests share settles one property
-// at a time, once, by whichever of them gets there first.
+// It is safe for concurrent use. Every bounded [ReaderAt.ReadAt] runs a
+// request of its own and leaves nothing behind for the others; the description
+// of the object is all such reads share, and it settles one property at a
+// time, once, by whichever request gets there first. A [NewRange] reader adds
+// the one stream its in-order reads consume under a lock, but whether a read
+// is one of those is decided outside that lock: a read landing anywhere else
+// waits on the stream's network I/O at most once, to close it, and every read
+// from then on is bounded again.
 type ReaderAt struct {
 	client Doer
 	url    string

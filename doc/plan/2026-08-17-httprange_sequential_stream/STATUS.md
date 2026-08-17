@@ -45,7 +45,7 @@ Implementation not started.
 - [x] 2. Probe as the single lazy/explicit verification (D4, D8, D9)
 - [x] 3. Stream lane in `stream.go` (D1–D4)
 - [x] 4. `NewRange` + `ReadAt` wiring, view semantics (D2, D3, D5)
-- [ ] 5. Docs (`doc.go`, method docs)
+- [x] 5. Docs (`doc.go`, method docs)
 - [ ] 6. Test matrix incl. request counts, races, resume mismatch
 
 Next action: implementation step 1 (Config validators + pin-or-verify +
