@@ -1,10 +1,15 @@
 # STATUS — httprange sequential-stream lane
 
-Current state: **planned and finalized** — decisions D1–D11 recorded
-and traced through PLAN.md. The D10 gate reset was resolved by the
-user's "Confirmed but slight modification. Remove Size.", folded as
-D11 (delete `Size()`; `Metadata()` is the sole size exposure).
-Implementation not started.
+Current state: **implemented** — all six implementation steps landed
+as one commit each on `httprange-improvement` (steps 1–4 feature
+commits, step 5 docs, step 6 acceptance matrix), each green under
+`go test -race ./...` and cross-platform `go vet` before the next.
+A post-implementation review pass confirmed the concurrency design,
+boundary arithmetic, and request-count economics; its findings
+(probe-gate 416/206 consistency, verified-flag settling, over-grant
+tests, README) were fixed in a follow-up commit. Decisions D1–D11
+recorded and traced through PLAN.md; judgment calls made during the
+autonomous run are tagged `[automatic]` in DECISION.md.
 
 ## Planning checklist
 
@@ -39,7 +44,7 @@ Implementation not started.
 - [x] IDEA.md gate re-confirmed by user after the D7 addition, with
   D5's section-view contract confirmed explicitly ✓
 
-## Implementation checklist (mirrors PLAN.md steps — not started)
+## Implementation checklist (mirrors PLAN.md steps — all done)
 
 - [x] 1. Config validators + pin-or-verify + `Metadata()` (D6, D7)
 - [x] 2. Probe as the single lazy/explicit verification (D4, D8, D9)
@@ -48,5 +53,6 @@ Implementation not started.
 - [x] 5. Docs (`doc.go`, method docs)
 - [x] 6. Test matrix incl. request counts, races, resume mismatch
 
-Next action: implementation step 1 (Config validators + pin-or-verify +
-`Metadata()`), when the user asks for implementation.
+Next action: none — implementation complete and reviewed. Future work
+(chunk map, caching, coalescing) remains recorded unclaimed in
+`doc/plan/2026-08-17-http_range_reader_at/HANDOFF.md` H1.
