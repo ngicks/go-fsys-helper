@@ -16,6 +16,10 @@ section-view contract confirmed explicitly. Implementation not started.
   off-EOF" ✓, D6 "Add Config fields now" ✓
 - [x] D7 "get metadata after or in-mid downloading" folded into
   IDEA/PLAN (Metadata type + accessor, step 1)
+- [x] D8 "Probe … should be also a validator; … validate against
+  actually fetched data on Probe time" — framing corrected across
+  IDEA/PLAN (no behavior change; guard live only once a request
+  happens, Probe the explicit act)
 - [x] Public surface delta written (PLAN.md)
 - [x] Implementation steps detailed (PLAN.md steps 1–6)
 - [x] Traceability walked: D1–D7 + inherited prior-D1 each mapped to
@@ -26,7 +30,7 @@ section-view contract confirmed explicitly. Implementation not started.
 ## Implementation checklist (mirrors PLAN.md steps — not started)
 
 - [ ] 1. Config validators + pin-or-verify + `Metadata()` (D6, D7)
-- [ ] 2. Exported `Probe(ctx)` (D4)
+- [ ] 2. Exported `Probe(ctx)` as validator of held metadata (D4, D8)
 - [ ] 3. Stream lane in `stream.go` (D1–D4)
 - [ ] 4. `NewRange` + `ReadAt` wiring, view semantics (D2, D3, D5)
 - [ ] 5. Docs (`doc.go`, method docs)

@@ -1,7 +1,9 @@
 # IDEA — declared sequential window served by one streaming range request
 
 Gate: confirmed by user, 2026-08-18 (re-confirmed after the
-metadata-access addition and the explicit section-view contract)
+metadata-access addition and the explicit section-view contract; D8's
+Probe-as-validator framing correction folded afterwards at the user's
+direction — same mechanism, corrected wording)
 
 This is the follow-up that `doc/plan/2026-08-17-http_range_reader_at/HANDOFF.md`
 H1 hands off, scoped down from the full PDF.js-style chunk manager to the
@@ -63,13 +65,18 @@ expectation costs round trips, never correctness.
 - **Situation**: `N` bytes already sit on disk from the previous attempt.
 - **Intent**: fetch bytes `N-` to the end as one request and append.
 - **Walkthrough**: during the first attempt the caller reads the object's
-  metadata off the reader — even mid-download — and saves the validators
-  next to the partial file. On restart they declare "I will read from N to
-  the end" and hand those saved validators back in; the construction
-  request is `Range: bytes=N-` carrying them as `If-Range`, so an object
-  that changed since the first attempt fails with `ErrObjectChanged`
-  instead of silently splicing new bytes onto stale local ones. Sequential
-  reads from `N` stream from the one body until the end.
+  metadata off the reader — even mid-download — and saves it next to the
+  partial file. On restart they declare "I will read from N to the end"
+  and hand the saved metadata back in. Handing it in states what the
+  caller believes the object is; verifying that belief takes a request.
+  The explicit way is to probe: the probe fetches the object's actual
+  metadata and checks every supplied piece against it, so a changed
+  object surfaces right there as `ErrObjectChanged`, before any byte
+  lands. A caller who skips the probe gets the same check from the first
+  request the reader makes — the `Range: bytes=N-` stream open, carrying
+  the saved validators as `If-Range` — before any of its bytes are used.
+  Sequential reads from `N` then stream from the one body until the end,
+  never splicing new-object bytes onto stale local ones.
 
 ### UC3 — declared window, then the pattern breaks
 
@@ -125,6 +132,9 @@ stateDiagram-v2
   round trip on top of it. When the caller already supplied the size,
   construction does no I/O at all; an explicit probe stays available for
   callers who want the failure point early rather than at the first read.
+  The probe doubles as the validator of whatever metadata the caller
+  handed in — supplied pieces, even partial, are checked against the
+  actually fetched data; missing pieces are learned from it.
 - **Correctness never depends on the hint being right.** A wrong or
   abandoned declaration costs performance only. All existing guarantees —
   `ErrObjectChanged` on mutation, `ErrRangeIgnored`, redaction, bounded

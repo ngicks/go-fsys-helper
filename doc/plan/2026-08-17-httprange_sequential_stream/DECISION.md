@@ -139,3 +139,25 @@ persist.
 
 **Rejected**: individual `ETag()`/`LastModified()` methods; exposing
 origin.
+
+## D8 — Probe is a validator; the mutation guard is live only once a request happens (2026-08-18, user)
+
+**Choice**: reframe D4/D6's mechanism (no behavior change): the
+`Config` metadata fields (`Size`, `ETag`, `LastModified` — any subset)
+are *trusted, not verified* until some request goes out. `Probe` is the
+explicit validation act: "since it can accept partial metadata, it can
+validate against actually fetched data on Probe time" (user) — each
+supplied field is checked against the fetched response
+(`ErrObjectChanged` on contradiction) and each missing one is pinned
+from it. The recommended resume flow is therefore
+`NewRange(…, cfg-with-saved-metadata)` → `Probe` → read; skipping
+`Probe` defers the same check to whichever request happens first.
+
+**Rationale** (user): the earlier goal wording — "a resume caller
+passing saved validators gets ErrObjectChanged" — was "wrong framing":
+it read as a passive property of the fields, when the guard exists
+"only once Probe is actually happen[ed]" (or any first request).
+
+**Rejected**: keeping the passive framing; making validation
+Probe-only (first stream/read responses still verify, as before —
+Probe just makes the point in time explicit).

@@ -15,10 +15,13 @@ requests — plus exported `Probe` and `Metadata`, and saved-validator
   unknown — no extra round trip versus `New` (D4).
 - A randomized read still succeeds, at one bounded request, and never
   blocks or fails because of the stream (UC3, D2).
-- A resume caller passing saved validators gets `ErrObjectChanged`
-  instead of silently spliced bytes when the object changed (D6), and
-  can read the metadata to save — validators, total size — off the
-  reader after or in the middle of downloading (D7).
+- Caller-supplied metadata (`Config.Size`/`ETag`/`LastModified`, any
+  subset) is trusted until a request happens and validated the moment
+  one does; `Probe` is the explicit way to make that moment happen up
+  front (D4/D6/D8) — a resume caller probing first learns of a changed
+  object there, as `ErrObjectChanged`, before any byte lands. The
+  metadata to save for the next attempt is readable off the reader
+  after or in the middle of downloading (D7).
 - `New`'s behavior without new fields is unchanged; the existing test
   suite passes untouched.
 - `go test -race ./...` green, including concurrent mixed
@@ -121,12 +124,17 @@ package httprange
 // no I/O until the first read (call Probe for an early failure point).
 func NewRange(ctx context.Context, url string, off, n int64, cfg *Config) (*ReaderAt, error)
 
-// Probe verifies the remote object now: one GET Range: bytes=0-0
-// proving the server honours Range, cross-checking the size, and
-// pinning (or verifying against) validators and origin. ctx bounds this
-// call only. Useful when construction skipped its probe (cfg.Size > 0,
-// or a lazy NewRange) and the caller wants the failure point here, not
-// at the first read.
+// Probe validates the reader's picture of the remote object against
+// what the server actually has, right now: one GET Range: bytes=0-0
+// that proves the server honours Range, checks every piece of metadata
+// already held — caller-supplied Config fields (Size, ETag,
+// LastModified, any subset) included — against the fetched response,
+// failing with ErrObjectChanged on contradiction, and pins whatever
+// was not yet known. Until some request happens (Probe, the stream
+// opening, or a read), caller-supplied metadata is trusted, not
+// verified; Probe is the explicit way to put that verification — and
+// the failure point — here rather than at the first read. ctx bounds
+// this call only.
 func (r *ReaderAt) Probe(ctx context.Context) error
 
 type Config struct {
@@ -135,12 +143,14 @@ type Config struct {
     Size   int64       // unchanged
 
     // ETag and LastModified are validators the caller saved from an
-    // earlier response, for resuming: they pre-pin the object identity
-    // at construction, ride every request's If-Range (subject to the
-    // same strong-validator rule as pinned ones), and any response
-    // contradicting them fails with ErrObjectChanged instead of
-    // splicing bytes of a changed object onto what the caller already
-    // has. Empty means none, as today.
+    // earlier response, for resuming. They pre-pin the object identity
+    // at construction and ride every request's If-Range (subject to
+    // the same strong-validator rule as pinned ones) — but they are
+    // trusted, not verified, until a request actually happens: the
+    // first response (Probe's, the stream's, or a read's) is checked
+    // against them and contradicts them with ErrObjectChanged before
+    // any of its bytes are used. Call Probe to make that check happen
+    // up front. Empty means none, as today.
     ETag         string
     LastModified string
 }
@@ -184,11 +194,15 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    read fails), `ifRangeValue` sends the saved validator on the very
    first request, `Metadata()` reflects a Config pre-pin immediately
    and probe results after.
-2. **Exported `Probe(ctx)` (D4)** — `httprange.go`: refactor `probe()`
-   to take a ctx and to *cross-check* instead of set when size/meta are
-   already settled (`ErrObjectChanged` on total mismatch). `New` keeps
-   calling it as today; the exported wrapper documents scope of ctx.
-   Verifiable alone: probe-after-Size-config test, probe-mismatch test.
+2. **Exported `Probe(ctx)` (D4, D8)** — `httprange.go`: refactor
+   `probe()` to take a ctx and to run every already-held metadatum —
+   `cfg.Size` and the pre-pinned/pinned validators, each independently
+   — through the step-1 pin-or-verify helper against the fetched
+   response (`ErrObjectChanged` on any contradiction, pin what was
+   empty). `New` keeps calling it as today; the exported wrapper
+   documents scope of ctx. Verifiable alone: probe-after-Size-config
+   test, probe-mismatch test, partial-metadata probes (only
+   LastModified supplied → it is checked, ETag+size get pinned).
 3. **Stream lane (D1/D2/D3/D4)** — new file `stream.go`: the lane
    struct (mutex, body, atomic absolute pos, alive/lazy-pending state),
    `openStream` building `Range: bytes=off-` or `bytes=off-(end-1)`,
@@ -268,6 +282,9 @@ None — Q1–Q6 resolved as DECISION.md D1–D6.
   step 1; step 6 resume-mismatch test.
 - D7 "get metadata after or in-mid downloading" → step 1 (`Metadata`
   type + accessor); documented step 5; step 6 mid-download tests.
+- D8 "Probe … should be also a validator; … validate against actually
+  fetched data on Probe time" → step 2; documented in the surface
+  delta's Probe/Config comments; step 6 partial-metadata probe tests.
 - Inherited prior-D1 concurrency promise → step 4 design + step 6 race
   test.
 - IDEA use cases: UC1/UC2 → steps 3–4, proven step 6 request counts;
