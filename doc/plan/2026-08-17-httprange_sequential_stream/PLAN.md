@@ -123,8 +123,7 @@ package httprange
 
 // NewRange returns a ReaderAt over the section [off, off+n) of the
 // remote object, as io.NewSectionReader does for a local one: offsets
-// are relative to off, Size reports the view's length, and reads hit
-// EOF at the boundary. n larger than the remainder is clamped; use
+// are relative to off, and reads hit EOF at the boundary. n larger than the remainder is clamped; use
 // math.MaxInt64 to say "from off to the end" (archive/tar's idiom for
 // io.SectionReader); n <= 0 yields an empty view. It is New, slightly
 // optimized for reading the section mostly front to back: one streaming
@@ -145,12 +144,15 @@ func NewRange(ctx context.Context, url string, off, n int64, cfg *Config) (*Read
 // instead.
 func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error)
 
-// Changed behavior: Size is no longer settled at construction. It
-// reports what is known — cfg.Size if supplied, the value settled by
-// the first response otherwise — and 0 while the size is still
-// unknown; Metadata()'s ok distinguishes "unknown" from "empty
-// object". Call Probe first to settle it before reading.
-func (r *ReaderAt) Size() int64
+// Removed (D11): the Size method. With the size lazily settled (D10),
+// a settled-at-construction accessor no longer exists; Metadata() is
+// the one place the size is exposed (Metadata.Size, valid when ok and
+// the size has been supplied or settled). ReaderAt consequently stops
+// satisfying stream.ReadAtSizeCloser — an interface living in
+// stream/seq_reader_at.go, which the prior plan's D6 already slates
+// for removal; multi-reader callers pass
+// stream.SizedReaderAt{R: r, Size: m.Size} instead.
+// func (r *ReaderAt) Size() int64   // deleted
 
 // Probe validates the reader's picture of the remote object against
 // what the server actually has, right now: one GET Range: bytes=0-0
@@ -193,8 +195,9 @@ type Config struct {
 }
 
 // Metadata is a snapshot of what the reader has pinned about the remote
-// object. Size is the total size of the object — under NewRange this is
-// not the view length that ReaderAt.Size reports.
+// object. Size is the total size of the object (never a NewRange view's
+// length) and, since ReaderAt.Size is removed (D11), the only exposure
+// of the size; zero with ok=false means not yet known.
 type Metadata struct {
     ETag         string
     LastModified string
@@ -247,7 +250,9 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    and the response settles it (206 `Content-Range` total; a response
    clamped at the object's end → bytes + EOF; 416 `bytes */N` → size
    pinned, EOF; the empty-object 200-with-empty-body carve-out → size
-   zero). `Size()` reports 0 until settled. Existing tests asserting
+   zero). Delete the exported `Size()` method (`reader_at.go:111`,
+   D11) — the size is exposed through `Metadata()` alone — and adapt
+   its users in tests and docs. Existing tests asserting
    construction-time probing move to first-read/Probe assertions.
    Verifiable alone: no-request-at-construction test, probe-mismatch
    test, partial-metadata probes (only LastModified supplied → it is
@@ -268,7 +273,8 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    unsettled-size handling (416 → empty view; `n <= 0` → empty view
    with no request ever), view translation at the top of `ReadAt`
    (relative offset,
-   `Size()` = view length, boundary EOF per `io.SectionReader`), lane
+   boundary EOF per `io.SectionReader` — the view's length stays
+   internal now that `Size()` is gone, D11), lane
    fast-path check before the lock, fallback + permanent kill on
    mismatch or body error (partial bytes + error surfaced as today's
    `io.ErrUnexpectedEOF` wording), `Close` tearing down the body.
@@ -278,7 +284,8 @@ math.MaxInt64, nil)` is `New` plus the streaming lane.
    options (buffer, or `NewRange` when the range is known up front),
    and rewrite the construction story for D10 — `New` no longer
    probes; nothing does I/O until the first read or an explicit
-   `Probe`, and `Size()` settles lazily. Method docs per the surface
+   `Probe`; `Size()` is gone (D11) and the size is read from
+   `Metadata()`. Method docs per the surface
    delta; note the concurrency story of the lane on the `ReaderAt` doc
    (`httprange.go:95-99`).
 6. **Test matrix** — `stream/httprange`: request-count assertions
@@ -354,9 +361,11 @@ None — Q1–Q6 resolved as DECISION.md D1–D6.
   trigger); step 6 first-read-verifies-lazily test.
 - D10 "specifying size should not make it lazy; … Probe is always lazy
   or explicit, not eager implicit" → step 2 (`New` stops probing at
-  construction, unsettled-size `ReadAt`, `Size()` lazily settled),
+  construction, unsettled-size `ReadAt`),
   step 4 (`NewRange` constructor does no I/O); documented step 5;
   step 6 no-request-at-construction and unknown-size tests.
+- D11 "Remove Size" → step 2 (delete `Size()`; `Metadata()` sole size
+  exposure); documented step 5; step 6 adaptations.
 - Inherited prior-D1 concurrency promise → step 4 design + step 6 race
   test.
 - IDEA use cases: UC1/UC2 → steps 3–4, proven step 6 request counts;

@@ -1,10 +1,9 @@
 # STATUS — httprange sequential-stream lane
 
-Current state: **planned; gate reset by D10, awaiting re-confirmation**
-— decisions D1–D10 recorded and traced through PLAN.md. D10
-(construction never performs I/O; `New` stops probing; `Size()`
-settles lazily) is a user-directed behavior change to the existing
-API, so IDEA.md's gate was reset pending one more confirmation.
+Current state: **planned and finalized** — decisions D1–D11 recorded
+and traced through PLAN.md. The D10 gate reset was resolved by the
+user's "Confirmed but slight modification. Remove Size.", folded as
+D11 (delete `Size()`; `Metadata()` is the sole size exposure).
 Implementation not started.
 
 ## Planning checklist
@@ -28,7 +27,11 @@ Implementation not started.
   lazy or explicit, not eager implicit" — construction does no I/O
   anywhere, `Size()` lazily settled, unsettled-size read handling;
   folded into IDEA/PLAN (steps 2, 4, 5, 6)
-- [ ] IDEA.md gate re-confirmed after D10 (behavior change to `New`)
+- [x] IDEA.md gate re-confirmed after D10 — "Confirmed but slight
+  modification. Remove Size." ✓
+- [x] D11 "Remove Size" — `Size()` deleted from the surface delta;
+  `Metadata()` sole size exposure; folded into IDEA/PLAN (steps 2, 5,
+  6)
 - [x] Public surface delta written (PLAN.md)
 - [x] Implementation steps detailed (PLAN.md steps 1–6)
 - [x] Traceability walked: D1–D7 + inherited prior-D1 each mapped to
@@ -45,5 +48,5 @@ Implementation not started.
 - [ ] 5. Docs (`doc.go`, method docs)
 - [ ] 6. Test matrix incl. request counts, races, resume mismatch
 
-Next action: user re-confirms the gate post-D10; then implementation
-step 1 (Config validators + pin-or-verify + `Metadata()`) on request.
+Next action: implementation step 1 (Config validators + pin-or-verify +
+`Metadata()`), when the user asks for implementation.

@@ -1,11 +1,11 @@
 # IDEA — declared sequential window served by one streaming range request
 
-Gate: not confirmed (reset 2026-08-18 for D10: construction never
-performs I/O — `New` stops probing, `Size()` settles lazily — a
-user-directed behavior change to the existing API; awaiting
-re-confirmation. Earlier confirmations: 2026-08-18 initial, re-confirmed
-same day after the metadata addition + section-view contract; D8/D9
-probe framing folded at the user's direction)
+Gate: confirmed by user, 2026-08-18 ("Confirmed but slight
+modification. Remove Size." — D10's I/O-free construction confirmed
+with D11, removal of the `Size()` method, folded in. Earlier
+confirmations the same day: initial; after the metadata addition +
+section-view contract; D8/D9 probe framing folded at the user's
+direction)
 
 This is the follow-up that `doc/plan/2026-08-17-http_range_reader_at/HANDOFF.md`
 H1 hands off, scoped down from the full PDF.js-style chunk manager to the
@@ -50,7 +50,8 @@ expectation costs round trips, never correctness.
 
 - **Actor**: a program mirroring a remote object to local disk.
 - **Situation**: it wraps the object and copies it out with `io.Copy`
-  (through `io.NewSectionReader(r, 0, r.Size())`), exactly the sequential
+  (through `io.NewSectionReader(r, 0, math.MaxInt64)`, ending at EOF —
+  no size needs to be known first), exactly the sequential
   scan the current package doc warns about.
 - **Intent**: the whole transfer should be one GET, the way `curl -O` does
   it — not `size/bufsize` separate ranged round trips.

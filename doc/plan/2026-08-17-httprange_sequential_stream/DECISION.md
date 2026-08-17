@@ -235,3 +235,29 @@ when requests happen.
 **Rejected**: keeping construction-time probing for `New` (the "eager
 implicit" the user excluded); making `Size()` itself probe (blocking
 network I/O inside an accessor that has no ctx and no error path).
+
+## D11 — Remove `(*ReaderAt).Size()`; `Metadata()` is the sole size exposure (2026-08-18, user)
+
+**Choice**: "Confirmed but slight modification. Remove Size." (user,
+verbatim, on the D10 gate). The exported `Size()` method
+(`reader_at.go:111`) is deleted. The size — total object size, never a
+`NewRange` view's length — is exposed only through
+`Metadata().Size`, valid once supplied via `Config` or settled by a
+response. Internally the reader keeps its size state for clamping,
+boundary EOF, and `Content-Range` verification; only the accessor
+goes. This supersedes D7's remark that `Metadata.Size` compensates for
+`NewRange`'s view-length `Size()` — there is no `Size()` of any kind
+now.
+
+**Rationale**: with D10 the method had become awkward — "0 while
+unknown" with the real answer living in `Metadata()` anyway; one
+exposure is enough. Removal consequences are contained:
+`stream.ReadAtSizeCloser`, the one interface in this repo requiring
+`Size() int64`, lives in `stream/seq_reader_at.go`, which the prior
+plan's D6 records the user already intends to remove; the multi-reader
+path takes size as a struct field
+(`stream.SizedReaderAt{R: r, Size: m.Size}`), which `Metadata()`
+feeds.
+
+**Rejected**: keeping `Size()` as a convenience over `Metadata().Size`
+(two exposures of one datum, one of them ambiguous at zero).
