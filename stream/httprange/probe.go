@@ -6,32 +6,18 @@ import (
 	"net/http"
 )
 
-// Probe checks the reader's picture of the remote object against what the
-// server has right now: one ranged GET for a single byte, the cheapest thing
-// that both proves the server honours Range and makes it report the complete
-// length of the object. Everything the reader already holds — the fields cfg
-// carried into [New] among them — is checked against that response and fails
-// with an error matching [ErrObjectChanged] where the two disagree; whatever
-// was not yet known is pinned from it. A response that is neither that one byte
-// nor the refusal an object without it owes fails the same way: bytes from
-// somewhere else, more bytes than were asked for, and a refusal reporting an
-// object long enough to hold that byte are all a server not honouring Range. A
-// server handing back the whole entity fails with an error matching
-// [ErrRangeIgnored], instead of letting every later read quietly download the
-// object in full. The single exception is a whole entity of zero bytes, which is
-// read as an object of size zero: that is how an empty one answers a range
-// request on many servers, Go's own file server among them.
+// Probe probes if an HTTP object specified by the URL accepts Range Request
+// and also records the object's identity as [Metadata] to detect mid-request content
+// updates.
 //
-// Until some request happens, what the caller handed in is trusted rather than
-// verified, and how large the object is may be unknown. Probe is the way to
-// put that verification, and the failure it may turn into, ahead of the first
-// byte. Skipping it costs nothing: the same check runs inside whichever
-// request the reader makes first, over that request's own response, so the
-// lazy path never spends a round trip of its own. Calling Probe on a reader
-// whose object is already verified fires all the same and verifies it again.
+// It specifically does 2 things:
 //
-// ctx bounds this call alone, where the context given to [New] bounds the
-// reader; the request obeys both and fails as soon as either is done.
+//   - Check if the remote really accepts Range-Request by requesting the 0-0 range (a single byte)
+//     -- if Range-Request is not supported, returns [ErrRangeIgnored]
+//   - Verify against trusted [Metadata] provided through [Config]
+//     -- If a change is detected, returns [ErrObjectChanged]
+//
+// It may return any error the transport would have returned.
 func (r *ReaderAt) Probe(ctx context.Context) error {
 	if err := r.ctx.Err(); err != nil {
 		return err

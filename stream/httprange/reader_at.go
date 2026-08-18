@@ -8,43 +8,16 @@ import (
 	"strings"
 )
 
-// ReadAt implements [io.ReaderAt]. off is relative to the section the reader
-// was built over, which for [New] is the whole object and for [NewRange] the
-// section it names.
+// ReadAt implements [io.ReaderAt].
 //
-// Every call is a request of its own, apart from the reads a [NewRange] reader
-// serves out of its one stream, so calls may run concurrently and none of them
-// leaves anything behind for the others. A read that costs a request costs one
-// HTTP round trip; see the package documentation for how to keep a sequential
-// scan from paying that per buffer.
+// Every call issues a Range Request, so callers may use a large buffer and/or
+// their own buffering mechanism to prevent too many requests.
 //
-// EOF follows [io.SectionReader]: an offset at or past the end of the section
-// returns (0, [io.EOF]) without asking the server anything, and a read
-// reaching the last byte of the section returns (n, io.EOF) along with the
-// bytes it got. The same holds of the end of the object once its size is
-// known, wherever the section reaches past it, which for a zero-length object
-// is every read. An empty p returns (0, nil) and asks nothing either way.
+// The first request also carries the check [ReaderAt.Probe] describes,
+// over its own response.
 //
-// Before the size is known — nothing said it and no request has settled it —
-// the request goes out for exactly the bytes asked for and the answer settles
-// it: an object ending inside the range comes back as the bytes up to its end
-// plus io.EOF, and a range starting past that end as (0, io.EOF).
-//
-// Whichever request the reader makes first also carries the check
-// [ReaderAt.Probe] describes, over its own response, so a caller who never
-// probes still has every response held to what the reader knows.
-//
-// A response describing an object other than the one the reader was built
-// against fails with an error matching [ErrObjectChanged], and one carrying
-// the whole entity rather than the range asked for fails with an error
-// matching [ErrRangeIgnored]. A body ending early fails with
-// [io.ErrUnexpectedEOF]; the bytes read so far are returned with it. Any other
-// status the server answers with comes back as a [*StatusCodeError]. No error
-// text this package writes contains the query, fragment or userinfo of the
-// URL, nor anything from the configured headers, and a transport error naming
-// the URL is rewritten the same way as far as [Doer] leaves room for. The
-// offsets such an error names are offsets into the object, which is what went
-// out on the wire.
+// It returns every error that the transport has returned plus
+// [ErrObjectChanged], [ErrRangeIgnored] and [*StatusCodeError].
 func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	if off < 0 {
 		return 0, fmt.Errorf("httprange.ReaderAt.ReadAt: negative offset %d", off)
@@ -178,62 +151,23 @@ func (r *ReaderAt) readUnsatisfied(resp *http.Response, off int64) error {
 	return io.EOF
 }
 
-// Metadata is a snapshot of what a [ReaderAt] has pinned about the remote
-// object: the validators later responses are held to, Size, the total size of
-// the object in bytes, and the headers of the response that pinned them.
-//
-// It is what [Config].PriorKnowledge takes as well, so what one reader learned
-// hands straight back to the next as what that one starts out knowing, which
-// is how a download resumes. Header is along for that ride and nothing more:
-// what a reader holds there is always its own first response's, never what was
-// handed in.
-//
-// The origin the reader pins alongside these is deliberately left out. It
-// guards against a redirect landing a later request on some other server, and
-// says nothing about which object this is, so it is not something to save and
-// hand back through [Config].
+// Metadata is collected on the first HTTP response or provided through
+// [Config].PriorKnowledge.
+// ETag, LastModified and Size are trusted and used to detect a change of the object.
 type Metadata struct {
 	ETag         string
 	LastModified string
 	Size         int64
 	// Header holds, exactly as they arrived, the headers of the first response
-	// the reader accepted. It is how the entity headers of the object are read
-	// without a HEAD request of one's own: Content-Disposition for the name the
-	// object was stored under, Content-Type, vendor metadata such as
-	// x-amz-meta-*.
-	//
-	// Nothing is filtered out of it, which leaves keys in there describing the
-	// one response rather than the object. Content-Length, Content-Range,
-	// Transfer-Encoding and the like say what that response carried — often a
-	// single probe byte out of the middle of a large object — and are no
-	// account of the object at all; do not read the object's length or extent
-	// out of them. Size is what states the length, and it is stated for the
-	// object.
-	//
-	// It is nil until some request has been accepted, whatever else is known:
-	// a reader seeded with validators through [Config] has those from the
-	// start and no headers until its first response.
+	// the reader accepted.
 	Header http.Header
 }
 
-// Metadata reports what the reader has pinned about the remote object, and
-// whether that snapshot is settled: the object's identity is known, from a
-// response or from the validators the configuration carried, and so is its
-// size. A snapshot that is not settled is what the reader holds so far, and
-// Size in it is zero for want of anything better; ok is what tells that apart
-// from the zero size of an empty object.
+// Metadata returns [Metadata] collected during [*ReaderAt.Probe].
 //
-// Saving the snapshot is how a download resumes later: hand the validators
-// back through [Config] and the reader refuses to splice bytes of another
-// object onto the ones already saved. It may be called while reads are in
-// flight, never waits for them, and issues no request of its own; for a size
-// before any read, see [ReaderAt.Probe].
-//
-// Header rides along with it, nil until a response has arrived and the headers
-// of that response from then on, whatever ok says: a reader given validators
-// and no size has an identity settled and headers still to come. Each snapshot
-// gets a copy of it, so a caller writing on the map they were handed disturbs
-// neither the reader nor the next snapshot.
+// As [*ReaderAt.Probe] is called explicitly or lazily by [*ReaderAt.ReadAt],
+// the metadata isn't always available.
+// The second return value, a boolean flag, is true when Metadata is available.
 func (r *ReaderAt) Metadata() (Metadata, bool) {
 	m := r.meta.Load()
 	if m == nil {
@@ -253,11 +187,6 @@ func (r *ReaderAt) Metadata() (Metadata, bool) {
 	}, identity && m.sizeKnown
 }
 
-// Close stops the reader: it cancels a context derived from the one handed to
-// [New], which aborts the requests still in flight and fails every read from
-// then on, and hands back the connection a [NewRange] reader's stream was
-// holding. The context the caller passed to New is left untouched. There is
-// nothing else to release, so it always reports success.
 func (r *ReaderAt) Close() error {
 	// A context.CancelFunc may be called any number of times, which is all
 	// Close needs in order to be idempotent.

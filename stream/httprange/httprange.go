@@ -15,82 +15,36 @@ import (
 // drainLimit caps what [drainAndClose] reads out of a response body.
 const drainLimit = 1 << 16
 
-// Doer issues an HTTP request and returns its response. [http.Client]
-// satisfies it, and so does anything wrapping one with retries, request
-// signing or instrumentation.
-//
-// A transport error reaches the caller with the URL it names replaced by
-// scheme, host and path alone, which the reader can do for an error that is or
-// wraps a [*url.Error]. A Doer describing a failure in words of its own is
-// beyond that reach: whatever it writes into its message, the raw URL
-// included, is passed on as it stands.
+// Doer is a direct interface translation of [*http.Client].
 type Doer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// Config describes how a [ReaderAt] talks to the remote object, and what the
-// caller already knows about that object. The zero value is usable: requests
-// go through [http.DefaultClient] carrying no extra headers, and everything
-// about the object is learned from the first response.
-//
-// PriorKnowledge is metadata rather than settings, and any subset of it may be
-// given. It is trusted, not verified, until a request actually happens: the
-// first response is checked against every property it states and contradicts
-// it with [ErrObjectChanged] before any of its bytes are used. Nothing in it
-// decides when a request happens; see [ReaderAt.Probe] for putting that check
-// ahead of the first read.
 type Config struct {
 	// Client issues every request the reader makes. nil means
-	// [http.DefaultClient].
+	// http.DefaultClient.
 	Client Doer
-	// Header holds headers to put on every request, such as an Authorization
-	// line or an API version. Whatever it carries stays out of error text.
+	// Additional headers put on every HTTP request.
+	// Use this to include any metadata, for example authorization info.
 	//
-	// Three keys are worth nothing to set: no value handed in for Range,
-	// If-Range or Accept-Encoding reaches the wire, the first two being dropped
-	// from the copy that goes out and Accept-Encoding overwritten with
-	// identity. Those three decide what a response means, which is what makes
-	// them the reader's own.
+	// Range, If-Range and Accept-Encoding will be deliberately overwritten.
 	Header http.Header
-	// PriorKnowledge is metadata the caller already holds about the object,
-	// saved from an earlier session — a [ReaderAt.Metadata] snapshot, most
-	// often — and handed back so this reader picks up where that one left off.
+	// PriorKnowledge provides trusted prior knowledge for an HTTP object of interest.
+	// Partial metadata is ok: you need to fill only known fields.
 	//
-	// Knowing only part of it is a case of its own rather than a shortcoming:
-	// set whichever fields the caller actually has, a size alone, validators
-	// alone or any mix of the three. Each field set is trusted and then
-	// verified on its own, and each field left empty is learned from the first
-	// response to state it. The zero value says nothing about the object at
-	// all.
+	// For example, you can provide ETag and/or LastModified to detect content change
+	// between 2 or more download attempts. Useful for resumable downloads.
 	//
-	// A Size greater than zero is what lets a read landing past the end of an
-	// object that long end at [io.EOF] without asking the server anything. The
-	// validators pre-pin the object identity, and each read or stream request
-	// carries one of them as If-Range — the ETag when it is strong, otherwise
-	// LastModified; a weak ETag is never sent, being no protection there —
-	// exactly as validators the reader pinned itself. [ReaderAt.Probe]'s own
-	// request deliberately sends no If-Range; see there.
+	// ReaderAt.Metadata returns fully filled info collected while accessing the URL.
+	// Resuming download may use the method and saved info with this field.
 	//
-	// The Header field is the exception to all of that: it carries no weight
-	// coming in and is ignored outright. It is here so that a whole
-	// [ReaderAt.Metadata] snapshot can be handed back as it was saved, with no
-	// field to clear first, and headers describe a response rather than an
-	// object — this reader's own first accepted response is where its headers
-	// come from, always.
+	// Metadata.Header is deliberately dropped before being used; you don't want to fill it.
 	PriorKnowledge Metadata
 }
 
-// ReaderAt reads a remote HTTP object through range requests. Build one with
-// [New], or with [NewRange] for a section of the object.
-//
-// It is safe for concurrent use. Every bounded [ReaderAt.ReadAt] runs a
-// request of its own and leaves nothing behind for the others; the description
-// of the object is all such reads share, and it settles one property at a
-// time, once, by whichever request gets there first. A [NewRange] reader adds
-// the one stream its in-order reads consume under a lock, but whether a read
-// is one of those is decided outside that lock: a read landing anywhere else
-// waits on the stream's network I/O at most once, to close it, and every read
-// from then on is bounded again.
+// ReaderAt reads a remote HTTP object through range requests.
+// This type only implements [io.ReaderAt]; use this with [io.SectionReader] if a consumer
+// only accepts [io.Reader].
 type ReaderAt struct {
 	client Doer
 	url    string
@@ -251,21 +205,8 @@ func originOf(resp *http.Response) string {
 	return resp.Request.URL.Scheme + "://" + resp.Request.URL.Host
 }
 
-// New returns a [ReaderAt] over url. Every read it serves is a bounded request
-// of its own; a caller who knows up front that they will walk one stretch of
-// the object front to back wants [NewRange], which serves such reads out of a
-// single streaming request.
-//
-// ctx bounds every request the reader will ever make: once it is done the
-// reader is too. cfg may be nil, which means a zero [Config].
-//
-// Nothing goes on the wire here. Whatever cfg carries — a size, validators,
-// any subset of them, nothing at all — is what the reader starts out believing
-// about the object, and the first request it makes is the first chance to find
-// out whether that is true. A server that does not honour Range, a status the
-// reader cannot work with, and an object other than the one cfg describes all
-// surface at the first read, or at [ReaderAt.Probe] for a caller who wants to
-// know before any byte moves.
+// New returns a [*ReaderAt] over url.
+// cfg is ok to be nil. In that case cfg is treated as a zero value.
 func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error) {
 	if cfg == nil {
 		cfg = &Config{}
