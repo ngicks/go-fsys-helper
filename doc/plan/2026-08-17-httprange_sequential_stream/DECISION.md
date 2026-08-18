@@ -401,3 +401,36 @@ package, so recommending it worked against the use case the doc now
 leads with.
 
 **Rejected**: keeping the prose form; keeping any `bufio` example.
+
+## D15 — `Metadata.Header` exposes the first accepted response's headers (2026-08-18, user)
+
+**Choice**: `Metadata` gains `Header http.Header`, the headers of the
+first response the reader accepted, stored verbatim — no key is stripped
+or filtered on the way in. `objectMeta` holds a clone taken in
+`metaFromResponse`, `completedBy` fills it when nil (its old
+`filled == *m` check is gone, a struct holding a map being
+non-comparable; a `took` flag tracks whether anything was filled), and
+`mismatch` ignores it: which object this is, the validators say.
+`Metadata()` hands back a clone, so a caller writing on the map they were
+given cannot corrupt what the reader holds; `Header` is nil until a
+request has been accepted, which `ok` says nothing about.
+`Config.PriorKnowledge.Header` is ignored as input, and `New`'s
+field-by-field seed is what guarantees it rather than happens to do it.
+
+**Rationale** (user): callers want the entity headers —
+`Content-Disposition` for the filename, `Content-Type`, vendor metadata
+such as `x-amz-meta-*` — and were otherwise paying a `HEAD` request for
+what the reader already had in hand. Simplicity over filtering: the
+response-scoped keys (`Content-Length`, `Content-Range`,
+`Transfer-Encoding`) that come along describe the one response, possibly
+a single-byte probe, and a doc warning saying so costs less and surprises
+less than a strip list that has to be right for every server. Carrying
+`Header` on the way in would mean one reader's response headers
+describing another reader's session; the field exists inbound only so a
+whole saved snapshot hands back unedited.
+
+**Rejected**: stripping response-scoped keys at pin time (an
+allow/deny list nobody can keep correct across servers, and it would hide
+what actually arrived); a separate `ResponseHeader()` accessor (a second
+way to ask what `Metadata()` already answers, and it would not travel
+with a saved snapshot).
