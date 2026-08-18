@@ -428,25 +428,69 @@ func TestNewRange_boundedSection(t *testing.T) {
 }
 
 // TestNewRange_emptySection states what a section with nothing in it does: the
-// same thing an [io.SectionReader] built that way does, at no cost.
+// same thing an [io.SectionReader] built with n zero does, at no cost.
 func TestNewRange_emptySection(t *testing.T) {
 	content := testContent(256)
+	s := startConformantServer(t, content)
 
-	for _, length := range []int64{0, -1} {
-		t.Run(fmt.Sprintf("length_%d", length), func(t *testing.T) {
+	r, err := NewRange(context.Background(), s.URL, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("NewRange returned error: %v", err)
+	}
+	defer r.Close()
+
+	if n, err := r.ReadAt(make([]byte, 16), 0); n != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("ReadAt = (%d, %v), want (0, %v)", n, err, io.EOF)
+	}
+	if got := s.requestCount(); got != 0 {
+		t.Fatalf("reading an empty section cost %d requests, want 0", got)
+	}
+}
+
+// TestNewRange_limitLikeSectionReader pins the section's reach to
+// io.NewSectionReader's computation of it: an off+n that overflows, a negative
+// n among the ways there, runs to the end of the object rather than holding
+// nothing, and the section a NewRange reader hands out drains to the same
+// bytes as an io.SectionReader built with the same off and n over the same
+// content.
+func TestNewRange_limitLikeSectionReader(t *testing.T) {
+	content := testContent(256)
+
+	for _, tc := range []struct {
+		name   string
+		off, n int64
+	}{
+		{name: "negative_n", off: 4, n: -1},
+		{name: "overflowing_n", off: 4, n: math.MaxInt64},
+		{name: "n_past_the_end", off: 250, n: 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			s := startConformantServer(t, content)
 
-			r, err := NewRange(context.Background(), s.URL, 0, length, nil)
+			r, err := NewRange(context.Background(), s.URL, tc.off, tc.n, nil)
 			if err != nil {
 				t.Fatalf("NewRange returned error: %v", err)
 			}
 			defer r.Close()
 
-			if n, err := r.ReadAt(make([]byte, 16), 0); n != 0 || !errors.Is(err, io.EOF) {
-				t.Fatalf("ReadAt = (%d, %v), want (0, %v)", n, err, io.EOF)
+			got, err := io.ReadAll(io.NewSectionReader(r, 0, math.MaxInt64))
+			if err != nil {
+				t.Fatalf("draining the section returned error: %v", err)
 			}
-			if got := s.requestCount(); got != 0 {
-				t.Fatalf("reading an empty section cost %d requests, want 0", got)
+			want, err := io.ReadAll(
+				io.NewSectionReader(bytes.NewReader(content), tc.off, tc.n),
+			)
+			if err != nil {
+				t.Fatalf("draining the local section returned error: %v", err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatalf(
+					"the section drained to %d bytes, io.NewSectionReader's to %d",
+					len(got), len(want),
+				)
+			}
+			if n := s.requestCount(); n != 1 {
+				t.Fatalf("draining the section cost %d requests, want 1", n)
 			}
 		})
 	}

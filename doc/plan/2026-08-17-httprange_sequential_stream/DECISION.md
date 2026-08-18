@@ -317,3 +317,27 @@ feeds.
 
 **Rejected**: keeping `Size()` as a convenience over `Metadata().Size`
 (two exposures of one datum, one of them ambiguous at zero).
+
+## D12 — Section reach computed exactly as `io.NewSectionReader` computes it (2026-08-18, user)
+
+**Choice**: "NewRange misses io.NewSectionReader's length computation.
+Mimic it." (user, verbatim, post-implementation). `NewRange` now
+computes the section's limit the way `io.NewSectionReader` does —
+`off+n`, falling back to `math.MaxInt64` when `off <= MaxInt64-n`
+fails — wraparound included. Consequence: a negative `n` lands in the
+overflow branch (`MaxInt64-n` wraps below zero) and the section runs
+to the end, exactly as `math.MaxInt64` does; only `n == 0` (or a
+section starting at or past the object's end) is empty.
+
+**Rationale**: parity with the stdlib was always the stated contract
+("same rule as io.SectionReader", D5), and the stdlib's actual
+behavior — verified empirically against Go 1.26:
+`io.NewSectionReader(r, 4, -1).Size()` is `MaxInt64-4` and reads
+succeed — contradicts D5's parenthetical "n < 0 … works as io.EOF on
+first read attempt". This supersedes that clause of D5; the previous
+implementation's `max(n, 0)` clamp is gone. Pinned by a parity test
+draining a `NewRange` section and an `io.NewSectionReader` built with
+the same `(off, n)` over the same content.
+
+**Rejected**: keeping the empty-view reading of negative `n` (diverges
+from the stdlib the doc names as the model).

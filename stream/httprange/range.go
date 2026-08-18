@@ -46,9 +46,10 @@ func (v view) locate(p []byte, off int64) ([]byte, int64, bool) {
 // off, and a read reaching off+n ends at [io.EOF] whatever the object holds
 // past there. An n longer than what is left clamps to the end of the object,
 // and math.MaxInt64 is how a caller says "from off to wherever the object
-// ends". An n of zero or less is a section with nothing in it: the first read
-// is io.EOF and no request is ever made, as it is for an [io.SectionReader]
-// built the same way.
+// ends". An n of zero is a section with nothing in it: the first read is
+// io.EOF and no request is ever made. The section's reach is computed as
+// io.NewSectionReader computes it, so an off+n that overflows — a negative n
+// among the ways there — runs to the end the same way math.MaxInt64 does.
 //
 // It is [New] with one thing added, for the caller who says up front that they
 // will read the section mostly front to back: a single streaming range request
@@ -81,7 +82,17 @@ func NewRange(ctx context.Context, url string, off, n int64, cfg *Config) (*Read
 	if err != nil {
 		return nil, err
 	}
-	r.view = view{base: off, length: max(n, 0)}
+	// The section's reach is computed exactly as io.NewSectionReader computes
+	// its limit, wraparound included: off+n overflowing — a negative n lands
+	// here, since math.MaxInt64-n wraps below zero — assumes the section may
+	// run to the last representable offset.
+	var limit int64
+	if off <= math.MaxInt64-n {
+		limit = off + n
+	} else {
+		limit = math.MaxInt64
+	}
+	r.view = view{base: off, length: limit - off}
 	if r.length > 0 {
 		r.stream = newStream(r.view)
 	}
