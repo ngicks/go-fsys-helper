@@ -2,7 +2,6 @@ package httprange
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -55,7 +54,7 @@ func TestNewRange_noRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startConformantServer(t, content)
 
-			r, err := NewRange(context.Background(), s.URL, tc.base, tc.length, tc.cfg)
+			r, err := NewRange(t.Context(), s.URL, tc.base, tc.length, tc.cfg)
 			if err != nil {
 				t.Fatalf("NewRange returned error: %v", err)
 			}
@@ -94,7 +93,7 @@ func TestNewRange_rejects(t *testing.T) {
 			})
 
 			r, err := NewRange(
-				context.Background(), tc.rawURL, tc.off, 16, &Config{Client: client},
+				t.Context(), tc.rawURL, tc.off, 16, &Config{Client: client},
 			)
 			if err == nil {
 				r.Close()
@@ -114,7 +113,7 @@ func TestNewRange_wholeObject(t *testing.T) {
 	content := testContent(4096)
 	s := startConformantServer(t, content)
 
-	r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+	r, err := NewRange(t.Context(), s.URL, 0, math.MaxInt64, nil)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
 	}
@@ -139,7 +138,7 @@ func TestNewRange_knownSizeStream(t *testing.T) {
 	s := startConformantServer(t, content)
 
 	r, err := NewRange(
-		context.Background(), s.URL, 0, math.MaxInt64, &Config{Size: int64(len(content))},
+		t.Context(), s.URL, 0, math.MaxInt64, &Config{Size: int64(len(content))},
 	)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
@@ -185,7 +184,7 @@ func TestNewRange_resume(t *testing.T) {
 	s := startConformantServer(t, content)
 
 	r, err := NewRange(
-		context.Background(), s.URL, saved, math.MaxInt64, &Config{ETag: savedETag},
+		t.Context(), s.URL, saved, math.MaxInt64, &Config{ETag: savedETag},
 	)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
@@ -238,7 +237,7 @@ func TestNewRange_probeThenStream(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startConformantServer(t, content)
 
-			r, err := NewRange(context.Background(), s.URL, saved, math.MaxInt64, tc.cfg(s))
+			r, err := NewRange(t.Context(), s.URL, saved, math.MaxInt64, tc.cfg(s))
 			if err != nil {
 				t.Fatalf("NewRange returned error: %v", err)
 			}
@@ -287,7 +286,7 @@ func TestNewRange_resumeMismatch(t *testing.T) {
 	s.swap(content, `"v2"`)
 
 	r, err := NewRange(
-		context.Background(), s.URL, 256, math.MaxInt64, &Config{ETag: `"v1"`},
+		t.Context(), s.URL, 256, math.MaxInt64, &Config{ETag: `"v1"`},
 	)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
@@ -319,7 +318,7 @@ func TestNewRange_boundedSection(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				s := startConformantServer(t, content)
 
-				r, err := NewRange(context.Background(), s.URL, tc.base, tc.length, nil)
+				r, err := NewRange(t.Context(), s.URL, tc.base, tc.length, nil)
 				if err != nil {
 					t.Fatalf("NewRange returned error: %v", err)
 				}
@@ -347,7 +346,7 @@ func TestNewRange_boundedSection(t *testing.T) {
 		)
 		s := startConformantServer(t, content)
 
-		r, err := NewRange(context.Background(), s.URL, base, length, nil)
+		r, err := NewRange(t.Context(), s.URL, base, length, nil)
 		if err != nil {
 			t.Fatalf("NewRange returned error: %v", err)
 		}
@@ -383,7 +382,7 @@ func TestNewRange_boundedSection(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				s := startConformantServer(t, content)
 
-				r, err := NewRange(context.Background(), s.URL, base, length, nil)
+				r, err := NewRange(t.Context(), s.URL, base, length, nil)
 				if err != nil {
 					t.Fatalf("NewRange returned error: %v", err)
 				}
@@ -411,7 +410,7 @@ func TestNewRange_boundedSection(t *testing.T) {
 		s := startConformantServer(t, content)
 
 		r, err := NewRange(
-			context.Background(), s.URL, size, math.MaxInt64, &Config{Size: size},
+			t.Context(), s.URL, size, math.MaxInt64, &Config{Size: size},
 		)
 		if err != nil {
 			t.Fatalf("NewRange returned error: %v", err)
@@ -433,7 +432,7 @@ func TestNewRange_emptySection(t *testing.T) {
 	content := testContent(256)
 	s := startConformantServer(t, content)
 
-	r, err := NewRange(context.Background(), s.URL, 0, 0, nil)
+	r, err := NewRange(t.Context(), s.URL, 0, 0, nil)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
 	}
@@ -467,7 +466,7 @@ func TestNewRange_limitLikeSectionReader(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startConformantServer(t, content)
 
-			r, err := NewRange(context.Background(), s.URL, tc.off, tc.n, nil)
+			r, err := NewRange(t.Context(), s.URL, tc.off, tc.n, nil)
 			if err != nil {
 				t.Fatalf("NewRange returned error: %v", err)
 			}
@@ -504,7 +503,7 @@ func TestNewRange_pastUnknownEnd(t *testing.T) {
 	size := int64(len(content))
 	s := startConformantServer(t, content)
 
-	r, err := NewRange(context.Background(), s.URL, size*2, math.MaxInt64, nil)
+	r, err := NewRange(t.Context(), s.URL, size*2, math.MaxInt64, nil)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
 	}
@@ -534,7 +533,7 @@ func TestNewRange_outOfOrderRead(t *testing.T) {
 	content := testContent(1024)
 	s := startConformantServer(t, content)
 
-	r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+	r, err := NewRange(t.Context(), s.URL, 0, math.MaxInt64, nil)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
 	}
@@ -602,7 +601,7 @@ func TestNewRange_streamDiesMidBody(t *testing.T) {
 		handlePartial(content, `"v1"`),
 	))
 
-	r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+	r, err := NewRange(t.Context(), s.URL, 0, math.MaxInt64, nil)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
 	}
@@ -635,7 +634,7 @@ func TestNewRange_concurrentReads(t *testing.T) {
 	size := int64(len(content))
 	s := startConformantServer(t, content)
 
-	r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+	r, err := NewRange(t.Context(), s.URL, 0, math.MaxInt64, nil)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
 	}
@@ -741,7 +740,7 @@ func TestNewRange_MetadataDuringStream(t *testing.T) {
 		content := testContent(1 << 20)
 		s := startConformantServer(t, content)
 
-		r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+		r, err := NewRange(t.Context(), s.URL, 0, math.MaxInt64, nil)
 		if err != nil {
 			t.Fatalf("NewRange returned error: %v", err)
 		}
@@ -783,7 +782,7 @@ func TestNewRange_MetadataDuringStream(t *testing.T) {
 		var reqLog requestLog
 		s := startHandlerServer(t, reqLog.wrap(handleStreamPartial(content, "")))
 
-		r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+		r, err := NewRange(t.Context(), s.URL, 0, math.MaxInt64, nil)
 		if err != nil {
 			t.Fatalf("NewRange returned error: %v", err)
 		}
@@ -839,7 +838,7 @@ func TestNewRange_MetadataDuringStream(t *testing.T) {
 			}
 		})
 
-		r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+		r, err := NewRange(t.Context(), s.URL, 0, math.MaxInt64, nil)
 		if err != nil {
 			t.Fatalf("NewRange returned error: %v", err)
 		}
@@ -909,7 +908,7 @@ func TestNewRange_CloseDuringStreamRead(t *testing.T) {
 		}
 	})
 
-	r, err := NewRange(context.Background(), s.URL, 0, math.MaxInt64, nil)
+	r, err := NewRange(t.Context(), s.URL, 0, math.MaxInt64, nil)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
 	}

@@ -22,7 +22,7 @@ func TestReaderAt_ReadAt(t *testing.T) {
 	size := int64(len(content))
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestReaderAt_ReadAt_rangeIgnored(t *testing.T) {
 		handleWhole(content),
 	))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestReaderAt_ReadAt_verifiesLazily(t *testing.T) {
 	var reqLog requestLog
 	s := startHandlerServer(t, reqLog.wrap(handlePartial(content, `"v2"`)))
 
-	r, err := New(context.Background(), s.URL, &Config{ETag: `"v1"`})
+	r, err := New(t.Context(), s.URL, &Config{ETag: `"v1"`})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestReaderAt_ReadAt_unknownSize(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startConformantServer(t, tc.content)
 
-			r, err := New(context.Background(), s.URL, nil)
+			r, err := New(t.Context(), s.URL, nil)
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}
@@ -204,7 +204,7 @@ func TestReaderAt_wholeObjectWithoutSize(t *testing.T) {
 	content := testContent(1024)
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 		content := testContent(256)
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -258,7 +258,7 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			handlePartial(content, `"v2"`),
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -278,7 +278,7 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			handlePartial(testContent(320), `"v1"`),
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -306,7 +306,7 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			},
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -338,7 +338,7 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			},
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -372,7 +372,7 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			},
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -407,7 +407,7 @@ func TestReaderAt_ReadAt_originChanged(t *testing.T) {
 		},
 	))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -434,7 +434,7 @@ func TestReaderAt_ReadAt_statusError(t *testing.T) {
 		},
 	))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -497,7 +497,7 @@ func TestReaderAt_ReadAt_weakETag(t *testing.T) {
 			var reqLog requestLog
 			s := startHandlerServer(t, reqLog.wrap(serveWeak(tc.lastModified)))
 
-			r, err := New(context.Background(), s.URL, nil)
+			r, err := New(t.Context(), s.URL, nil)
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}
@@ -541,7 +541,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 	t.Run("config_pre_pin", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, &Config{
+		r, err := New(t.Context(), s.URL, &Config{
 			Size:         size,
 			ETag:         etag,
 			LastModified: lastModified,
@@ -563,7 +563,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 	t.Run("size_alone", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, &Config{Size: size})
+		r, err := New(t.Context(), s.URL, &Config{Size: size})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -580,7 +580,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 	t.Run("nothing_known", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -597,7 +597,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 	t.Run("from_probe", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -620,7 +620,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 		// settles the description is the response having happened at all.
 		s := startHandlerServer(t, handlePartial(content, ""))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -649,7 +649,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 		))
 
 		// Half a description: the caller saved a Last-Modified and no ETag.
-		r, err := New(context.Background(), s.URL, &Config{
+		r, err := New(t.Context(), s.URL, &Config{
 			Size:         size,
 			LastModified: lastModified,
 		})
@@ -688,7 +688,7 @@ func TestReaderAt_ReadAt_shortBody(t *testing.T) {
 		},
 	))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -710,7 +710,7 @@ func TestReaderAt_ReadAt_parallel(t *testing.T) {
 	size := int64(len(content))
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -752,7 +752,7 @@ func TestReaderAt_ReadAt_concurrentFirstRead(t *testing.T) {
 	content := testContent(readers * bufLen)
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, &Config{Size: int64(len(content))})
+	r, err := New(t.Context(), s.URL, &Config{Size: int64(len(content))})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -802,7 +802,7 @@ func TestReaderAt_iotest(t *testing.T) {
 	content := testContent(1024)
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -848,7 +848,7 @@ func TestReaderAt_Close(t *testing.T) {
 	content := testContent(256)
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -881,7 +881,7 @@ func TestReaderAt_CloseDuringRead(t *testing.T) {
 		}
 	})
 
-	r, err := New(context.Background(), s.URL, &Config{Size: int64(len(content))})
+	r, err := New(t.Context(), s.URL, &Config{Size: int64(len(content))})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}

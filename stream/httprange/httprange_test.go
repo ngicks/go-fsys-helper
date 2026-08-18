@@ -221,7 +221,7 @@ func assertNoSecret(t *testing.T, err error) {
 func mustProbe(t *testing.T, r *ReaderAt) {
 	t.Helper()
 
-	if err := r.Probe(context.Background()); err != nil {
+	if err := r.Probe(t.Context()); err != nil {
 		t.Fatalf("Probe returned error: %v", err)
 	}
 }
@@ -241,7 +241,7 @@ func TestNew_noRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startConformantServer(t, content)
 
-			r, err := New(context.Background(), s.URL, tc.cfg)
+			r, err := New(t.Context(), s.URL, tc.cfg)
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}
@@ -262,7 +262,7 @@ func TestProbe(t *testing.T) {
 	t.Run("settles_everything", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -294,13 +294,13 @@ func TestProbe(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				s := startConformantServer(t, content)
 
-				r, err := New(context.Background(), s.URL, tc.cfg)
+				r, err := New(t.Context(), s.URL, tc.cfg)
 				if err != nil {
 					t.Fatalf("New returned error: %v", err)
 				}
 				defer r.Close()
 
-				if err := r.Probe(context.Background()); !errors.Is(err, ErrObjectChanged) {
+				if err := r.Probe(t.Context()); !errors.Is(err, ErrObjectChanged) {
 					t.Fatalf("Probe returned %v, want %v", err, ErrObjectChanged)
 				}
 			})
@@ -312,7 +312,7 @@ func TestProbe(t *testing.T) {
 
 		// Half a description, and the half that is there is the half the
 		// response is held to; the rest is what the probe is for.
-		r, err := New(context.Background(), s.URL, &Config{LastModified: lastModified})
+		r, err := New(t.Context(), s.URL, &Config{LastModified: lastModified})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -329,7 +329,7 @@ func TestProbe(t *testing.T) {
 	t.Run("fires_again_when_verified", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -344,7 +344,7 @@ func TestProbe(t *testing.T) {
 
 		s.swap(content, `"v2"`)
 
-		if err := r.Probe(context.Background()); !errors.Is(err, ErrObjectChanged) {
+		if err := r.Probe(t.Context()); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("Probe over a re-tagged object = %v, want %v", err, ErrObjectChanged)
 		}
 	})
@@ -352,7 +352,7 @@ func TestProbe(t *testing.T) {
 	t.Run("reader_closed", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -360,7 +360,7 @@ func TestProbe(t *testing.T) {
 			t.Fatalf("Close returned error: %v", err)
 		}
 
-		if err := r.Probe(context.Background()); !errors.Is(err, context.Canceled) {
+		if err := r.Probe(t.Context()); !errors.Is(err, context.Canceled) {
 			t.Fatalf("Probe after Close = %v, want %v", err, context.Canceled)
 		}
 		if got := s.requestCount(); got != 0 {
@@ -371,7 +371,7 @@ func TestProbe(t *testing.T) {
 	t.Run("own_context_canceled", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -392,7 +392,7 @@ func TestNew_configuredSize(t *testing.T) {
 	content := testContent(256)
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, &Config{Size: int64(len(content))})
+	r, err := New(t.Context(), s.URL, &Config{Size: int64(len(content))})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestNew_savedValidators(t *testing.T) {
 		s := startConformantServer(t, content)
 		s.swap(content, `"v2"`)
 
-		r, err := New(context.Background(), s.URL, &Config{Size: size, ETag: savedETag})
+		r, err := New(t.Context(), s.URL, &Config{Size: size, ETag: savedETag})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -452,7 +452,7 @@ func TestNew_savedValidators(t *testing.T) {
 		// the saved validator is what the response gets held to.
 		s := startHandlerServer(t, handlePartial(content, `"v2"`))
 
-		r, err := New(context.Background(), s.URL, &Config{Size: size, ETag: savedETag})
+		r, err := New(t.Context(), s.URL, &Config{Size: size, ETag: savedETag})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -467,13 +467,13 @@ func TestNew_savedValidators(t *testing.T) {
 
 		// No size either, so nothing here is known well enough to read
 		// against; the probe is what turns that into an answer.
-		r, err := New(context.Background(), s.URL, &Config{ETag: savedETag})
+		r, err := New(t.Context(), s.URL, &Config{ETag: savedETag})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
 
-		if err := r.Probe(context.Background()); !errors.Is(err, ErrObjectChanged) {
+		if err := r.Probe(t.Context()); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("Probe over a re-tagged object = %v, want %v", err, ErrObjectChanged)
 		}
 	})
@@ -504,7 +504,7 @@ func TestNew_savedValidators(t *testing.T) {
 				// the caller saved as the only thing the reader can be holding.
 				s := startHandlerServer(t, reqLog.wrap(handlePartial(content, "")))
 
-				r, err := New(context.Background(), s.URL, &Config{
+				r, err := New(t.Context(), s.URL, &Config{
 					Size:         size,
 					ETag:         tc.etag,
 					LastModified: tc.lastModified,
@@ -579,7 +579,7 @@ func TestNew_invalidURL(t *testing.T) {
 				return nil, errors.New("no request was expected")
 			})
 
-			r, err := New(context.Background(), tc.rawURL, &Config{Client: client})
+			r, err := New(t.Context(), tc.rawURL, &Config{Client: client})
 			if err == nil {
 				r.Close()
 				t.Fatal("New returned no error")
@@ -596,13 +596,13 @@ func TestProbe_rangeIgnored(t *testing.T) {
 	content := testContent(128)
 	s := startHandlerServer(t, handleWhole(content))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
 
-	if err := r.Probe(context.Background()); !errors.Is(err, ErrRangeIgnored) {
+	if err := r.Probe(t.Context()); !errors.Is(err, ErrRangeIgnored) {
 		t.Fatalf("Probe returned %v, want %v", err, ErrRangeIgnored)
 	}
 }
@@ -657,7 +657,7 @@ func assertWholeEmptyEntity(t *testing.T, rawURL string) {
 func assertEmptyObject(t *testing.T, rawURL string) {
 	t.Helper()
 
-	r, err := New(context.Background(), rawURL, nil)
+	r, err := New(t.Context(), rawURL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -684,13 +684,13 @@ func TestProbe_contentEncoding(t *testing.T) {
 		_, _ = w.Write([]byte{0})
 	})
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
 
-	err = r.Probe(context.Background())
+	err = r.Probe(t.Context())
 	if err == nil {
 		t.Fatal("Probe returned no error")
 	}
@@ -782,13 +782,13 @@ func TestProbe_badResponse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startHandlerServer(t, tc.handler)
 
-			r, err := New(context.Background(), s.URL, nil)
+			r, err := New(t.Context(), s.URL, nil)
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}
 			defer r.Close()
 
-			err = r.Probe(context.Background())
+			err = r.Probe(t.Context())
 			switch {
 			case tc.want != nil:
 				if !errors.Is(err, tc.want) {
@@ -828,13 +828,13 @@ func TestProbe_statusError(t *testing.T) {
 				http.Error(w, http.StatusText(tc.code), tc.code)
 			})
 
-			r, err := New(context.Background(), s.URL, nil)
+			r, err := New(t.Context(), s.URL, nil)
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}
 			defer r.Close()
 
-			err = r.Probe(context.Background())
+			err = r.Probe(t.Context())
 			codeErr, ok := errors.AsType[*StatusCodeError](err)
 			if !ok {
 				t.Fatalf("Probe returned %v, want a *StatusCodeError", err)
@@ -863,13 +863,13 @@ func TestSecretsStayOutOfErrorText(t *testing.T) {
 			http.Error(w, "no such object", http.StatusNotFound)
 		})
 
-		r, err := New(context.Background(), secretURL(t, s.URL), nil)
+		r, err := New(t.Context(), secretURL(t, s.URL), nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
 
-		err = r.Probe(context.Background())
+		err = r.Probe(t.Context())
 		if err == nil {
 			t.Fatal("Probe returned no error")
 		}
@@ -877,13 +877,13 @@ func TestSecretsStayOutOfErrorText(t *testing.T) {
 	})
 
 	t.Run("probe_unreachable", func(t *testing.T) {
-		r, err := New(context.Background(), secretURL(t, deadServerURL(t)), nil)
+		r, err := New(t.Context(), secretURL(t, deadServerURL(t)), nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
 
-		err = r.Probe(context.Background())
+		err = r.Probe(t.Context())
 		if err == nil {
 			t.Fatal("Probe returned no error")
 		}
@@ -893,7 +893,7 @@ func TestSecretsStayOutOfErrorText(t *testing.T) {
 	t.Run("read_range_ignored", func(t *testing.T) {
 		s := startHandlerServer(t, handleWhole(content))
 
-		r, err := New(context.Background(), secretURL(t, s.URL), nil)
+		r, err := New(t.Context(), secretURL(t, s.URL), nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -912,7 +912,7 @@ func TestSecretsStayOutOfErrorText(t *testing.T) {
 	t.Run("stream_range_ignored", func(t *testing.T) {
 		s := startHandlerServer(t, handleWhole(content))
 
-		r, err := NewRange(context.Background(), secretURL(t, s.URL), 0, math.MaxInt64, nil)
+		r, err := NewRange(t.Context(), secretURL(t, s.URL), 0, math.MaxInt64, nil)
 		if err != nil {
 			t.Fatalf("NewRange returned error: %v", err)
 		}
@@ -935,7 +935,7 @@ func TestSecretsStayOutOfErrorText(t *testing.T) {
 
 	t.Run("read_unreachable", func(t *testing.T) {
 		r, err := New(
-			context.Background(),
+			t.Context(),
 			secretURL(t, deadServerURL(t)),
 			&Config{Size: int64(len(content))},
 		)
@@ -959,7 +959,7 @@ func TestNew_staticHeaders(t *testing.T) {
 		content := testContent(256)
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, &Config{
+		r, err := New(t.Context(), s.URL, &Config{
 			Header: http.Header{
 				"Authorization": {authorization},
 				// The headers deciding what a response means belong to the
@@ -998,7 +998,7 @@ func TestNew_staticHeaders(t *testing.T) {
 		content := testContent(128)
 		s := startHandlerServer(t, handleWhole(content))
 
-		r, err := New(context.Background(), s.URL, &Config{
+		r, err := New(t.Context(), s.URL, &Config{
 			Header: http.Header{"Authorization": {authorization}},
 		})
 		if err != nil {

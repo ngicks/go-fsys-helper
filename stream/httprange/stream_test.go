@@ -2,7 +2,6 @@ package httprange
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +21,7 @@ import (
 func newStreamReader(t *testing.T, rawURL string, cfg *Config, base, length int64) *ReaderAt {
 	t.Helper()
 
-	r, err := NewRange(context.Background(), rawURL, base, length, cfg)
+	r, err := NewRange(t.Context(), rawURL, base, length, cfg)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
 	}

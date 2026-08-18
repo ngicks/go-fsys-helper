@@ -3,7 +3,6 @@ package httprange_test
 import (
 	"archive/zip"
 	"bytes"
-	"context"
 	"io"
 	"math"
 	"net/http"
@@ -28,7 +27,7 @@ func TestZipRoundTrip(t *testing.T) {
 	archive, members := buildTestZip(t)
 	srv := serveZip(t, archive)
 
-	r, err := httprange.New(context.Background(), srv.URL+"/test.zip", nil)
+	r, err := httprange.New(t.Context(), srv.URL+"/test.zip", nil)
 	if err != nil {
 		t.Fatalf("httprange.New: %v", err)
 	}
@@ -51,7 +50,7 @@ func TestZipRoundTrip_streaming(t *testing.T) {
 	srv := serveZip(t, archive)
 
 	r, err := httprange.NewRange(
-		context.Background(), srv.URL+"/test.zip", 0, math.MaxInt64, nil,
+		t.Context(), srv.URL+"/test.zip", 0, math.MaxInt64, nil,
 	)
 	if err != nil {
 		t.Fatalf("httprange.NewRange: %v", err)
@@ -78,7 +77,7 @@ func assertZipRoundTrip(
 
 	// An archive is read from its tail, so the size has to be known before the
 	// first read rather than settled by it.
-	if err := r.Probe(context.Background()); err != nil {
+	if err := r.Probe(t.Context()); err != nil {
 		t.Fatalf("ReaderAt.Probe: %v", err)
 	}
 	meta, ok := r.Metadata()

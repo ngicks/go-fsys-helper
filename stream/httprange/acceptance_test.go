@@ -2,7 +2,6 @@ package httprange_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"io"
 	"math"
@@ -35,7 +34,7 @@ func TestFullCopy_oneRequest(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	r, err := httprange.NewRange(
-		context.Background(), srv.URL+"/object.bin", 0, math.MaxInt64, nil,
+		t.Context(), srv.URL+"/object.bin", 0, math.MaxInt64, nil,
 	)
 	if err != nil {
 		t.Fatalf("httprange.NewRange: %v", err)
