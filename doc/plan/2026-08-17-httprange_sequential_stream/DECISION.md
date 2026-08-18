@@ -67,6 +67,25 @@ protocol:
   reports a size without ok. The over-grant guard on both read paths —
   what keeps a hostile 206 from writing past the caller's buffer — got
   pinning tests, each proven non-vacuous by mutation.
+- **Second review round (post-implementation)**: the randomized read's
+  synchronous `kill()` could block indefinitely — the lane's mutex may
+  be held by an in-order read stalled on the network, and even
+  uncontended the drain reads up to 64 KiB off a body that has not
+  ended — which contradicts the "only the closer can ever wait" line
+  of the `dead`-flag entry above. That read now calls `killDetached`:
+  a CAS on `dead` elects a single closer and hands the mutex wait and
+  the drain to a goroutine of its own, so the read raises the flag and
+  gets straight on with its bounded request. `Close` keeps the
+  synchronous `kill`, whose wait its own entry above already bounds by
+  cancelling the reader's context first. `streamReadAt`'s entry gate
+  gained a `dead` check beside the state check, closing the window
+  where an in-order read wins the mutex race against the detached
+  closer and would otherwise be served out of a lane a randomized read
+  had already declared finished. The same round widened the
+  empty-entity 200 carve-out to responses that never state a length
+  (chunked, `ContentLength == -1`): emptiness is proven by reading a
+  single byte and finding EOF, where such a response was previously
+  misread as the server ignoring the range.
 
 ## D1 — Stream lane fused into `ReaderAt`, superseding prior D7's rejection (2026-08-18, user)
 
@@ -341,3 +360,44 @@ the same `(off, n)` over the same content.
 
 **Rejected**: keeping the empty-view reading of negative `n` (diverges
 from the stdlib the doc names as the model).
+
+## D13 — `Config.PriorKnowledge Metadata` replaces the three metadata fields (2026-08-18, user)
+
+**Choice**: `Config.Size`, `Config.ETag` and `Config.LastModified` are
+gone; one field, `PriorKnowledge Metadata`, carries all three, reusing
+the exported `Metadata` struct `(*ReaderAt).Metadata()` already returns.
+The name is the user's pick over the proposed `Hint`. Any subset of the
+struct may be filled in — a size alone, validators alone, any mix — with
+each field set trusted then verified on its own and each field left empty
+learned from the first response to state it, which is D8's
+trusted-until-verified framing unchanged.
+
+**Rationale**: symmetry with `Metadata()`. A resume now hands the saved
+snapshot straight back — `&httprange.Config{PriorKnowledge: saved}` — with
+no field-by-field copying between the two shapes of the same information,
+as the resume example in `example_test.go` shows. This supersedes D6's
+"two new `Config` fields" shape and folds the `Size` field in with them;
+nothing about the behavior of any of the three changes.
+
+**Rejected**: the three separate fields (they made a caller restate a
+snapshot they already held); the name `Hint` (user's pick was
+`PriorKnowledge`, which says the trusted-not-verified relationship
+outright).
+
+## D14 — Package doc restructured; `bufio` advice removed (2026-08-18, user)
+
+**Choice**: the package comment leads with the use case — a remote object
+read at offsets, so `zip`, PDF and anything else built on `ReadAt` works
+against object storage without downloading first — and puts the rest in
+bullet lists rather than prose. The old `bufio.NewReaderSize` example and
+recommendation are gone from both the package doc and `stream/README.md`,
+replaced by "read in large pieces, or wrap in a caching `io.ReaderAt`",
+with a why-not naming `bufio` explicitly.
+
+**Rationale** (user): the all-prose form buried what the package is for,
+and wrapping the reader in a `bufio.Reader` yields a sequential
+`io.Reader` — it gives up `ReadAt`, which is the whole point of the
+package, so recommending it worked against the use case the doc now
+leads with.
+
+**Rejected**: keeping the prose form; keeping any `bufio` example.
