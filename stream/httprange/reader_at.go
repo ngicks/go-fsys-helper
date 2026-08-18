@@ -103,7 +103,7 @@ func (r *ReaderAt) ReadAt(p []byte, off int64) (int, error) {
 		// dropping the range, whatever was asked for and whatever If-Range
 		// went with it; see [ReaderAt.Probe]. Held against a size that says
 		// otherwise it fails below as the changed object it describes.
-		if resp.Header.Get("Content-Range") == "" && resp.ContentLength == 0 {
+		if resp.Header.Get("Content-Range") == "" && emptyEntity(resp) {
 			if reason := r.pinOrVerify(resp, 0); reason != "" {
 				return 0, fmt.Errorf(
 					"%w: reading %s at offset %d: %s",
@@ -181,6 +181,10 @@ func (r *ReaderAt) readUnsatisfied(resp *http.Response, off int64) error {
 // Metadata is a snapshot of what a [ReaderAt] has pinned about the remote
 // object: the validators later responses are held to, and Size, the total size
 // of the object in bytes.
+//
+// It is what [Config].PriorKnowledge takes as well, so what one reader learned
+// hands straight back to the next as what that one starts out knowing, which
+// is how a download resumes.
 //
 // The origin the reader pins alongside these is deliberately left out. It
 // guards against a redirect landing a later request on some other server, and

@@ -190,11 +190,7 @@ func ExampleNewRange_resume() {
 	// The next attempt: declare the remainder, hand the saved metadata back.
 	rest, err := httprange.NewRange(
 		ctx, srv.URL+"/object.bin", int64(local.Len()), math.MaxInt64,
-		&httprange.Config{
-			Size:         saved.Size,
-			ETag:         saved.ETag,
-			LastModified: saved.LastModified,
-		},
+		&httprange.Config{PriorKnowledge: saved},
 	)
 	if err != nil {
 		log.Fatal(err)

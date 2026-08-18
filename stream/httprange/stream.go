@@ -78,14 +78,13 @@ func newStream(v view) *stream {
 // kill closes the lane for good, handing the connection underneath back where
 // there is enough left of the body to hand it back. It may be called any
 // number of times and from anywhere, which is what makes it the single way a
-// lane ends, whether that is a read out of order, a body that failed, or the
-// reader closing.
+// lane ends, whether that is a body that failed or the reader closing.
 //
-// Only the caller doing the closing waits for a read holding mu to be done
-// with the body; every other read has heard by then and is on its way. Handing
-// the wait to a goroutine of its own would buy that one caller little — it is
-// about to spend a whole round trip — for a lane whose end nobody would then
-// be waiting on.
+// This is the synchronous close, and [ReaderAt.Close] is who it is for: the
+// wait for a read holding mu is bounded there because Close cancels the
+// reader's context first, which is what makes that read let go. A caller who
+// cannot wait — a read of its own to get on with, and no cancellation to lean
+// on — uses [stream.killDetached] instead.
 func (s *stream) kill() {
 	s.dead.Store(true)
 	s.mu.Lock()
@@ -101,6 +100,22 @@ func (s *stream) killLocked() {
 	}
 	s.state = streamDead
 	s.dead.Store(true)
+}
+
+// killDetached marks the lane dead at once and leaves reclaiming the body to
+// a goroutine of its own, for the read that must not wait: the lane may be
+// held by an in-order read stalled on the network, and the drain itself can
+// block on a body that has not ended. The swap on dead is what makes the
+// closer single: whoever loses it knows one is already on its way.
+func (s *stream) killDetached() {
+	if !s.dead.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.killLocked()
+	}()
 }
 
 // laneReadAt hands p to the lane where the lane is the one holding off, and
@@ -120,8 +135,10 @@ func (r *ReaderAt) laneReadAt(p []byte, off int64) (n int, served bool, err erro
 		// The lane serves one stretch of the object read front to back. A read
 		// anywhere else says the caller is not doing that, and the connection
 		// the lane is holding is worth more handed back than kept for reads
-		// that are not going to arrive.
-		s.kill()
+		// that are not going to arrive. Handing it back is not this read's work
+		// to wait on, though: the lane may be held by an in-order read the
+		// network has stalled, and this read has a request of its own to make.
+		s.killDetached()
 		return 0, false, nil
 	}
 	// A read losing the position between here and mu is not that: someone else
@@ -154,7 +171,11 @@ func (r *ReaderAt) streamReadAt(p []byte, off int64) (n int, served bool, err er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.state == streamDead || s.pos.Load() != off {
+	// dead is asked alongside state because the two part company for as long as
+	// a detached close is on its way: a read out of order has already declared
+	// the lane finished, and serving this one out of a body that is about to be
+	// handed back would be reading from a lane nobody owns any more.
+	if s.state == streamDead || s.dead.Load() || s.pos.Load() != off {
 		return 0, false, nil
 	}
 	if s.state == streamPending {
@@ -287,7 +308,7 @@ func (r *ReaderAt) checkStream(
 		// An empty entity is an object of zero bytes rather than a server
 		// dropping the range, exactly as it is for a read; see
 		// [ReaderAt.Probe].
-		if resp.Header.Get("Content-Range") == "" && resp.ContentLength == 0 {
+		if resp.Header.Get("Content-Range") == "" && emptyEntity(resp) {
 			if reason := r.pinOrVerify(resp, 0); reason != "" {
 				return 0, fmt.Errorf(
 					"%w: streaming %s from offset %d: %s",

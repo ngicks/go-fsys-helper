@@ -124,7 +124,7 @@ func TestReaderAt_ReadAt_verifiesLazily(t *testing.T) {
 	var reqLog requestLog
 	s := startHandlerServer(t, reqLog.wrap(handlePartial(content, `"v2"`)))
 
-	r, err := New(t.Context(), s.URL, &Config{ETag: `"v1"`})
+	r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{ETag: `"v1"`}})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -194,6 +194,28 @@ func TestReaderAt_ReadAt_unknownSize(t *testing.T) {
 				t.Fatalf("the read cost %d requests, want 1", got)
 			}
 		})
+	}
+}
+
+// TestReaderAt_ReadAt_chunkedEmptyEntity covers the empty object answering a
+// range with the whole entity and saying nothing about how long that entity
+// is. Nothing probed beforehand, so this read is where the object turns out to
+// be empty rather than the server turning out to ignore ranges, and reading the
+// body is the only thing that can tell those apart.
+func TestReaderAt_ReadAt_chunkedEmptyEntity(t *testing.T) {
+	s := startHandlerServer(t, handleEmptyChunked)
+
+	r, err := New(t.Context(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	if n, err := r.ReadAt(make([]byte, 16), 0); n != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("ReadAt = (%d, %v), want (0, %v)", n, err, io.EOF)
+	}
+	if got, ok := r.Metadata(); got.Size != 0 || !ok {
+		t.Fatalf("Metadata() = (%+v, %t), want size 0 and true", got, ok)
 	}
 }
 
@@ -542,9 +564,11 @@ func TestReaderAt_Metadata(t *testing.T) {
 		s := startConformantServer(t, content)
 
 		r, err := New(t.Context(), s.URL, &Config{
-			Size:         size,
-			ETag:         etag,
-			LastModified: lastModified,
+			PriorKnowledge: Metadata{
+				Size:         size,
+				ETag:         etag,
+				LastModified: lastModified,
+			},
 		})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
@@ -563,7 +587,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 	t.Run("size_alone", func(t *testing.T) {
 		s := startConformantServer(t, content)
 
-		r, err := New(t.Context(), s.URL, &Config{Size: size})
+		r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{Size: size}})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -650,8 +674,10 @@ func TestReaderAt_Metadata(t *testing.T) {
 
 		// Half a description: the caller saved a Last-Modified and no ETag.
 		r, err := New(t.Context(), s.URL, &Config{
-			Size:         size,
-			LastModified: lastModified,
+			PriorKnowledge: Metadata{
+				Size:         size,
+				LastModified: lastModified,
+			},
 		})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
@@ -752,7 +778,7 @@ func TestReaderAt_ReadAt_concurrentFirstRead(t *testing.T) {
 	content := testContent(readers * bufLen)
 	s := startConformantServer(t, content)
 
-	r, err := New(t.Context(), s.URL, &Config{Size: int64(len(content))})
+	r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{Size: int64(len(content))}})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -881,7 +907,7 @@ func TestReaderAt_CloseDuringRead(t *testing.T) {
 		}
 	})
 
-	r, err := New(t.Context(), s.URL, &Config{Size: int64(len(content))})
+	r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{Size: int64(len(content))}})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}

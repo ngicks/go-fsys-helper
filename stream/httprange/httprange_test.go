@@ -176,6 +176,16 @@ func handleWhole(content []byte) http.HandlerFunc {
 	}
 }
 
+// handleEmptyChunked answers with an entity of zero bytes that never says how
+// long it is. Flushing the header before writing anything is what arranges
+// that: Go's server would otherwise size the body it saw and send a length of
+// zero, and it is the answer without one — chunked, as a server streaming its
+// reply sends — that the reader can tell from a whole entity only by reading.
+func handleEmptyChunked(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.(http.Flusher).Flush()
+}
+
 func rangeBounds(v string) (start, end int64) {
 	if _, err := fmt.Sscanf(v, "bytes=%d-%d", &start, &end); err != nil {
 		panic(fmt.Sprintf("test server got Range %q: %v", v, err))
@@ -236,7 +246,7 @@ func TestNew_noRequest(t *testing.T) {
 		cfg  *Config
 	}{
 		{name: "nothing_known", cfg: nil},
-		{name: "size_known", cfg: &Config{Size: int64(len(content))}},
+		{name: "size_known", cfg: &Config{PriorKnowledge: Metadata{Size: int64(len(content))}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := startConformantServer(t, content)
@@ -284,12 +294,12 @@ func TestProbe(t *testing.T) {
 			name string
 			cfg  *Config
 		}{
-			{name: "etag", cfg: &Config{ETag: `"v2"`}},
+			{name: "etag", cfg: &Config{PriorKnowledge: Metadata{ETag: `"v2"`}}},
 			{
 				name: "last_modified",
-				cfg:  &Config{LastModified: "Tue, 07 May 2024 07:08:09 GMT"},
+				cfg:  &Config{PriorKnowledge: Metadata{LastModified: "Tue, 07 May 2024 07:08:09 GMT"}},
 			},
-			{name: "size", cfg: &Config{Size: size + 1}},
+			{name: "size", cfg: &Config{PriorKnowledge: Metadata{Size: size + 1}}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				s := startConformantServer(t, content)
@@ -312,7 +322,11 @@ func TestProbe(t *testing.T) {
 
 		// Half a description, and the half that is there is the half the
 		// response is held to; the rest is what the probe is for.
-		r, err := New(t.Context(), s.URL, &Config{LastModified: lastModified})
+		r, err := New(
+			t.Context(),
+			s.URL,
+			&Config{PriorKnowledge: Metadata{LastModified: lastModified}},
+		)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -392,7 +406,7 @@ func TestNew_configuredSize(t *testing.T) {
 	content := testContent(256)
 	s := startConformantServer(t, content)
 
-	r, err := New(t.Context(), s.URL, &Config{Size: int64(len(content))})
+	r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{Size: int64(len(content))}})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -438,7 +452,11 @@ func TestNew_savedValidators(t *testing.T) {
 		s := startConformantServer(t, content)
 		s.swap(content, `"v2"`)
 
-		r, err := New(t.Context(), s.URL, &Config{Size: size, ETag: savedETag})
+		r, err := New(
+			t.Context(),
+			s.URL,
+			&Config{PriorKnowledge: Metadata{Size: size, ETag: savedETag}},
+		)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -452,7 +470,11 @@ func TestNew_savedValidators(t *testing.T) {
 		// the saved validator is what the response gets held to.
 		s := startHandlerServer(t, handlePartial(content, `"v2"`))
 
-		r, err := New(t.Context(), s.URL, &Config{Size: size, ETag: savedETag})
+		r, err := New(
+			t.Context(),
+			s.URL,
+			&Config{PriorKnowledge: Metadata{Size: size, ETag: savedETag}},
+		)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -467,7 +489,7 @@ func TestNew_savedValidators(t *testing.T) {
 
 		// No size either, so nothing here is known well enough to read
 		// against; the probe is what turns that into an answer.
-		r, err := New(t.Context(), s.URL, &Config{ETag: savedETag})
+		r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{ETag: savedETag}})
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
@@ -505,9 +527,11 @@ func TestNew_savedValidators(t *testing.T) {
 				s := startHandlerServer(t, reqLog.wrap(handlePartial(content, "")))
 
 				r, err := New(t.Context(), s.URL, &Config{
-					Size:         size,
-					ETag:         tc.etag,
-					LastModified: tc.lastModified,
+					PriorKnowledge: Metadata{
+						Size:         size,
+						ETag:         tc.etag,
+						LastModified: tc.lastModified,
+					},
 				})
 				if err != nil {
 					t.Fatalf("New returned error: %v", err)
@@ -618,7 +642,16 @@ func TestProbe_emptyObject(t *testing.T) {
 
 	t.Run("whole_empty_entity", func(t *testing.T) {
 		s := startConformantServer(t, nil)
-		assertWholeEmptyEntity(t, s.URL)
+		assertWholeEmptyEntity(t, s.URL, 0)
+		assertEmptyObject(t, s.URL)
+	})
+
+	// The same answer from a server that streams its replies: nothing in the
+	// response says how long the entity is, so being empty is something only
+	// reading it can tell.
+	t.Run("chunked_empty_entity", func(t *testing.T) {
+		s := startHandlerServer(t, handleEmptyChunked)
+		assertWholeEmptyEntity(t, s.URL, -1)
 		assertEmptyObject(t, s.URL)
 	})
 }
@@ -626,8 +659,9 @@ func TestProbe_emptyObject(t *testing.T) {
 // assertWholeEmptyEntity states the premise of the case it guards: an empty
 // object is what http.ServeContent answers a range request over with a plain
 // 200 rather than a 416, so the reader must take that answer for a size of
-// zero instead of a server dropping the range.
-func assertWholeEmptyEntity(t *testing.T, rawURL string) {
+// zero instead of a server dropping the range. wantLength is what the response
+// says about its own length, -1 being the answer that says nothing at all.
+func assertWholeEmptyEntity(t *testing.T, rawURL string, wantLength int64) {
 	t.Helper()
 
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
@@ -650,6 +684,12 @@ func assertWholeEmptyEntity(t *testing.T, rawURL string) {
 		t.Fatalf(
 			"ranged GET answered %d with %d bytes, want %d with none",
 			resp.StatusCode, len(body), http.StatusOK,
+		)
+	}
+	if resp.ContentLength != wantLength {
+		t.Fatalf(
+			"the answer declared a length of %d, want %d",
+			resp.ContentLength, wantLength,
 		)
 	}
 }
@@ -937,7 +977,7 @@ func TestSecretsStayOutOfErrorText(t *testing.T) {
 		r, err := New(
 			t.Context(),
 			secretURL(t, deadServerURL(t)),
-			&Config{Size: int64(len(content))},
+			&Config{PriorKnowledge: Metadata{Size: int64(len(content))}},
 		)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)

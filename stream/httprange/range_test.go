@@ -48,7 +48,11 @@ func TestNewRange_noRequest(t *testing.T) {
 		length int64
 	}{
 		{name: "nothing_known", base: 0, length: math.MaxInt64},
-		{name: "size_known", cfg: &Config{Size: int64(len(content))}, base: 64, length: 128},
+		{
+			name: "size_known",
+			cfg:  &Config{PriorKnowledge: Metadata{Size: int64(len(content))}},
+			base: 64, length: 128,
+		},
 		{name: "empty_section", base: 0, length: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -138,7 +142,11 @@ func TestNewRange_knownSizeStream(t *testing.T) {
 	s := startConformantServer(t, content)
 
 	r, err := NewRange(
-		t.Context(), s.URL, 0, math.MaxInt64, &Config{Size: int64(len(content))},
+		t.Context(),
+		s.URL,
+		0,
+		math.MaxInt64,
+		&Config{PriorKnowledge: Metadata{Size: int64(len(content))}},
 	)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
@@ -184,7 +192,11 @@ func TestNewRange_resume(t *testing.T) {
 	s := startConformantServer(t, content)
 
 	r, err := NewRange(
-		t.Context(), s.URL, saved, math.MaxInt64, &Config{ETag: savedETag},
+		t.Context(),
+		s.URL,
+		saved,
+		math.MaxInt64,
+		&Config{PriorKnowledge: Metadata{ETag: savedETag}},
 	)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
@@ -223,14 +235,18 @@ func TestNewRange_probeThenStream(t *testing.T) {
 	}{
 		{
 			name: "saved_etag",
-			cfg:  func(s *conformantServer) *Config { return &Config{ETag: s.etag} },
+			cfg: func(s *conformantServer) *Config {
+				return &Config{PriorKnowledge: Metadata{ETag: s.etag}}
+			},
 		},
 		{
 			// Only a Last-Modified was saved; the probe pins the strong ETag
 			// alongside it, and that is the stronger of the two to condition on.
 			name: "validator_from_probe",
 			cfg: func(s *conformantServer) *Config {
-				return &Config{LastModified: s.modTime.UTC().Format(http.TimeFormat)}
+				return &Config{PriorKnowledge: Metadata{
+					LastModified: s.modTime.UTC().Format(http.TimeFormat),
+				}}
 			},
 		},
 	} {
@@ -286,7 +302,7 @@ func TestNewRange_resumeMismatch(t *testing.T) {
 	s.swap(content, `"v2"`)
 
 	r, err := NewRange(
-		t.Context(), s.URL, 256, math.MaxInt64, &Config{ETag: `"v1"`},
+		t.Context(), s.URL, 256, math.MaxInt64, &Config{PriorKnowledge: Metadata{ETag: `"v1"`}},
 	)
 	if err != nil {
 		t.Fatalf("NewRange returned error: %v", err)
@@ -410,7 +426,7 @@ func TestNewRange_boundedSection(t *testing.T) {
 		s := startConformantServer(t, content)
 
 		r, err := NewRange(
-			t.Context(), s.URL, size, math.MaxInt64, &Config{Size: size},
+			t.Context(), s.URL, size, math.MaxInt64, &Config{PriorKnowledge: Metadata{Size: size}},
 		)
 		if err != nil {
 			t.Fatalf("NewRange returned error: %v", err)

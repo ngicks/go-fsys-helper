@@ -98,7 +98,7 @@ func (r *ReaderAt) probe(ctx context.Context) error {
 		// was asked for, and a reader of size zero never asks for a range
 		// again. Any other 200 really would drag the whole object down on
 		// every read.
-		if resp.Header.Get("Content-Range") != "" || resp.ContentLength != 0 {
+		if resp.Header.Get("Content-Range") != "" || !emptyEntity(resp) {
 			return fmt.Errorf(
 				"%w: probing %s",
 				ErrRangeIgnored, redactRawURL(r.url),

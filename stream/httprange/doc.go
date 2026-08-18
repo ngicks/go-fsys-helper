@@ -1,65 +1,85 @@
-// Package httprange exposes a remote HTTP object as an [io.ReaderAt].
+// Package httprange exposes a remote HTTP object as an [io.ReaderAt], so that
+// a format meant to be read in pieces — a zip archive found through the
+// directory at its tail, a PDF found through its cross-reference table,
+// anything at all that reads through ReadAt — can be read where it lies, out
+// of an S3-compatible object store or any HTTP server honouring Range
+// requests, without downloading the whole object first.
 //
-// [New] pins a URL and puts nothing on the wire; every [ReaderAt.ReadAt] then
-// issues its own bounded GET carrying a Range header for exactly the bytes
-// asked for. The size of the object, the validators and the origin that later
-// responses are held to are settled by the first response to arrive, a read's
-// own or [ReaderAt.Probe]'s, and whatever [Config] carried is trusted until
-// then and checked against that response when it comes. Validators saved from
-// an earlier download are how a resumed download refuses to splice bytes of
-// another object onto the ones already saved. Nothing is shared between such
-// reads beyond that settled description, so any number of goroutines may read
-// different parts of the object at the same time and no read disturbs another.
-// [ReaderAt.Metadata] hands the description back, the total size of the object
-// among it, to save for the next resume. When the object changes underneath, a
-// read fails with [ErrObjectChanged] rather than handing back a mix of the old
-// and the new bytes.
+// How it reads, and what that costs:
 //
-// The price is one HTTP round trip per ReadAt, which makes walking an object
-// front to back a few kilobytes at a time painfully slow. There are two ways
-// around it, and which one fits depends on what the caller knows when the
-// reader is built. Reads that scatter, or a stretch that is not known up front,
-// want a buffer over a section reader, so that the walk turns into a handful of
-// large requests rather than one per buffer:
+//   - Every [ReaderAt.ReadAt] issues one bounded GET carrying a Range header
+//     for exactly the bytes asked for, which is one HTTP round trip per call.
+//     Ask for large pieces, or put a caching [io.ReaderAt] in front of the
+//     reader, so that a walk over the object does not spend a round trip every
+//     few kilobytes. A bufio.Reader is not that: it hands back a sequential
+//     reader and gives up the reading at an offset this package exists for.
+//   - [NewRange] is for the caller who knows up front that they will read one
+//     stretch mostly front to back — copying the object out, resuming a
+//     download. One streaming request serves the reads that arrive in order,
+//     so such a walk costs a single round trip however many reads it takes. A
+//     read landing anywhere else is answered by a bounded request of its own;
+//     the stream closes there for good and every read from then on is bounded
+//     again, so a declaration the caller does not keep to costs round trips
+//     and nothing else.
+//   - Reads may run concurrently, and a bounded read shares nothing with the
+//     others beyond what the reader knows about the object, so any number of
+//     goroutines may read different parts of it at once and none disturbs
+//     another.
+//
+// What the reader knows about the object, and when it finds out:
+//
+//   - Building a reader puts nothing on the wire. What [Config] carries in
+//     PriorKnowledge — a size, validators saved from an earlier download, any
+//     subset of them, nothing at all — is what the reader starts out believing,
+//     trusted until a request verifies it.
+//   - The size, the validators and the origin that later responses are held to
+//     settle one property at a time, each by the first response the reader
+//     accepts that states it. Reads run before any of that is settled; the
+//     object's own end is what ends a walk.
+//   - A response describing another object fails with [ErrObjectChanged]
+//     rather than handing back a mix of the old bytes and the new, which is
+//     how a resumed download refuses to splice one object onto another. A
+//     server answering a range with the whole entity fails with
+//     [ErrRangeIgnored], and a status the reader cannot work with comes back
+//     as a [*StatusCodeError].
+//   - [ReaderAt.Probe] puts those failures, and the size, ahead of the first
+//     byte for a caller who would rather not meet them mid-walk. Skipping it
+//     costs nothing: the same check runs inside whichever request the reader
+//     makes first, over that request's own response.
+//   - [ReaderAt.Metadata] hands back what the reader has pinned, the total size
+//     among it, to save for the next resume; it may be asked at any time,
+//     including while a walk is running.
+//   - [ReaderAt.Close] cancels a context derived from the one the reader was
+//     built with, which aborts the requests still in flight, fails every later
+//     read and hands back the connection a [NewRange] reader's stream was
+//     holding; the caller's own context is left alone. There is nothing else to
+//     release, so closing is cheap, always succeeds and may be done more than
+//     once. A reader that is never closed stops working when the caller's own
+//     context does.
+//
+// Reading an archive out of an object store, which is what the size is wanted
+// up front for:
 //
 //	r, err := httprange.New(ctx, url, nil)
 //	if err != nil {
 //		return err
 //	}
 //	defer r.Close()
-//	br := bufio.NewReaderSize(io.NewSectionReader(r, 0, math.MaxInt64), 1<<20)
+//	if err := r.Probe(ctx); err != nil { // settles the size before the first read
+//		return err
+//	}
+//	meta, _ := r.Metadata()
+//	zr, err := zip.NewReader(r, meta.Size)
 //
-// A caller who does know up front that they will read one stretch front to
-// back — copying the whole object out, resuming a download from where it
-// stopped — says so with [NewRange] and has a single streaming request serve
-// the whole walk:
+// Walking one stretch front to back — here a download resumed from where an
+// earlier attempt stopped, which is the same call with an offset of zero and
+// nothing known:
 //
-//	cfg := &httprange.Config{ETag: etag} // the validator the earlier attempt saw
-//	r, err := httprange.NewRange(ctx, url, saved, math.MaxInt64, cfg)
+//	cfg := &httprange.Config{PriorKnowledge: saved} // what the earlier attempt saw
+//	r, err := httprange.NewRange(ctx, url, int64(len(local)), math.MaxInt64, cfg)
 //	if err != nil {
 //		return err
 //	}
 //	defer r.Close()
 //	_, err = io.Copy(dst, io.NewSectionReader(r, 0, math.MaxInt64))
-//
-// Building a reader of either kind puts nothing on the wire: the stream opens
-// on the first read it can serve, and a read arriving anywhere but where that
-// stream stands is a bounded request of its own, so a declaration the caller
-// does not keep to costs round trips and nothing else.
-//
-// The size is nothing either walk needs to know: reads run before it is
-// settled, and the object's own end is what ends the walk. The first request
-// settles what was open and checks what was handed in at once, so a server that
-// does not honour Range, a status the reader cannot work with and an object
-// other than the one [Config] described all surface at that first read. A
-// caller who wants the size, or wants those found out before a single byte is
-// downloaded, calls [ReaderAt.Probe] first and reads the size off
-// [ReaderAt.Metadata].
-//
-// [ReaderAt.Close] cancels a context derived from the one New was given, which
-// aborts the requests still in flight, fails every later read and hands back
-// the connection a [NewRange] reader's stream was holding; the caller's own
-// context is left alone. There is nothing else to release, so closing is cheap,
-// always succeeds and may be done more than once. A reader that is never closed
-// stops working when the caller's own context does.
 package httprange

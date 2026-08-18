@@ -33,12 +33,12 @@ type Doer interface {
 // go through [http.DefaultClient] carrying no extra headers, and everything
 // about the object is learned from the first response.
 //
-// Size, ETag and LastModified are metadata rather than settings, and any
-// subset of them may be given. They are trusted, not verified, until a request
-// actually happens: the first response is checked against every one of them
-// and contradicts them with [ErrObjectChanged] before any of its bytes are
-// used. None of them decides when a request happens; see [ReaderAt.Probe] for
-// putting that check ahead of the first read.
+// PriorKnowledge is metadata rather than settings, and any subset of it may be
+// given. It is trusted, not verified, until a request actually happens: the
+// first response is checked against every property it states and contradicts
+// it with [ErrObjectChanged] before any of its bytes are used. Nothing in it
+// decides when a request happens; see [ReaderAt.Probe] for putting that check
+// ahead of the first read.
 type Config struct {
 	// Client issues every request the reader makes. nil means
 	// [http.DefaultClient].
@@ -46,66 +46,31 @@ type Config struct {
 	// Header holds headers to put on every request, such as an Authorization
 	// line or an API version. Whatever it carries stays out of error text.
 	//
-	// Range, If-Range and Accept-Encoding decide what a response means, so the
-	// reader owns them and no value handed in for one of the three reaches the
-	// wire: the first two are dropped from the copy that goes out and
-	// Accept-Encoding is overwritten with identity.
+	// Three keys are worth nothing to set: no value handed in for Range,
+	// If-Range or Accept-Encoding reaches the wire, the first two being dropped
+	// from the copy that goes out and Accept-Encoding overwritten with
+	// identity. Those three decide what a response means, which is what makes
+	// them the reader's own.
 	Header http.Header
-	// Size is the total size of the object in bytes. Greater than zero means
-	// the caller already knows it, so a read landing past the end of an object
-	// that long ends at [io.EOF] without asking the server anything. Zero, the
-	// usual case, leaves the size to the first response that reports it.
-	Size int64
-	// ETag and LastModified are validators the caller saved from an earlier
-	// response, for resuming. They pre-pin the object identity and ride every
-	// request's If-Range, subject to the same strong-validator rule as
-	// validators the reader pinned itself. Empty means none.
-	ETag         string
-	LastModified string
-}
-
-// ErrObjectChanged reports that what answered a request is not the object the
-// reader was built against: a different length, a different validator, bytes
-// other than the ones asked for, or a response from an origin other than the
-// one earlier responses settled. The bytes of such a response are never handed
-// to the caller, since mixing them with earlier reads would produce an object
-// that never existed.
-var ErrObjectChanged = errors.New("httprange: remote object changed")
-
-// ErrRangeIgnored reports that the server answered a ranged request with the
-// whole entity. Every read would then pull the object down in full while
-// looking like a small one, so the reader refuses instead. Construction asks
-// nothing of the server, so this surfaces at the first read, at the request a
-// [NewRange] reader streams from, or at [ReaderAt.Probe], whichever comes
-// first; the error text says which of the three met it.
-//
-// An entity of zero bytes is not reported this way; it is read as an object of
-// size zero. See [ReaderAt.Probe].
-var ErrRangeIgnored = errors.New("httprange: server ignored range request")
-
-// StatusCodeError reports a response status the reader cannot work with.
-// [errors.AsType] pulls one out of what a call returns.
-//
-// It deliberately does not wrap [io/fs.ErrNotExist] for 404 and 410. A remote
-// HTTP object is not a file: those statuses can just as well come from a proxy
-// in the way, an expired signature or a routing mistake, and code branching on
-// fs.ErrNotExist would read all of them as "the file is not there" and, say,
-// create it. Callers who want that meaning ask for it through NotFound.
-type StatusCodeError struct {
-	Code int
-}
-
-func (e *StatusCodeError) Error() string {
-	if text := http.StatusText(e.Code); text != "" {
-		return fmt.Sprintf("httprange: unexpected status %d %s", e.Code, text)
-	}
-	return fmt.Sprintf("httprange: unexpected status %d", e.Code)
-}
-
-// NotFound reports whether the status says the object is not there:
-// 404 Not Found or 410 Gone.
-func (e *StatusCodeError) NotFound() bool {
-	return e.Code == http.StatusNotFound || e.Code == http.StatusGone
+	// PriorKnowledge is metadata the caller already holds about the object,
+	// saved from an earlier session — a [ReaderAt.Metadata] snapshot, most
+	// often — and handed back so this reader picks up where that one left off.
+	//
+	// Knowing only part of it is a case of its own rather than a shortcoming:
+	// set whichever fields the caller actually has, a size alone, validators
+	// alone or any mix of the three. Each field set is trusted and then
+	// verified on its own, and each field left empty is learned from the first
+	// response to state it. The zero value says nothing about the object at
+	// all.
+	//
+	// A Size greater than zero is what lets a read landing past the end of an
+	// object that long end at [io.EOF] without asking the server anything. The
+	// validators pre-pin the object identity, and each read or stream request
+	// carries one of them as If-Range — the ETag when it is strong, otherwise
+	// LastModified; a weak ETag is never sent, being no protection there —
+	// exactly as validators the reader pinned itself. [ReaderAt.Probe]'s own
+	// request deliberately sends no If-Range; see there.
+	PriorKnowledge Metadata
 }
 
 // ReaderAt reads a remote HTTP object through range requests. Build one with
@@ -304,14 +269,15 @@ func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error) {
 		cancel: cancel,
 		view:   view{length: math.MaxInt64},
 	}
-	if cfg.ETag != "" || cfg.LastModified != "" || cfg.Size > 0 {
+	known := cfg.PriorKnowledge
+	if known.ETag != "" || known.LastModified != "" || known.Size > 0 {
 		// The origin stays open: which server answers is nothing the caller can
 		// have saved, and nothing is known about it until a response arrives.
 		r.meta.Store(&objectMeta{
-			etag:         cfg.ETag,
-			lastModified: cfg.LastModified,
-			size:         cfg.Size,
-			sizeKnown:    cfg.Size > 0,
+			etag:         known.ETag,
+			lastModified: known.LastModified,
+			size:         known.Size,
+			sizeKnown:    known.Size > 0,
 		})
 	}
 	return r, nil
@@ -380,4 +346,22 @@ func checkContentEncoding(resp *http.Response) error {
 func drainAndClose(body io.ReadCloser) {
 	_, _ = io.CopyN(io.Discard, body, drainLimit)
 	_ = body.Close()
+}
+
+// emptyEntity reports whether a 200 carrying no Content-Range is an entity of
+// zero bytes. A response that states its length says so directly; one that
+// does not — chunked, most often — is read for a single byte, an immediate
+// EOF being the emptiness and anything else the whole entity the status
+// already suggested.
+func emptyEntity(resp *http.Response) bool {
+	switch resp.ContentLength {
+	case 0:
+		return true
+	case -1:
+		var b [1]byte
+		n, err := resp.Body.Read(b[:])
+		return n == 0 && errors.Is(err, io.EOF)
+	default:
+		return false
+	}
 }

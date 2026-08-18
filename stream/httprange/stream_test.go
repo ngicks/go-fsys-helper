@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // newStreamReader returns a reader over rawURL carrying a lane for the view
@@ -49,11 +50,34 @@ func laneState(r *ReaderAt) streamState {
 	return r.stream.state
 }
 
+// assertLaneDead asks the flag rather than the state under the lock, because
+// the two part company on the one path that matters here: a read out of order
+// declares the lane dead and leaves the body to a closer of its own, so the
+// lock may still be held by the read that stalled. The flag is what every path
+// raises before it returns.
 func assertLaneDead(t *testing.T, r *ReaderAt) {
 	t.Helper()
 
-	if laneState(r) != streamDead {
+	if !r.stream.dead.Load() {
 		t.Fatal("the lane is still alive, want it dead for good")
+	}
+}
+
+// waitLanePosition waits for the lane to stand at off, which is how a test
+// learns that the read holding it has consumed everything the server sent and
+// is now waiting on the body for bytes that are not coming.
+func waitLanePosition(t *testing.T, r *ReaderAt, off int64) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for r.stream.pos.Load() != off {
+		if time.Now().After(deadline) {
+			t.Fatalf(
+				"the lane stands at %d, want a read holding it at %d",
+				r.stream.pos.Load(), off,
+			)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -179,11 +203,12 @@ func TestStream_openRequest(t *testing.T) {
 		{name: "resumed", base: 64, length: math.MaxInt64, wantRange: "bytes=64-"},
 		{name: "bounded", base: 16, length: 32, wantRange: "bytes=16-47"},
 		{
-			name: "bounded_past_known_end", cfg: &Config{Size: int64(len(content))},
+			name: "bounded_past_known_end",
+			cfg:  &Config{PriorKnowledge: Metadata{Size: int64(len(content))}},
 			base: 96, length: 64, wantRange: "bytes=96-",
 		},
 		{
-			name: "validator_pinned", cfg: &Config{ETag: `"v1"`},
+			name: "validator_pinned", cfg: &Config{PriorKnowledge: Metadata{ETag: `"v1"`}},
 			base: 0, length: math.MaxInt64,
 			wantRange: "bytes=0-", wantIfRange: `"v1"`,
 		},
@@ -321,6 +346,23 @@ func TestStream_open_emptyView(t *testing.T) {
 	}
 }
 
+// TestStream_open_chunkedEmptyEntity is the empty object arriving without a
+// length: the lane's request is answered with a whole entity that says nothing
+// about how long it is, which reading it apart is the only way to tell from the
+// object handed back in full that a lane must refuse.
+func TestStream_open_chunkedEmptyEntity(t *testing.T) {
+	s := startHandlerServer(t, handleEmptyChunked)
+	r := newStreamReader(t, s.URL, nil, 0, math.MaxInt64)
+
+	if n, err := r.ReadAt(make([]byte, 16), 0); n != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("ReadAt = (%d, %v), want (0, %v)", n, err, io.EOF)
+	}
+	assertLaneDead(t, r)
+	if got, ok := r.Metadata(); got.Size != 0 || !ok {
+		t.Fatalf("Metadata() = (%+v, %t), want size 0 and true", got, ok)
+	}
+}
+
 // TestStream_open_rejects is the gate the opening response has to pass, which
 // is the one every bounded read puts its own response through.
 func TestStream_open_rejects(t *testing.T) {
@@ -339,19 +381,19 @@ func TestStream_open_rejects(t *testing.T) {
 			// validator no longer matches.
 			name:    "if_range_did_not_match",
 			handler: handleWhole(content),
-			cfg:     &Config{ETag: `"v1"`},
+			cfg:     &Config{PriorKnowledge: Metadata{ETag: `"v1"`}},
 			want:    ErrObjectChanged,
 		},
 		{
 			name:    "another_validator",
 			handler: handleStreamPartial(content, `"v2"`),
-			cfg:     &Config{ETag: `"v1"`},
+			cfg:     &Config{PriorKnowledge: Metadata{ETag: `"v1"`}},
 			want:    ErrObjectChanged,
 		},
 		{
 			name:    "another_size",
 			handler: handleStreamPartial(content, `"v1"`),
-			cfg:     &Config{Size: 64},
+			cfg:     &Config{PriorKnowledge: Metadata{Size: 64}},
 			want:    ErrObjectChanged,
 		},
 		{
@@ -388,13 +430,13 @@ func TestStream_open_rejects(t *testing.T) {
 				w.Header().Set("Content-Range", "bytes */64")
 				w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 			},
-			cfg:  &Config{Size: 128},
+			cfg:  &Config{PriorKnowledge: Metadata{Size: 128}},
 			want: ErrObjectChanged,
 		},
 		{
 			name:    "another_object_is_empty",
 			handler: handleWhole(nil),
-			cfg:     &Config{Size: 128},
+			cfg:     &Config{PriorKnowledge: Metadata{Size: 128}},
 			want:    ErrObjectChanged,
 		},
 		{
@@ -764,4 +806,82 @@ func TestStream_kill(t *testing.T) {
 	}
 	assertLaneDead(t, r)
 	assertLaneServesNothing(t, r, 0)
+}
+
+// TestStream_outOfOrderReadWhileStalled runs a read out of order against a lane
+// another read is stuck in: the response hands over a few bytes and stops
+// there, so the read walking the object waits on the body holding the lane's
+// lock, and the read arriving elsewhere has to be answered all the same. Ending
+// the lane from that read without detaching the close blocked here under every
+// interleaving — on the lock the stalled read holds, and, uncontended, on
+// draining a body that has not ended either.
+func TestStream_outOfOrderReadWhileStalled(t *testing.T) {
+	const flushed = 64
+
+	content := testContent(256)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+
+	s := startHandlerServer(t, func(w http.ResponseWriter, req *http.Request) {
+		// The lane asks for everything from where it stands; a read out of
+		// order asks for the bytes it wants and nothing more.
+		if !strings.HasSuffix(req.Header.Get("Range"), "-") {
+			handlePartial(content, `"v1"`)(w, req)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		w.Header().Set(
+			"Content-Range",
+			fmt.Sprintf("bytes 0-%d/%d", len(content)-1, len(content)),
+		)
+		w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(content[:flushed])
+		w.(http.Flusher).Flush()
+
+		select {
+		case <-release:
+		case <-req.Context().Done():
+		}
+	})
+	r := newStreamReader(t, s.URL, nil, 0, math.MaxInt64)
+
+	// The lane opens on this read and stands well short of what the handler
+	// flushed, so the read after it has bytes to consume before it stalls.
+	if n, err := r.ReadAt(make([]byte, 16), 0); n != 16 || err != nil {
+		t.Fatalf("ReadAt = (%d, %v), want (16, <nil>)", n, err)
+	}
+	// However this read ends is other tests' subject; here it is what holds the
+	// lane while a read arrives somewhere else.
+	go func() { _, _ = r.ReadAt(make([]byte, 128), 16) }()
+	waitLanePosition(t, r, flushed)
+
+	type result struct {
+		n   int
+		err error
+	}
+	var (
+		buf  = make([]byte, 32)
+		done = make(chan result, 1)
+	)
+	go func() {
+		n, err := r.ReadAt(buf, 128)
+		done <- result{n: n, err: err}
+	}()
+
+	select {
+	case got := <-done:
+		if got.n != len(buf) || got.err != nil {
+			t.Fatalf(
+				"the read out of order = (%d, %v), want (%d, <nil>)",
+				got.n, got.err, len(buf),
+			)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the read out of order did not return while a stream read was stalled on the body")
+	}
+	if want := content[128 : 128+len(buf)]; !bytes.Equal(buf, want) {
+		t.Fatalf("the read out of order returned %x, want %x", buf, want)
+	}
+	assertLaneDead(t, r)
 }
