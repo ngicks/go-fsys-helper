@@ -236,6 +236,17 @@ func mustProbe(t *testing.T, r *ReaderAt) {
 	}
 }
 
+// sameObject reports whether two snapshots say the same thing about the object
+// itself. Header is left out of the comparison, and out of the snapshots a
+// test writes by hand with it: it is what one response carried rather than
+// anything the object is, so the tests it is the subject of state it
+// themselves. It stands in for the == a snapshot holding a map cannot have.
+func sameObject(got, want Metadata) bool {
+	return got.ETag == want.ETag &&
+		got.LastModified == want.LastModified &&
+		got.Size == want.Size
+}
+
 // TestNew_noRequest states the whole of what construction does about the
 // network: nothing, whatever the caller handed in.
 func TestNew_noRequest(t *testing.T) {
@@ -281,7 +292,7 @@ func TestProbe(t *testing.T) {
 		mustProbe(t, r)
 
 		want := Metadata{ETag: s.etag, LastModified: lastModified, Size: size}
-		if got, ok := r.Metadata(); got != want || !ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
 		}
 		if got := s.requestCount(); got != 1 {
@@ -335,7 +346,7 @@ func TestProbe(t *testing.T) {
 		mustProbe(t, r)
 
 		want := Metadata{ETag: s.etag, LastModified: lastModified, Size: size}
-		if got, ok := r.Metadata(); got != want || !ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
 		}
 	})

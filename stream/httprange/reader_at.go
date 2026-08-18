@@ -179,12 +179,14 @@ func (r *ReaderAt) readUnsatisfied(resp *http.Response, off int64) error {
 }
 
 // Metadata is a snapshot of what a [ReaderAt] has pinned about the remote
-// object: the validators later responses are held to, and Size, the total size
-// of the object in bytes.
+// object: the validators later responses are held to, Size, the total size of
+// the object in bytes, and the headers of the response that pinned them.
 //
 // It is what [Config].PriorKnowledge takes as well, so what one reader learned
 // hands straight back to the next as what that one starts out knowing, which
-// is how a download resumes.
+// is how a download resumes. Header is along for that ride and nothing more:
+// what a reader holds there is always its own first response's, never what was
+// handed in.
 //
 // The origin the reader pins alongside these is deliberately left out. It
 // guards against a redirect landing a later request on some other server, and
@@ -194,6 +196,24 @@ type Metadata struct {
 	ETag         string
 	LastModified string
 	Size         int64
+	// Header holds, exactly as they arrived, the headers of the first response
+	// the reader accepted. It is how the entity headers of the object are read
+	// without a HEAD request of one's own: Content-Disposition for the name the
+	// object was stored under, Content-Type, vendor metadata such as
+	// x-amz-meta-*.
+	//
+	// Nothing is filtered out of it, which leaves keys in there describing the
+	// one response rather than the object. Content-Length, Content-Range,
+	// Transfer-Encoding and the like say what that response carried — often a
+	// single probe byte out of the middle of a large object — and are no
+	// account of the object at all; do not read the object's length or extent
+	// out of them. Size is what states the length, and it is stated for the
+	// object.
+	//
+	// It is nil until some request has been accepted, whatever else is known:
+	// a reader seeded with validators through [Config] has those from the
+	// start and no headers until its first response.
+	Header http.Header
 }
 
 // Metadata reports what the reader has pinned about the remote object, and
@@ -208,6 +228,12 @@ type Metadata struct {
 // object onto the ones already saved. It may be called while reads are in
 // flight, never waits for them, and issues no request of its own; for a size
 // before any read, see [ReaderAt.Probe].
+//
+// Header rides along with it, nil until a response has arrived and the headers
+// of that response from then on, whatever ok says: a reader given validators
+// and no size has an identity settled and headers still to come. Each snapshot
+// gets a copy of it, so a caller writing on the map they were handed disturbs
+// neither the reader nor the next snapshot.
 func (r *ReaderAt) Metadata() (Metadata, bool) {
 	m := r.meta.Load()
 	if m == nil {
@@ -221,6 +247,9 @@ func (r *ReaderAt) Metadata() (Metadata, bool) {
 		ETag:         m.etag,
 		LastModified: m.lastModified,
 		Size:         m.size,
+		// Clone of a nil header is nil, which is the reader that has not yet
+		// accepted a response saying so.
+		Header: m.header.Clone(),
 	}, identity && m.sizeKnown
 }
 

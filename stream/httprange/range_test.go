@@ -724,7 +724,7 @@ func pollMetadata(t *testing.T, r *ReaderAt, stop <-chan struct{}, wg *sync.Wait
 				case ok && !seen:
 					settled, seen = got, true
 				case ok:
-					if got != settled {
+					if !sameObject(got, settled) {
 						t.Errorf(
 							"Metadata() = %+v, having been %+v; what is pinned stands",
 							got, settled,
@@ -735,7 +735,7 @@ func pollMetadata(t *testing.T, r *ReaderAt, stop <-chan struct{}, wg *sync.Wait
 					t.Errorf("Metadata() went unsettled again, having settled at %+v", settled)
 					return
 				default:
-					if got != (Metadata{}) {
+					if !sameObject(got, Metadata{}) || got.Header != nil {
 						t.Errorf("Metadata() = (%+v, false), want nothing at all", got)
 						return
 					}
@@ -784,7 +784,7 @@ func TestNewRange_MetadataDuringStream(t *testing.T) {
 			LastModified: s.modTime.UTC().Format(http.TimeFormat),
 			Size:         int64(len(content)),
 		}
-		if got, ok := r.Metadata(); got != want || !ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
 			t.Fatalf("Metadata() after the walk = (%+v, %t), want (%+v, true)", got, ok, want)
 		}
 	})
@@ -821,7 +821,7 @@ func TestNewRange_MetadataDuringStream(t *testing.T) {
 			t.Fatalf("the walk cost %d requests, want the stream's own", n)
 		}
 		want := Metadata{Size: int64(len(content))}
-		if got, ok := r.Metadata(); got != want || !ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
 			t.Fatalf("Metadata() after the walk = (%+v, %t), want (%+v, true)", got, ok, want)
 		}
 	})
@@ -887,7 +887,7 @@ func TestNewRange_MetadataDuringStream(t *testing.T) {
 		want := Metadata{ETag: `"v1"`, Size: int64(len(content))}
 		select {
 		case got := <-settled:
-			if got != want {
+			if !sameObject(got, want) {
 				t.Fatalf("Metadata() = %+v, want %+v", got, want)
 			}
 		case <-time.After(10 * time.Second):

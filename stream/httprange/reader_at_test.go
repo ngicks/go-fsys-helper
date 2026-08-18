@@ -576,7 +576,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 		defer r.Close()
 
 		want := Metadata{ETag: etag, LastModified: lastModified, Size: size}
-		if got, ok := r.Metadata(); got != want || !ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
 		}
 		if got := s.requestCount(); got != 0 {
@@ -596,7 +596,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 		// A size the caller vouched for is known without the object it belongs
 		// to being pinned, which is what ok reports on.
 		want := Metadata{Size: size}
-		if got, ok := r.Metadata(); got != want || ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, false)", got, ok, want)
 		}
 	})
@@ -613,7 +613,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 		// Zero and not ok, which is how an object nobody has looked at yet
 		// tells itself apart from an empty one.
 		want := Metadata{}
-		if got, ok := r.Metadata(); got != want || ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, false)", got, ok, want)
 		}
 	})
@@ -634,7 +634,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 			LastModified: s.modTime.UTC().Format(http.TimeFormat),
 			Size:         size,
 		}
-		if got, ok := r.Metadata(); got != want || !ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
 		}
 	})
@@ -655,7 +655,7 @@ func TestReaderAt_Metadata(t *testing.T) {
 		}
 
 		want := Metadata{Size: size}
-		if got, ok := r.Metadata(); got != want || !ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
 		}
 	})
@@ -689,11 +689,173 @@ func TestReaderAt_Metadata(t *testing.T) {
 		}
 
 		want := Metadata{ETag: etag, LastModified: lastModified, Size: size}
-		if got, ok := r.Metadata(); got != want || !ok {
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
 			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
 		}
 		if _, err := r.ReadAt(make([]byte, 16), 32); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt after the ETag changed = %v, want %v", err, ErrObjectChanged)
+		}
+	})
+}
+
+// TestReaderAt_Metadata_header states what a snapshot carries of the response
+// behind it: the headers of the first response the reader accepted, whole and
+// unedited, so that the entity headers of the object — the name it was stored
+// under, its type, whatever vendor metadata rides along — are read off the
+// reader rather than out of a HEAD request of the caller's own.
+func TestReaderAt_Metadata_header(t *testing.T) {
+	const (
+		etag        = `"v1"`
+		disposition = `attachment; filename="report.pdf"`
+	)
+	content := testContent(256)
+
+	// servePartial answers a range as handlePartial does, with entity headers
+	// of the kind a caller comes here for on top.
+	servePartial := func(extra http.Header) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			for key, values := range extra {
+				for _, v := range values {
+					w.Header().Add(key, v)
+				}
+			}
+			handlePartial(content, etag)(w, r)
+		}
+	}
+
+	t.Run("from_the_response", func(t *testing.T) {
+		s := startHandlerServer(t, servePartial(http.Header{
+			"Content-Disposition": {disposition},
+			"Content-Type":        {"application/pdf"},
+			"X-Amz-Meta-Author":   {"ngicks"},
+		}))
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if got, _ := r.Metadata(); got.Header != nil {
+			t.Fatalf("Metadata().Header = %v before any request, want nothing at all", got.Header)
+		}
+
+		mustProbe(t, r)
+
+		got, _ := r.Metadata()
+		for _, want := range [][2]string{
+			{"Content-Disposition", disposition},
+			{"Content-Type", "application/pdf"},
+			{"X-Amz-Meta-Author", "ngicks"},
+		} {
+			if v := got.Header.Get(want[0]); v != want[1] {
+				t.Fatalf("Metadata().Header.Get(%q) = %q, want %q", want[0], v, want[1])
+			}
+		}
+		// Nothing is filtered out on the way in, which is what "the headers of
+		// the response" means: the keys describing that one response are in
+		// there too, and the documentation is what warns against reading the
+		// object out of them.
+		if v := got.Header.Get("Content-Range"); v == "" {
+			t.Fatal("Metadata().Header carries no Content-Range, want the response's own")
+		}
+	})
+
+	t.Run("snapshot_is_the_caller_s_own", func(t *testing.T) {
+		s := startHandlerServer(t, servePartial(http.Header{
+			"Content-Disposition": {disposition},
+		}))
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		mustProbe(t, r)
+
+		got, _ := r.Metadata()
+		got.Header.Set("Content-Disposition", `attachment; filename="mine.pdf"`)
+		got.Header.Set("X-Written-By-The-Caller", "1")
+
+		again, _ := r.Metadata()
+		if v := again.Header.Get("Content-Disposition"); v != disposition {
+			t.Fatalf("Metadata().Header.Get(\"Content-Disposition\") = %q, want %q", v, disposition)
+		}
+		if v := again.Header.Get("X-Written-By-The-Caller"); v != "" {
+			t.Fatalf("Metadata().Header carries %q, written on an earlier snapshot", v)
+		}
+	})
+
+	t.Run("prior_knowledge_ignored", func(t *testing.T) {
+		s := startHandlerServer(t, servePartial(http.Header{
+			"Content-Disposition": {disposition},
+		}))
+
+		// A snapshot handed back exactly as it was saved, headers included,
+		// which is what carrying them through [Config] is for. Its validators
+		// pre-pin the object; its headers say nothing about this reader.
+		r, err := New(t.Context(), s.URL, &Config{
+			PriorKnowledge: Metadata{
+				ETag: etag,
+				Header: http.Header{
+					"Content-Disposition": {`attachment; filename="saved-earlier.pdf"`},
+					"X-Saved-Earlier":     {"1"},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if got, _ := r.Metadata(); got.Header != nil {
+			t.Fatalf("Metadata().Header = %v before any request, want nothing at all", got.Header)
+		}
+
+		if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
+			t.Fatalf("ReadAt returned error: %v", err)
+		}
+
+		got, _ := r.Metadata()
+		if v := got.Header.Get("Content-Disposition"); v != disposition {
+			t.Fatalf("Metadata().Header.Get(\"Content-Disposition\") = %q, want %q", v, disposition)
+		}
+		if v := got.Header.Get("X-Saved-Earlier"); v != "" {
+			t.Fatalf("Metadata().Header carries %q, seeded through PriorKnowledge", v)
+		}
+	})
+
+	t.Run("settles_once", func(t *testing.T) {
+		s := startHandlerServer(t, handleSequence(
+			servePartial(http.Header{"Content-Disposition": {disposition}}),
+			servePartial(http.Header{
+				"Content-Disposition": {`attachment; filename="second.pdf"`},
+				"X-Second-Response":   {"1"},
+			}),
+		))
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		for _, off := range []int64{0, 32} {
+			if _, err := r.ReadAt(make([]byte, 16), off); err != nil {
+				t.Fatalf("ReadAt at offset %d returned error: %v", off, err)
+			}
+		}
+
+		// The headers settle the way every other property does: what the first
+		// accepted response said stands, and the second response, describing
+		// the same object in other words, changes nothing.
+		got, _ := r.Metadata()
+		if v := got.Header.Get("Content-Disposition"); v != disposition {
+			t.Fatalf("Metadata().Header.Get(\"Content-Disposition\") = %q, want %q", v, disposition)
+		}
+		if v := got.Header.Get("X-Second-Response"); v != "" {
+			t.Fatalf("Metadata().Header carries %q, off the second response", v)
 		}
 	})
 }

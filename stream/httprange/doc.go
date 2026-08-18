@@ -47,8 +47,10 @@
 //     costs nothing: the same check runs inside whichever request the reader
 //     makes first, over that request's own response.
 //   - [ReaderAt.Metadata] hands back what the reader has pinned, the total size
-//     among it, to save for the next resume; it may be asked at any time,
-//     including while a walk is running.
+//     among it, to save for the next resume, along with the headers of the
+//     first response it accepted — where a Content-Disposition or a
+//     Content-Type is read off, no HEAD request of one's own needed. It may be
+//     asked at any time, including while a walk is running.
 //   - [ReaderAt.Close] cancels a context derived from the one the reader was
 //     built with, which aborts the requests still in flight, fails every later
 //     read and hands back the connection a [NewRange] reader's stream was

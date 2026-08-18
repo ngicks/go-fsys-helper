@@ -27,7 +27,10 @@ sequential reader and gives up the random access the package is for.
   runs the same check over its own response.
 - `ReaderAt.Metadata()` reports the size and the validators to save; the
   same snapshot goes back through `Config.PriorKnowledge` to resume a
-  download later, and any subset of it may be filled in by hand.
+  download later, and any subset of it may be filled in by hand. It also
+  carries the headers of the first response the reader accepted, which is
+  where `Content-Disposition`, `Content-Type` and vendor metadata are read
+  off without a `HEAD` request of one's own.
 
 ## Dependencies
 

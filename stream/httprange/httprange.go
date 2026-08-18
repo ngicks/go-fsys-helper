@@ -70,6 +70,13 @@ type Config struct {
 	// LastModified; a weak ETag is never sent, being no protection there —
 	// exactly as validators the reader pinned itself. [ReaderAt.Probe]'s own
 	// request deliberately sends no If-Range; see there.
+	//
+	// The Header field is the exception to all of that: it carries no weight
+	// coming in and is ignored outright. It is here so that a whole
+	// [ReaderAt.Metadata] snapshot can be handed back as it was saved, with no
+	// field to clear first, and headers describe a response rather than an
+	// object — this reader's own first accepted response is where its headers
+	// come from, always.
 	PriorKnowledge Metadata
 }
 
@@ -128,6 +135,12 @@ type objectMeta struct {
 	// unstated case: an object of zero bytes has a size of zero.
 	size      int64
 	sizeKnown bool
+	// header is the whole of what the first accepted response carried, held
+	// for the caller who wants the entity headers of the object out of it. It
+	// is nothing later responses are checked against — which object this is,
+	// the validators say — and it settles once, like every other property
+	// here. nil is the case of no response yet.
+	header http.Header
 	// verified says whether a response has been through pinOrVerify, which is
 	// what tells a description the caller vouched for apart from one the
 	// server has confirmed. It sits in the description rather than beside it so
@@ -147,6 +160,9 @@ func metaFromResponse(resp *http.Response, total int64) *objectMeta {
 		size:         total,
 		sizeKnown:    true,
 		verified:     true,
+		// A copy, so that what gets pinned is detached from the response it
+		// came off and stands however the response is disposed of afterwards.
+		header: resp.Header.Clone(),
 	}
 }
 
@@ -157,23 +173,30 @@ func (m *objectMeta) completedBy(o *objectMeta) *objectMeta {
 	if m == nil {
 		return o
 	}
+	// Whether anything was actually taken from o is tracked as it happens
+	// rather than compared for afterwards: a description holds the response
+	// headers, and a struct holding a map is not comparable.
 	filled := *m
-	if filled.etag == "" {
-		filled.etag = o.etag
+	var took bool
+	if filled.etag == "" && o.etag != "" {
+		filled.etag, took = o.etag, true
 	}
-	if filled.lastModified == "" {
-		filled.lastModified = o.lastModified
+	if filled.lastModified == "" && o.lastModified != "" {
+		filled.lastModified, took = o.lastModified, true
 	}
-	if filled.origin == "" {
-		filled.origin = o.origin
+	if filled.origin == "" && o.origin != "" {
+		filled.origin, took = o.origin, true
 	}
-	if !filled.sizeKnown {
-		filled.size, filled.sizeKnown = o.size, o.sizeKnown
+	if !filled.sizeKnown && o.sizeKnown {
+		filled.size, filled.sizeKnown, took = o.size, true, true
 	}
-	if !filled.verified {
-		filled.verified = o.verified
+	if !filled.verified && o.verified {
+		filled.verified, took = true, true
 	}
-	if filled == *m {
+	if filled.header == nil && o.header != nil {
+		filled.header, took = o.header, true
+	}
+	if !took {
 		return m
 	}
 	return &filled
@@ -273,6 +296,13 @@ func New(ctx context.Context, url string, cfg *Config) (*ReaderAt, error) {
 	if known.ETag != "" || known.LastModified != "" || known.Size > 0 {
 		// The origin stays open: which server answers is nothing the caller can
 		// have saved, and nothing is known about it until a response arrives.
+		//
+		// The headers stay open for a reason of their own, and this listing the
+		// fields one by one rather than copying the struct is what keeps them
+		// that way: a snapshot handed back carries the headers of some earlier
+		// reader's response, which describe that response and not this one.
+		// Header on the way in is ignored, and a header the caller can read
+		// back off this reader is one this reader was answered with.
 		r.meta.Store(&objectMeta{
 			etag:         known.ETag,
 			lastModified: known.LastModified,
