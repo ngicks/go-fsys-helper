@@ -1,11 +1,13 @@
 package httprange
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -20,11 +22,15 @@ func TestReaderAt_ReadAt(t *testing.T) {
 	size := int64(len(content))
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
+
+	// The cases below count requests against a settled size, which is what the
+	// probe settles; reads made before it are the unknown-size matrix's story.
+	mustProbe(t, r)
 
 	for _, tc := range []struct {
 		name     string
@@ -94,17 +100,146 @@ func TestReaderAt_ReadAt_rangeIgnored(t *testing.T) {
 		handleWhole(content),
 	))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
 
-	if got := r.Size(); got != int64(len(content)) {
-		t.Fatalf("Size() = %d, want %d", got, len(content))
+	mustProbe(t, r)
+
+	if got, _ := r.Metadata(); got.Size != int64(len(content)) {
+		t.Fatalf("Metadata().Size = %d, want %d", got.Size, len(content))
 	}
 	if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrRangeIgnored) {
 		t.Fatalf("ReadAt returned %v, want %v", err, ErrRangeIgnored)
+	}
+}
+
+// TestReaderAt_ReadAt_verifiesLazily covers the reader that never probed: the
+// first read's own response is what the validator the caller saved gets
+// checked against, and no request is spent on checking it.
+func TestReaderAt_ReadAt_verifiesLazily(t *testing.T) {
+	content := testContent(256)
+	var reqLog requestLog
+	s := startHandlerServer(t, reqLog.wrap(handlePartial(content, `"v2"`)))
+
+	r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{ETag: `"v1"`}})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	buf := make([]byte, 16)
+	n, err := r.ReadAt(buf, 0)
+	if !errors.Is(err, ErrObjectChanged) {
+		t.Fatalf("ReadAt = (%d, %v), want %v", n, err, ErrObjectChanged)
+	}
+	if n != 0 || !bytes.Equal(buf, make([]byte, len(buf))) {
+		t.Fatalf("ReadAt = (%d, %v) with buffer %x, want no bytes touched", n, err, buf)
+	}
+	if got := len(reqLog.snapshot()); got != 1 {
+		t.Fatalf("the read cost %d requests, want the read alone", got)
+	}
+}
+
+// TestReaderAt_ReadAt_unknownSize covers reads made before anything has said
+// how large the object is: the request goes out as it was asked for, and the
+// answer both settles the size and says where the object ends.
+func TestReaderAt_ReadAt_unknownSize(t *testing.T) {
+	content := testContent(256)
+	size := int64(len(content))
+
+	for _, tc := range []struct {
+		name     string
+		content  []byte
+		off      int64
+		wantN    int
+		wantSize int64
+	}{
+		{name: "past_end", content: content, off: size + 64, wantSize: size},
+		{name: "straddles_end", content: content, off: size - 8, wantN: 8, wantSize: size},
+		{name: "empty_object", content: nil, off: 0, wantSize: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := startConformantServer(t, tc.content)
+
+			r, err := New(t.Context(), s.URL, nil)
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			defer r.Close()
+
+			buf := make([]byte, 16)
+			n, err := r.ReadAt(buf, tc.off)
+			if n != tc.wantN || !errors.Is(err, io.EOF) {
+				t.Fatalf(
+					"ReadAt(make([]byte, %d), %d) = (%d, %v), want (%d, %v)",
+					len(buf), tc.off, n, err, tc.wantN, io.EOF,
+				)
+			}
+			if n > 0 && !bytes.Equal(buf[:n], tc.content[tc.off:tc.off+int64(n)]) {
+				t.Fatalf(
+					"ReadAt returned %x, want %x",
+					buf[:n], tc.content[tc.off:tc.off+int64(n)],
+				)
+			}
+			if got, ok := r.Metadata(); got.Size != tc.wantSize || !ok {
+				t.Fatalf(
+					"Metadata() = (%+v, %t), want size %d and true",
+					got, ok, tc.wantSize,
+				)
+			}
+			if got := s.requestCount(); got != 1 {
+				t.Fatalf("the read cost %d requests, want 1", got)
+			}
+		})
+	}
+}
+
+// TestReaderAt_ReadAt_chunkedEmptyEntity covers the empty object answering a
+// range with the whole entity and saying nothing about how long that entity
+// is. Nothing probed beforehand, so this read is where the object turns out to
+// be empty rather than the server turning out to ignore ranges, and reading the
+// body is the only thing that can tell those apart.
+func TestReaderAt_ReadAt_chunkedEmptyEntity(t *testing.T) {
+	s := startHandlerServer(t, handleEmptyChunked)
+
+	r, err := New(t.Context(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	if n, err := r.ReadAt(make([]byte, 16), 0); n != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("ReadAt = (%d, %v), want (0, %v)", n, err, io.EOF)
+	}
+	if got, ok := r.Metadata(); got.Size != 0 || !ok {
+		t.Fatalf("Metadata() = (%+v, %t), want size 0 and true", got, ok)
+	}
+}
+
+// TestReaderAt_wholeObjectWithoutSize walks the object front to back the way
+// the package documentation says a scan may, with nothing having settled the
+// size beforehand and the object's own end ending the walk.
+func TestReaderAt_wholeObjectWithoutSize(t *testing.T) {
+	content := testContent(1024)
+	s := startConformantServer(t, content)
+
+	r, err := New(t.Context(), s.URL, nil)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer r.Close()
+
+	got, err := io.ReadAll(
+		bufio.NewReaderSize(io.NewSectionReader(r, 0, math.MaxInt64), 256),
+	)
+	if err != nil {
+		t.Fatalf("reading the object returned error: %v", err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Fatalf("read %d bytes differing from the %d served", len(got), len(content))
 	}
 }
 
@@ -113,11 +248,13 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 		content := testContent(256)
 		s := startConformantServer(t, content)
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
+
+		mustProbe(t, r)
 
 		changed := testContent(len(content))
 		for i := range changed {
@@ -143,11 +280,13 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			handlePartial(content, `"v2"`),
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
+
+		mustProbe(t, r)
 
 		if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
@@ -161,11 +300,13 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			handlePartial(testContent(320), `"v1"`),
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
+
+		mustProbe(t, r)
 
 		if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
@@ -187,11 +328,13 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			},
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
+
+		mustProbe(t, r)
 
 		if _, err := r.ReadAt(make([]byte, 16), 64); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
@@ -217,19 +360,60 @@ func TestReaderAt_ReadAt_objectChanged(t *testing.T) {
 			},
 		))
 
-		r, err := New(context.Background(), s.URL, nil)
+		r, err := New(t.Context(), s.URL, nil)
 		if err != nil {
 			t.Fatalf("New returned error: %v", err)
 		}
 		defer r.Close()
 
+		mustProbe(t, r)
+
 		if _, err := r.ReadAt(make([]byte, 16), 0); !errors.Is(err, ErrObjectChanged) {
 			t.Fatalf("ReadAt returned %v, want %v", err, ErrObjectChanged)
 		}
 	})
+
+	t.Run("over_grant", func(t *testing.T) {
+		content := testContent(256)
+		s := startHandlerServer(t, handleSequence(
+			handlePartial(content, `"v1"`),
+			// A 206 running to the end of the object however few bytes were
+			// asked for, which is the over-grant that reads as a whole answer:
+			// there is no room for those bytes in the buffer the caller
+			// passed, and whatever room there is past it is not this package's
+			// to write into.
+			func(w http.ResponseWriter, r *http.Request) {
+				start, _ := rangeBounds(r.Header.Get("Range"))
+				w.Header().Set("ETag", `"v1"`)
+				w.Header().Set(
+					"Content-Range",
+					fmt.Sprintf("bytes %d-%d/%d", start, len(content)-1, len(content)),
+				)
+				w.WriteHeader(http.StatusPartialContent)
+				_, _ = w.Write(content[start:])
+			},
+		))
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		mustProbe(t, r)
+
+		buf := make([]byte, 16)
+		n, err := r.ReadAt(buf, 0)
+		if !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("ReadAt = (%d, %v), want %v", n, err, ErrObjectChanged)
+		}
+		if n != 0 || !bytes.Equal(buf, make([]byte, len(buf))) {
+			t.Fatalf("ReadAt = (%d, %v) with buffer %x, want no bytes touched", n, err, buf)
+		}
+	})
 }
 
-// TestReaderAt_ReadAt_originChanged pins a read to the origin construction
+// TestReaderAt_ReadAt_originChanged pins a read to the origin the probe
 // settled on, which is the far end of any redirect rather than the URL asked
 // for.
 func TestReaderAt_ReadAt_originChanged(t *testing.T) {
@@ -245,11 +429,13 @@ func TestReaderAt_ReadAt_originChanged(t *testing.T) {
 		},
 	))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
+
+	mustProbe(t, r)
 
 	_, err = r.ReadAt(make([]byte, 16), 0)
 	if !errors.Is(err, ErrObjectChanged) {
@@ -270,11 +456,13 @@ func TestReaderAt_ReadAt_statusError(t *testing.T) {
 		},
 	))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
+
+	mustProbe(t, r)
 
 	_, err = r.ReadAt(make([]byte, 16), 0)
 	codeErr, ok := errors.AsType[*StatusCodeError](err)
@@ -331,12 +519,13 @@ func TestReaderAt_ReadAt_weakETag(t *testing.T) {
 			var reqLog requestLog
 			s := startHandlerServer(t, reqLog.wrap(serveWeak(tc.lastModified)))
 
-			r, err := New(context.Background(), s.URL, nil)
+			r, err := New(t.Context(), s.URL, nil)
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
 			}
 			defer r.Close()
 
+			mustProbe(t, r)
 			if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
 				t.Fatalf("ReadAt returned error: %v", err)
 			}
@@ -363,6 +552,314 @@ func TestReaderAt_ReadAt_weakETag(t *testing.T) {
 	}
 }
 
+func TestReaderAt_Metadata(t *testing.T) {
+	const (
+		etag         = `"v1"`
+		lastModified = "Mon, 06 May 2024 07:08:09 GMT"
+	)
+	content := testContent(256)
+	size := int64(len(content))
+
+	t.Run("config_pre_pin", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(t.Context(), s.URL, &Config{
+			PriorKnowledge: Metadata{
+				Size:         size,
+				ETag:         etag,
+				LastModified: lastModified,
+			},
+		})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		want := Metadata{ETag: etag, LastModified: lastModified, Size: size}
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+		if got := s.requestCount(); got != 0 {
+			t.Fatalf("Metadata() cost %d requests, want 0", got)
+		}
+	})
+
+	t.Run("size_alone", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{Size: size}})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		// A size the caller vouched for is known without the object it belongs
+		// to being pinned, which is what ok reports on.
+		want := Metadata{Size: size}
+		if got, ok := r.Metadata(); !sameObject(got, want) || ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, false)", got, ok, want)
+		}
+	})
+
+	t.Run("nothing_known", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		// Zero and not ok, which is how an object nobody has looked at yet
+		// tells itself apart from an empty one.
+		want := Metadata{}
+		if got, ok := r.Metadata(); !sameObject(got, want) || ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, false)", got, ok, want)
+		}
+	})
+
+	t.Run("from_probe", func(t *testing.T) {
+		s := startConformantServer(t, content)
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		mustProbe(t, r)
+
+		want := Metadata{
+			ETag:         s.etag,
+			LastModified: s.modTime.UTC().Format(http.TimeFormat),
+			Size:         size,
+		}
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+	})
+
+	t.Run("response_without_validators", func(t *testing.T) {
+		// Nothing the response carries says which object this is, so what
+		// settles the description is the response having happened at all.
+		s := startHandlerServer(t, handlePartial(content, ""))
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
+			t.Fatalf("ReadAt returned error: %v", err)
+		}
+
+		want := Metadata{Size: size}
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+	})
+
+	t.Run("completed_by_first_response", func(t *testing.T) {
+		servePartial := func(etag string) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Last-Modified", lastModified)
+				handlePartial(content, etag)(w, r)
+			}
+		}
+		s := startHandlerServer(t, handleSequence(
+			servePartial(etag),
+			servePartial(`"v2"`),
+		))
+
+		// Half a description: the caller saved a Last-Modified and no ETag.
+		r, err := New(t.Context(), s.URL, &Config{
+			PriorKnowledge: Metadata{
+				Size:         size,
+				LastModified: lastModified,
+			},
+		})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
+			t.Fatalf("ReadAt returned error: %v", err)
+		}
+
+		want := Metadata{ETag: etag, LastModified: lastModified, Size: size}
+		if got, ok := r.Metadata(); !sameObject(got, want) || !ok {
+			t.Fatalf("Metadata() = (%+v, %t), want (%+v, true)", got, ok, want)
+		}
+		if _, err := r.ReadAt(make([]byte, 16), 32); !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("ReadAt after the ETag changed = %v, want %v", err, ErrObjectChanged)
+		}
+	})
+}
+
+// TestReaderAt_Metadata_header states what a snapshot carries of the response
+// behind it: the headers of the first response the reader accepted, whole and
+// unedited, so that the entity headers of the object — the name it was stored
+// under, its type, whatever vendor metadata rides along — are read off the
+// reader rather than out of a HEAD request of the caller's own.
+func TestReaderAt_Metadata_header(t *testing.T) {
+	const (
+		etag        = `"v1"`
+		disposition = `attachment; filename="report.pdf"`
+	)
+	content := testContent(256)
+
+	// servePartial answers a range as handlePartial does, with entity headers
+	// of the kind a caller comes here for on top.
+	servePartial := func(extra http.Header) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			for key, values := range extra {
+				for _, v := range values {
+					w.Header().Add(key, v)
+				}
+			}
+			handlePartial(content, etag)(w, r)
+		}
+	}
+
+	t.Run("from_the_response", func(t *testing.T) {
+		s := startHandlerServer(t, servePartial(http.Header{
+			"Content-Disposition": {disposition},
+			"Content-Type":        {"application/pdf"},
+			"X-Amz-Meta-Author":   {"ngicks"},
+		}))
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if got, _ := r.Metadata(); got.Header != nil {
+			t.Fatalf("Metadata().Header = %v before any request, want nothing at all", got.Header)
+		}
+
+		mustProbe(t, r)
+
+		got, _ := r.Metadata()
+		for _, want := range [][2]string{
+			{"Content-Disposition", disposition},
+			{"Content-Type", "application/pdf"},
+			{"X-Amz-Meta-Author", "ngicks"},
+		} {
+			if v := got.Header.Get(want[0]); v != want[1] {
+				t.Fatalf("Metadata().Header.Get(%q) = %q, want %q", want[0], v, want[1])
+			}
+		}
+		// Nothing is filtered out on the way in, which is what "the headers of
+		// the response" means: the keys describing that one response are in
+		// there too, and the documentation is what warns against reading the
+		// object out of them.
+		if v := got.Header.Get("Content-Range"); v == "" {
+			t.Fatal("Metadata().Header carries no Content-Range, want the response's own")
+		}
+	})
+
+	t.Run("snapshot_is_the_caller_s_own", func(t *testing.T) {
+		s := startHandlerServer(t, servePartial(http.Header{
+			"Content-Disposition": {disposition},
+		}))
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		mustProbe(t, r)
+
+		got, _ := r.Metadata()
+		got.Header.Set("Content-Disposition", `attachment; filename="mine.pdf"`)
+		got.Header.Set("X-Written-By-The-Caller", "1")
+
+		again, _ := r.Metadata()
+		if v := again.Header.Get("Content-Disposition"); v != disposition {
+			t.Fatalf("Metadata().Header.Get(\"Content-Disposition\") = %q, want %q", v, disposition)
+		}
+		if v := again.Header.Get("X-Written-By-The-Caller"); v != "" {
+			t.Fatalf("Metadata().Header carries %q, written on an earlier snapshot", v)
+		}
+	})
+
+	t.Run("prior_knowledge_ignored", func(t *testing.T) {
+		s := startHandlerServer(t, servePartial(http.Header{
+			"Content-Disposition": {disposition},
+		}))
+
+		// A snapshot handed back exactly as it was saved, headers included,
+		// which is what carrying them through [Config] is for. Its validators
+		// pre-pin the object; its headers say nothing about this reader.
+		r, err := New(t.Context(), s.URL, &Config{
+			PriorKnowledge: Metadata{
+				ETag: etag,
+				Header: http.Header{
+					"Content-Disposition": {`attachment; filename="saved-earlier.pdf"`},
+					"X-Saved-Earlier":     {"1"},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		if got, _ := r.Metadata(); got.Header != nil {
+			t.Fatalf("Metadata().Header = %v before any request, want nothing at all", got.Header)
+		}
+
+		if _, err := r.ReadAt(make([]byte, 16), 0); err != nil {
+			t.Fatalf("ReadAt returned error: %v", err)
+		}
+
+		got, _ := r.Metadata()
+		if v := got.Header.Get("Content-Disposition"); v != disposition {
+			t.Fatalf("Metadata().Header.Get(\"Content-Disposition\") = %q, want %q", v, disposition)
+		}
+		if v := got.Header.Get("X-Saved-Earlier"); v != "" {
+			t.Fatalf("Metadata().Header carries %q, seeded through PriorKnowledge", v)
+		}
+	})
+
+	t.Run("settles_once", func(t *testing.T) {
+		s := startHandlerServer(t, handleSequence(
+			servePartial(http.Header{"Content-Disposition": {disposition}}),
+			servePartial(http.Header{
+				"Content-Disposition": {`attachment; filename="second.pdf"`},
+				"X-Second-Response":   {"1"},
+			}),
+		))
+
+		r, err := New(t.Context(), s.URL, nil)
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		defer r.Close()
+
+		for _, off := range []int64{0, 32} {
+			if _, err := r.ReadAt(make([]byte, 16), off); err != nil {
+				t.Fatalf("ReadAt at offset %d returned error: %v", off, err)
+			}
+		}
+
+		// The headers settle the way every other property does: what the first
+		// accepted response said stands, and the second response, describing
+		// the same object in other words, changes nothing.
+		got, _ := r.Metadata()
+		if v := got.Header.Get("Content-Disposition"); v != disposition {
+			t.Fatalf("Metadata().Header.Get(\"Content-Disposition\") = %q, want %q", v, disposition)
+		}
+		if v := got.Header.Get("X-Second-Response"); v != "" {
+			t.Fatalf("Metadata().Header carries %q, off the second response", v)
+		}
+	})
+}
+
 func TestReaderAt_ReadAt_shortBody(t *testing.T) {
 	content := testContent(256)
 	s := startHandlerServer(t, handleSequence(
@@ -379,11 +876,13 @@ func TestReaderAt_ReadAt_shortBody(t *testing.T) {
 		},
 	))
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
+
+	mustProbe(t, r)
 
 	n, err := r.ReadAt(make([]byte, 16), 0)
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
@@ -399,7 +898,7 @@ func TestReaderAt_ReadAt_parallel(t *testing.T) {
 	size := int64(len(content))
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -441,7 +940,7 @@ func TestReaderAt_ReadAt_concurrentFirstRead(t *testing.T) {
 	content := testContent(readers * bufLen)
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, &Config{Size: int64(len(content))})
+	r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{Size: int64(len(content))}})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -491,13 +990,16 @@ func TestReaderAt_iotest(t *testing.T) {
 	content := testContent(1024)
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	defer r.Close()
 
-	if err := iotest.TestReader(io.NewSectionReader(r, 0, r.Size()), content); err != nil {
+	mustProbe(t, r)
+
+	meta, _ := r.Metadata()
+	if err := iotest.TestReader(io.NewSectionReader(r, 0, meta.Size), content); err != nil {
 		t.Fatalf("iotest.TestReader returned error: %v", err)
 	}
 }
@@ -534,7 +1036,7 @@ func TestReaderAt_Close(t *testing.T) {
 	content := testContent(256)
 	s := startConformantServer(t, content)
 
-	r, err := New(context.Background(), s.URL, nil)
+	r, err := New(t.Context(), s.URL, nil)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -567,7 +1069,7 @@ func TestReaderAt_CloseDuringRead(t *testing.T) {
 		}
 	})
 
-	r, err := New(context.Background(), s.URL, &Config{Size: int64(len(content))})
+	r, err := New(t.Context(), s.URL, &Config{PriorKnowledge: Metadata{Size: int64(len(content))}})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
