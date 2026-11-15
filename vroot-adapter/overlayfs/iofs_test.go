@@ -19,7 +19,7 @@ import (
 // around them agrees with itself; the two masked names are asserted separately,
 // since a name that is supposed to be gone cannot be expressed as an expectation.
 func TestToIoFs(t *testing.T) {
-	for _, s := range stacks() {
+	for _, s := range confinedStacks() {
 		t.Run(s.name, func(t *testing.T) {
 			f, content := buildStack(t, s)
 			defer func() { _ = f.Close() }()

@@ -61,6 +61,28 @@ func stacks() []stack {
 	}
 }
 
+// confinedStacks is [stacks] and one more backing: osfs-root, which confines
+// every layer by [os.Root] and so refuses paths the other two let through, the
+// empty path among them.
+//
+// It is kept out of [stacks] because an [os.Root] is gone once the overlay over
+// it is closed, and a test stacking a second overlay over the layers of a
+// closed one needs backings that outlive the close.
+func confinedStacks() []stack {
+	all := stacks()
+	return append(all, stack{
+		name: "osfs-root",
+		fsys: func(t *testing.T, _ string) vroot.Fs[vroot.File] {
+			root, err := osfs.NewRoot(t.TempDir())
+			if err != nil {
+				t.Fatalf("osfs.NewRoot: %v", err)
+			}
+			return vroot.Widen(root)
+		},
+		option: all[len(all)-1].option,
+	})
+}
+
 // buildStack stacks a canonical top over a canonical lower and a plain one, all
 // over s's backing, and hands back the merged view together with the two
 // lowers' content roots.
@@ -148,7 +170,7 @@ func makeWritten(t *testing.T, s stack, lines []string) *overlayfs.Fs {
 // Were the fixture to land in the top instead, every suite below would still
 // pass while reading nothing but what it had just written.
 func TestStackWiring(t *testing.T) {
-	for _, s := range stacks() {
+	for _, s := range confinedStacks() {
 		t.Run(s.name, func(t *testing.T) {
 			f, content := buildStack(t, s)
 			defer func() { _ = f.Close() }()
@@ -171,7 +193,7 @@ func TestStackWiring(t *testing.T) {
 // TestRoot runs the full [vroot.Root] suite — read, write, escapes and race —
 // against an overlay whose fixture lives in the lowers.
 func TestRoot(t *testing.T) {
-	for _, s := range stacks() {
+	for _, s := range confinedStacks() {
 		t.Run(s.name, func(t *testing.T) {
 			acceptancetest.RunRoot(t, acceptancetest.SetupRoot[vroot.File, *overlayfs.Fs]{
 				Make: func(t *testing.T, lines []string) *overlayfs.Fs {
@@ -186,7 +208,7 @@ func TestRoot(t *testing.T) {
 // TestFs runs the [vroot.Fs] suite against an overlay whose fixture was written
 // through the overlay, the wiring where the top holds everything.
 func TestFs(t *testing.T) {
-	for _, s := range stacks() {
+	for _, s := range confinedStacks() {
 		t.Run(s.name, func(t *testing.T) {
 			acceptancetest.RunFs(t, acceptancetest.Setup[vroot.File, *overlayfs.Fs]{
 				Make: func(t *testing.T, lines []string) *overlayfs.Fs {
