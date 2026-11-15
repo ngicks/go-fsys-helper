@@ -40,4 +40,17 @@ func TestFileReaddirnames[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F,
 	if !slices.Equal(collected, want) {
 		t.Errorf("names: got %v, want %v", collected, want)
 	}
+
+	t.Run("root directory", func(t *testing.T) {
+		f := c.Open(".")
+		defer func() { _ = f.Close() }()
+
+		got, err := f.Readdirnames(-1)
+		if err != nil {
+			t.Fatalf("Readdirnames(-1): %v", err)
+		}
+		if want := []string{"dir"}; !slices.Equal(got, want) {
+			t.Errorf("root names: got %v, want %v", got, want)
+		}
+	})
 }

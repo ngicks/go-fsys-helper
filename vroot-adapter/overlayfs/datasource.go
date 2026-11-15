@@ -126,7 +126,9 @@ func (d *DataSource) Fsys() vroot.Fs[vroot.File] {
 // is handed — clean, slash-separated, relative to the content root — and the
 // answer is spelled with the separator the backend expects. A canonical layer
 // keeps its content under "merged/"; a plain layer's root is its content root,
-// so the name comes back as it went in.
+// so the name comes back as it went in. The content root itself, which the
+// masking state spells "", comes back as ".": an fs confined to a root, such as
+// one over [os.Root], refuses the empty path.
 //
 // Content and staging are addressed as two paths in one fs rather than as two
 // sub-Fs views, because copy-up publishes by renaming a staged file onto its
@@ -134,6 +136,9 @@ func (d *DataSource) Fsys() vroot.Fs[vroot.File] {
 func (d *DataSource) ContentPath(name string) string {
 	name = filepath.FromSlash(name)
 	if !d.canonical {
+		if name == "" {
+			return "."
+		}
 		return name
 	}
 	return filepath.Join(dirMerged, name)

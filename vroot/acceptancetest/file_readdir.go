@@ -49,6 +49,25 @@ func TestFileReadDir[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs])
 		}
 	})
 
+	t.Run("root directory", func(t *testing.T) {
+		f := c.Open(".")
+		defer func() { _ = f.Close() }()
+
+		entries, err := f.ReadDir(-1)
+		if err != nil {
+			t.Fatalf("ReadDir(-1): %v", err)
+		}
+		got := make([]string, len(entries))
+		for i, e := range entries {
+			got[i] = e.Name()
+		}
+		slices.Sort(got)
+		want := []string{"dir", "reg.txt"}
+		if !slices.Equal(got, want) {
+			t.Errorf("root names: got %v, want %v", got, want)
+		}
+	})
+
 	t.Run("ReadDir on regular file errors", func(t *testing.T) {
 		f := c.Open("reg.txt")
 		defer func() { _ = f.Close() }()

@@ -55,6 +55,17 @@ func TestOpen[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		}
 	})
 
+	t.Run("root directory", func(t *testing.T) {
+		f := c.Open(".")
+		defer func() { _ = f.Close() }()
+
+		info, err := f.Stat()
+		testhelper.NilErr(t, err)
+		if !info.IsDir() {
+			t.Errorf("opened root not reported as directory")
+		}
+	})
+
 	t.Run("non-existent path", func(t *testing.T) {
 		_, err := fsys.Open("does-not-exist")
 		testhelper.ErrIs(t, err, fs.ErrNotExist)

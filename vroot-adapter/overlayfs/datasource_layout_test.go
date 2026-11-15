@@ -34,6 +34,13 @@ func TestDataSourcePaths(t *testing.T) {
 	}
 	defer canonical.Close()
 
+	if got := plain.ContentPath(""); got != "." {
+		t.Errorf("plain ContentPath(\"\") = %q, want \".\"", got)
+	}
+	if got := canonical.ContentPath(""); got != dirMerged {
+		t.Errorf("canonical ContentPath(\"\") = %q, want %q", got, dirMerged)
+	}
+
 	for _, name := range []string{"a", "a/b"} {
 		if want := filepath.FromSlash(name); plain.ContentPath(name) != want {
 			t.Errorf("plain ContentPath(%q) = %q, want %q", name, plain.ContentPath(name), want)
