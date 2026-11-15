@@ -40,6 +40,14 @@ func TestStat[F vroot.File, Fs vroot.Fs[F]](t *testing.T, s Setup[F, Fs]) {
 		}
 	})
 
+	t.Run("root directory", func(t *testing.T) {
+		info, err := fsys.Stat(".")
+		testhelper.NilErr(t, err)
+		if !info.IsDir() {
+			t.Errorf("root not reported as directory")
+		}
+	})
+
 	if !s.Option.SkipSymlink {
 		t.Run("symlink followed", func(t *testing.T) {
 			info, err := fsys.Stat("link")

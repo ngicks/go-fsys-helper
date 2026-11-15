@@ -2,6 +2,7 @@ package acceptancetest
 
 import (
 	"io/fs"
+	"slices"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/fsutil/testhelper"
@@ -28,6 +29,43 @@ func TestOpenRoot[F vroot.File, R vroot.Root[F, R]](t *testing.T, s SetupRoot[F,
 		f, err := sub.Open("inside.txt")
 		testhelper.NilErr(t, err)
 		_ = f.Close()
+	})
+
+	rootNames := func(t *testing.T, root R) []string {
+		t.Helper()
+		info, err := root.Stat(".")
+		testhelper.NilErr(t, err)
+		if !info.IsDir() {
+			t.Errorf("root not reported as directory")
+		}
+
+		f, err := root.Open(".")
+		testhelper.NilErr(t, err)
+		defer func() { _ = f.Close() }()
+		names, err := f.Readdirnames(-1)
+		testhelper.NilErr(t, err)
+		slices.Sort(names)
+		return names
+	}
+
+	t.Run("sub-root's own root lists its content", func(t *testing.T) {
+		sub, err := r.OpenRoot("sub")
+		testhelper.NilErr(t, err)
+		defer func() { _ = sub.Close() }()
+
+		if got, want := rootNames(t, sub), []string{"inside.txt"}; !slices.Equal(got, want) {
+			t.Errorf("sub-root names: got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("root opened as sub-root lists the root", func(t *testing.T) {
+		sub, err := r.OpenRoot(".")
+		testhelper.NilErr(t, err)
+		defer func() { _ = sub.Close() }()
+
+		if got, want := rootNames(t, sub), []string{"afile.txt", "sub"}; !slices.Equal(got, want) {
+			t.Errorf("sub-root names: got %v, want %v", got, want)
+		}
 	})
 
 	t.Run("sub-root forbids escape via dot-dot", func(t *testing.T) {
