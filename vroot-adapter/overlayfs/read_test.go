@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/ngicks/go-fsys-helper/vroot"
+	"github.com/ngicks/go-fsys-helper/vroot/osfs"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -229,6 +231,57 @@ func TestFsMergedDirRoot(t *testing.T) {
 			t.Errorf("root listing = %q, want %q", got, want)
 		}
 	})
+}
+
+// TestFsMergedDirRootOverOsRoot checks that the overlay root lists when a
+// plain lower is confined by [os.Root], which refuses the empty path the
+// overlay names its root by.
+func TestFsMergedDirRootOverOsRoot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "from-lower"), []byte("x"), 0o666); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o777); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+	root, err := osfs.NewRoot(dir)
+	if err != nil {
+		t.Fatalf("osfs.NewRoot: %v", err)
+	}
+	lower := NewDataSource(root)
+	t.Cleanup(func() { _ = lower.Close() })
+
+	top := canonicalSource(t, memfsMaker(t, "top"))
+	f, err := New(top, []*DataSource{lower}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	put(t, top, "from-top", "x", 0o666)
+
+	names := func(entries []fs.DirEntry) []string {
+		got := make([]string, len(entries))
+		for i, e := range entries {
+			got[i] = e.Name()
+		}
+		return got
+	}
+	want := []string{"from-lower", "from-top", "sub"}
+
+	entries, err := vroot.ReadDir[vroot.File](f, ".")
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if got := names(entries); !slices.Equal(got, want) {
+		t.Errorf("root listing = %q, want %q", got, want)
+	}
+
+	entries, err = fs.ReadDir(vroot.ToIoFsRoot(f), ".")
+	if err != nil {
+		t.Fatalf("fs.ReadDir: %v", err)
+	}
+	if got := names(entries); !slices.Equal(got, want) {
+		t.Errorf("io/fs root listing = %q, want %q", got, want)
+	}
 }
 
 // TestFsLowerFilesReadOnly checks that a handle onto a lower refuses every write
